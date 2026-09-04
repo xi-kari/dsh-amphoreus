@@ -218,6 +218,8 @@
 .factList div:last-child { border-bottom: 0; }
 .factList dt { margin-bottom: 4px; color: var(--dsw-alias-label-caption); font-size: 9px; letter-spacing: .04em; }
 .factList dd { margin: 0; color: var(--dsw-alias-label-secondary); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+.factList dd[data-status="unavailable"] { color: var(--dsw-alias-state-error-primary); }
+.factList dd[data-status="disabled"] { color: var(--dsw-alias-label-tertiary); }
 
 .empty { margin: 0; padding: 24px 18px; color: var(--dsw-alias-label-tertiary); font-size: 11px; }
 .diagnosticList { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 12px 14px 16px; list-style: none; }

@@ -41,6 +41,8 @@ export function AmphoreusSettings({ model, t }: AmphoreusSettingsProps) {
 
   const state = snapshot.state
   const suite = state.suite
+  const wb = state.effectiveConfig.workbench
+  const wbState = state.workbench
   const level = suite?.level ?? 'L3'
   const deployed = state.seats.filter(seat => seat.status === 'deployed').length
   const diagnostics = suite?.diagnostics ?? []
@@ -72,7 +74,7 @@ export function AmphoreusSettings({ model, t }: AmphoreusSettingsProps) {
           <button className={css.primaryButton} type="button" disabled={reparsing || snapshot.refreshing} onClick={() => { void reparse() }}>
             {reparsing ? t('settings.reparsing') : t('settings.reparse')}
           </button>
-          <a className={css.secondaryButton} href="/amphoreus/workbench/" target="_blank" rel="noreferrer">{t('settings.openWorkbench')}</a>
+          {wb.enabled ? <a className={css.secondaryButton} href="/amphoreus/workbench/" target="_blank" rel="noreferrer">{t('settings.openWorkbench')}</a> : null}
         </div>
         {actionError === undefined ? null : <p className={css.actionError} role="alert">{actionError}</p>}
       </header>
@@ -124,6 +126,25 @@ export function AmphoreusSettings({ model, t }: AmphoreusSettingsProps) {
               <div><dt>Parser</dt><dd>v{suite?.parserVersion ?? '—'}</dd></div>
               <div><dt>Assets</dt><dd>{state.effectiveConfig.assetsConfigured ? t('settings.assetsReady') : t('settings.assetsMissing')}</dd></div>
             </dl>
+          </section>
+
+          <section className={css.panel} aria-labelledby="amphoreus-workbench">
+            <div className={css.sectionHeading}><h2 id="amphoreus-workbench">{t('settings.workbenchHeading')}</h2></div>
+            <dl className={css.factList}>
+              <div><dt>{t('settings.workbenchStatus')}</dt><dd data-status={wbState.status.kind}>
+                {wbState.status.kind === 'ready' ? t('settings.workbenchReady')
+                  : wbState.status.kind === 'disabled' ? t('settings.workbenchDisabled')
+                    : `${t('settings.workbenchUnavailable')}：${wbState.status.reason}`}
+              </dd></div>
+              <div><dt>{t('settings.workbenchHost')}</dt><dd><code>{wb.host}</code>{wb.host === 'native' ? ` — ${t('settings.workbenchHostNative')}` : ''}</dd></div>
+              <div><dt>{t('settings.workbenchDefaultView')}</dt><dd>{wb.defaultView === 'workbench' ? t('settings.workbenchDefaultWorkbench') : t('settings.workbenchDefaultChat')}</dd></div>
+              <div><dt>{t('settings.workbenchCardLimit')}</dt><dd>{wb.cardTextLimit}</dd></div>
+            </dl>
+            <div className={css.sectionHeading}><h2>{t('settings.workbenchUnprojectable')}</h2><span className={css.index}>{String(wbState.unprojectable.length).padStart(2, '0')}</span></div>
+            {wbState.unprojectable.length === 0
+              ? <p className={css.empty}>{t('settings.workbenchUnprojectableEmpty')}</p>
+              : <ul className={css.diagnosticList}>{wbState.unprojectable.slice(0, 12).map(item => (
+                  <li key={item.sessionId} data-severity="warn"><code>{item.sessionId}</code><span>{item.title ?? '—'} · {item.reason}</span></li>))}</ul>}
           </section>
 
           <section className={css.panel} aria-labelledby="amphoreus-diagnostics">
