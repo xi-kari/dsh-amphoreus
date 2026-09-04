@@ -33,6 +33,50 @@ const CARD_HEIGHT = 276
 const CARD_GAP_Y = 42
 const CAMERA_INSET_X = 56
 const CAMERA_INSET_Y = 56
+const THEME_TOKEN_NAME_RE = /^--dsw-(?:alias|specific)-[a-z0-9-]{1,64}$/
+const THEME_TOKEN_VALUE_RE = /^[#a-zA-Z0-9(),.%\s\/-]{1,120}$/
+const THEME_TOKEN_NON_COLOR_RE = /\b(?:url|var|image(?:-set)?|cross-fade|element|(?:repeating-)?(?:linear|radial|conic)-gradient)\s*\(/i
+const MAX_BRIDGED_THEME_TOKENS = 87
+let appliedThemeTokens = []
+
+function trustedThemeTokenEvent(event) {
+  return event.source === window.parent
+    && event.origin === window.location.origin
+    && event.data?.source === 'dsh-amphoreus'
+}
+
+function validThemeTokenValue(value) {
+  if (typeof value !== 'string') return false
+  const normalized = value.trim()
+  return THEME_TOKEN_VALUE_RE.test(normalized)
+    && !THEME_TOKEN_NON_COLOR_RE.test(normalized)
+    && typeof CSS !== 'undefined'
+    && typeof CSS.supports === 'function'
+    && CSS.supports('color', normalized)
+}
+
+function applyThemeTokensMessage(data) {
+  if (typeof data?.dark !== 'boolean') return false
+  const tokens = data.tokens
+  if (tokens === null || typeof tokens !== 'object' || Array.isArray(tokens)) return false
+  const entries = Object.entries(tokens)
+  if (entries.length > MAX_BRIDGED_THEME_TOKENS) return false
+  const next = []
+  for (const [name, value] of entries) {
+    if (!THEME_TOKEN_NAME_RE.test(name) || !validThemeTokenValue(value)) continue
+    next.push([name, value.trim()])
+  }
+  const root = document.documentElement
+  for (const name of appliedThemeTokens) root.style.removeProperty(name)
+  appliedThemeTokens = []
+  for (const [name, value] of next) {
+    root.style.setProperty(name, value)
+    appliedThemeTokens.push(name)
+  }
+  root.dataset.theme = data.dark ? 'dark' : 'light'
+  root.style.colorScheme = data.dark ? 'dark' : 'light'
+  return true
+}
 // Cards outside the viewport (plus this world-space margin) are not mounted
 // into the DOM; the margin pre-mounts cards just before they scroll into view
 // so panning never flashes empty space.
@@ -2092,6 +2136,10 @@ window.addEventListener('message', event => {
   }
   if (data.type === 'amphoreus:theme') {
     document.documentElement.dataset.theme = data.dark === true ? 'dark' : 'light'
+  }
+  if (data.type === 'amphoreus:theme-tokens') {
+    if (!trustedThemeTokenEvent(event)) return
+    applyThemeTokensMessage(data)
   }
   if (data.type === 'amphoreus:workspaces') {
     applyWorkspaces(data)

@@ -406,7 +406,7 @@
 - 偏离与理由：无。
 - 遗留：无。
 ## TD2 G2：宿主页向 iframe 桥接 87 个主题 token — 2026-09-04 22:35
-- commit: PENDING-TASK
+- commit: 1722602
 - 验收：
   - `node --test tests/client-theme-bridge.test.ts` → `tests 3; pass 3; fail 0; skipped 0; duration_ms 115.5069` PASS（exit: `0`）
   - `npm run typecheck` → 无诊断 PASS（exit: `0`）
@@ -416,4 +416,24 @@
   - `git diff --check` → 无空白错误 PASS（exit: `0`）
 - 人工断言：✓ `readDswTokens` 只遍历 TD1 的 87-token 固定清单、从 `document.body` 计算样式读取、trim 并跳过空值；✓ `themeBridge` 在 apply 顶部一次性构造，slot inject 只引用稳定对象；✓ 初始订阅、theme/change、iframe onLoad、map-ready 共用同一 push；✓ 每次读取推迟两帧；✓ 卸载先置 inactive、退订并取消全部 pending rAF；✓ 不发送 static token 与旧布尔主题消息。
 - 偏离与理由：在任务书双 rAF 基础上增加 active fence 和逐帧取消集合，避免组件卸载或 theme 引用换代后向旧 iframe 发送过期 token。
-- 遗留：浏览器端 token 落根节点与 light/dark 同步验收依赖 TD3 接收端；TD3 完成后联合实测并回填。
+- 联合回填（TD3）：浏览器 fresh load 已确认 iframe root 收到 token；light→dark→跟随系统/light 均与宿主 body 同值，TD2 浏览器依赖已闭合。
+## TD3 G2：iframe 主题接收与画布颜色变量化 — 2026-09-04 23:02
+- commit: PENDING-TASK
+- 修改前基线：app.js SHA-256 `5E045B137AFFA87CF1ECF263235E544067A7132CA50DD2F1AC4473ADB66134B6`；styles.css SHA-256 `4CD52988C8BED0C2B5BA5F17891B830FC31A146B8C3BCECCA6556A860A9B440A`；CSS `534` 行、DSW var=`4`、dark selector occurrences=`187`（`162` 行）、`#3478f6=30`、blue fallback=`0`、raw hex=`518`、thread-color important=`1`；卡片 `310×276`。
+- 验收：
+  - `node --check workbench/app.js` → 无输出 PASS（exit: `0`）
+  - TD2+TD3 聚焦测试 → `tests 8; pass 8; fail 0; skipped 0`；扩展主题/画布聚焦复核 → `tests 19; pass 19; fail 0; skipped 0; duration_ms 153.384` PASS
+  - 全量测试 → `tests 132; pass 131; fail 0; skipped 1` PASS（exit: `0`）
+  - `npm run typecheck` → 无诊断；Lightning CSS 实际解析 → `LIGHTNINGCSS_PARSE_OK 54514`；`npm run build` → client `91.92 kB`、host `152.02 kB` PASS（各 exit: `0`）
+  - CSS 机器门 → 行数=`376`、DSW var=`292`、dark selector=`1`、blue=`25` 且 fallback blue=`25`、hex=`285`/fallback hex=`284`/raw hex=`1`、thread-color important=`0`、static token=`0`、非法 `*/--dsw`=`0` PASS
+  - 唯一 raw hex 为 `.portal-meta` 压图白字 `#fdfbff`；任务书明确允许保留 PASS
+  - `.thread-card` CSS `310×276` 与 app.js `CARD_WIDTH=310/CARD_HEIGHT=276` 全部不变；`view-switch=0` PASS
+  - 修改后 SHA-256：app.js `AE6B495553AD69E66BD58B3C5AE06E7F3C085A5D454F9C190C4E033D9832F933`；styles.css `B4596378CAF3C07B9E020E1E3408B9F37CD6AE09D6186AB5ADF8EF39FC83FBF4`；receiver test `C0BBE49A85F56FB08BB73570E3BD94030AAA3CF4C5E3E606FE6E4610AE5B3968`
+  - `git diff --check` → 无空白错误 PASS（exit: `0`）
+- 浏览器联合验收：
+  - fresh load/light → host body 与 iframe root `bg=rgba(244, 242, 248, 0.22)`、`label=rgb(55, 48, 94)`；iframe `dataset.theme=light`、`colorScheme=light`、card bg `rgba(250, 249, 252, 0.76)`、sidebar bg `rgba(244, 242, 248, 0.1)` PASS
+  - 点 DSH「深色」后约 `180ms` → host/iframe 同步 `bg=rgba(26, 22, 49, 0.4)`、`label=rgb(244, 242, 248)`；iframe `dataset.theme=dark`、`colorScheme=dark`、card bg `rgba(35, 30, 63, 0.78)`、sidebar bg `rgba(26, 22, 49, 0.28)` PASS
+  - 点回原「跟随系统」后约 `180ms` → host 与 iframe 全部恢复上述 light 值；设置对话框关闭，原用户外观选择已恢复；服务 PID `67084` running、HTTP `200`、stderr=`0` bytes PASS
+- 人工断言：✓ theme-token 消息同时校 parent WindowProxy、同源与 source marker；✓ 只收 alias/specific 且 entries≤87；✓ 值先做字符/长度门，再拒绝 URL/var/image/gradient 并用 `CSS.supports('color', …)`；✓ malformed generation 保留上一代；✓ 只删除 receiver 自有 token；✓ 旧布尔 receiver 保留；✓ 所有 fallback 完整保留；✓ 暗色只由宿主 token 值驱动。
+- 偏离与理由：任务书给出的 CSS 文件头注释含内嵌 `*/`，改写为等义合法注释；接收器增加 parent、87-entry、纯 color 语义门；滚动条采用已桥接的专用 scrollbar token；这些收口不改变协议目标。
+- 遗留：无。
