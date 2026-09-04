@@ -447,7 +447,7 @@
 - 偏离与理由：TD8 同时要求“不改 `--thread-color`”与 `#3478f6=0`，但这三处 producer 明确归后置 C/TC9；当前保持 `3`，并把 0 作为 TD8+TC9 联合门。为满足 DOM 数量、焦点与失焦详情输入不丢失的更强验收，档位变化只同步现有 shell class，不再执行 TD7 的完整 render。Folio selector 收紧到具备 data attrs 的正式卡，避免草稿显示空页码。
 - 遗留：`#3478f6 3→0` 与逐卡多席色由 C/TC9；派生 cover 的 data-cover/3:4 实机门由 TD10。
 ## TD9：零依赖 ZIP／WebP 素材派生器与独立 CLI bundle — 2026-09-05 00:48
-- commit: PENDING-TASK
+- commit: dc5ae76
 - 动手前核对：
   - `magick rose: -gravity North -crop 3:4 +repage -format '%wx%h' info:` → `35x46` PASS
   - Node `v24.14.1`、ImageMagick `7.1.2-25 Q16-HDRI`（含 webp）；71 个权威输入路径 missing=`0`、总 bytes=`304946013`；真实 cache 初始不存在 PASS
@@ -472,6 +472,29 @@
 - 偏离与理由：covers 进度按任务书示例记 13 个 hero job，但 DeriveResult 按两个 cover 实际文件计 26；完整结果精确为 65 席位文件 + 19 全局文件=`84`。为可控测试增加可选 DeriveRuntime seam，生产单参数签名与默认真实 spawn 不变。任务书描述 Vol.04 “封面约28MB”实际是整 ZIP 约29MB，封面约2.46MB；安全上限按实物加冗余。
 - 回滚与终态：原 cache 为 absent，回滚动作是停服务后删除精确 `assets-cache`；本任务目标要求生成并供 TD10 服务，故当前有意保留已验证的 84 文件 cache。权威 sessions、两 storage-domain 与原素材均未改。
 - 遗留：无。
+## TD10：确定性扫描并安全服务派生素材 — 2026-09-05 01:11
+- commit: PENDING-TASK
+- 验收：
+  - `node --test tests/derived-assets-webapi.test.ts tests/derived-firstframe.test.ts tests/workspaces-derived.test.ts` → `tests 8; pass 8; fail 0; skipped 0; duration_ms 314.076` PASS（exit: `0`）
+  - 扩展聚焦（含原 firstframe/motif）→ `tests 17; pass 17; fail 0`；全量 → `tests 174; pass 173; fail 0; skipped 1; duration_ms 2047.4483` PASS
+  - `npm run typecheck`、`node --check workbench/app.js`、`npm run build` 全通过；derive `28.87 kB`、client `110.10 kB`、host `159.68 kB` PASS（各 exit: `0`）
+  - 真实 cache 开始/结束均 files=`84`、bytes=`9633300`、manifest SHA-256 `ad4e937b6b9cd3904ca7ca61500065934024039171875bbb08c270073d11ec68`，本任务代码阶段只读未改 PASS
+  - `git diff --check` → 无空白错误 PASS（exit: `0`）
+- 运行态（D.0.1）验收：
+  - state → derivedCount=`84`、derived length=`84`、first=`_global/sticker-brand.webp`、last=`tribbie/sticker.webp`、running=`false`、lastDerive=`null` PASS
+  - GET aglaea/cover-34 → `200 image/webp 189150`；HEAD → `200 image/webp`、body `0`，content-length=`189150`、cache-control=`private, max-age=86400`、nosniff PASS
+  - missing=`404`、`--path-as-is` traversal=`404`、裸 POST=`405` PASS
+  - 首帧实际 style 使用 `/amphoreus/derived/_global/wallpaper-4.webp`（sidebar wallpaper-5 同为派生）PASS
+  - 浏览器门户 → cards=`13`、data-cover=`13`、derived `.webp` art=`13`、首图 `/amphoreus/derived/cyrene/cover-34.webp`、aspect=`3 / 4` PASS
+  - 阿格莱雅席 → sidebar cover `/amphoreus/derived/aglaea/cover-34.webp`、aspect=`3 / 4`、sticker `/amphoreus/derived/aglaea/sticker.webp`、main-stage card art `/amphoreus/derived/aglaea/card.webp` PASS；随后恢复全体会议
+  - 最终服务 PID `11260` running、HTTP `200`、stderr=`0` bytes PASS
+- 本地服务 PATH 修正：
+  - 首次重启 state `magick=null` FAIL；原因是 Start 脚本精简 PATH 未保留 ImageMagick。先加入 `magick` 只解析到 `.cmd` shim，Node `spawnSync` 仍 ENOENT FAIL；改为动态查找 `magick.exe` 并加入真实 exe 目录后，复刻服务 PATH 的 Node probe status=`0`
+  - `local-deployment/Start-DeepSeekHarness.ps1` PowerShell parse errors=`0`；原 SHA-256 `283EE3CCC832D3D486F0EF7B3BF3FD64A071481DF469F5132EFDD64AA9571D77`，最终 SHA-256 `763EBAAE77D2C938434A02B660FF04A4D83F5C94917DFFFA73F843F134FE3B07`；原件备份 `.runtime/td10-Start-DeepSeekHarness.before.ps1`
+  - 修正后重启 state `magick=Version: ImageMagick 7.1.2-25 Q16-HDRI x64 …`、derivedCount=`84` PASS
+- 人工断言：✓ host apply await prepareAssets 后才注册 route/firstframe；✓ prepare 并发合并、成功幂等、scan/probe fail-soft；✓ 两层仅普通 ASCII 目录/文件且排序；✓ GET/HEAD 使用 set membership + realpath/open/realpath + dev/ino，原子换档瞬态只重试一次，稳定缺失才删 membership 并发 SSE；✓ derived 独立于 assetsRoot 优先，原图只作已配置 root 的 fallback；✓ firstframe 同顺序。
+- 偏离与理由：任务书最小 register 异步 scan 有首请求竞态，增加 idempotent `prepareAssets()` 并在 async host effect 中显式 await；derived route 增加 symlink/TOCTOU 防护与稳定缺失清退。J-4 的席位 URL 实际修改 `client/workspaces-source.ts`。Start 脚本的单字段 PATH 扩展是本机服务满足任务书 magick 非空/TD11 后台派生的必要运维修正。
+- 遗留：TD11 强制重派生使用稳定 URL + 86400 浏览器缓存，需要以 query 版本或等价方式 cache-bust；本任务未提前实现 TD11 生命周期。
 ## TD2 G2：宿主页向 iframe 桥接 87 个主题 token — 2026-09-04 22:35
 - commit: 1722602
 - 验收：

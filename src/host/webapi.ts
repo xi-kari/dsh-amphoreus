@@ -1,7 +1,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { SessionStore } from '@deepseek-ai/dsh-session'
 import { randomBytes } from 'node:crypto'
-import { readFile, realpath, stat } from 'node:fs/promises'
+import { open, readFile, readdir, realpath, stat } from 'node:fs/promises'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -9,6 +9,7 @@ import { z } from 'zod'
 import type { AmphoreusState, PublicSuite, WorkbenchBoot, WorkbenchStatus } from '../shared/api.ts'
 import { GLOBAL_WALLPAPERS } from '../shared/heroes.ts'
 import type { AmphoreusConfig } from './config.ts'
+import { probeMagick } from './derive.ts'
 import { publicWorkbench } from './firstframe.ts'
 import { BindingSchema, CanvasSchema, MemorySchema, updateAmphoreusGlobal, type AmphoreusStores } from './store.ts'
 import type { SuiteResolver } from './bridge.ts'
@@ -60,6 +61,7 @@ export interface WebApiOptions {
   readonly workbench?: ProjectionIndex
   readonly workbenchStatus?: () => WorkbenchStatus
   readonly seatDirs?: readonly SeatDirRecord[]
+  readonly assetsCacheDir?: string
 }
 
 interface SseClient {
@@ -126,8 +128,14 @@ export class AmphoreusWebApi {
   readonly #workbench: ProjectionIndex | undefined
   readonly #workbenchStatus: () => WorkbenchStatus
   readonly #seatDirs: readonly SeatDirRecord[]
+  readonly #assetsCacheDir: string | undefined
   readonly #sse = new SseHub()
   readonly #canvasRevisions = new Map<string, number>()
+  #assetsCacheRealDir: string | undefined
+  #derived = new Set<string>()
+  #magick: string | null = null
+  #assetsPrepared = false
+  #assetsPreparation: Promise<void> | undefined
 
   constructor(ctx: Context, options: WebApiOptions) {
     this.#ctx = ctx as HostContext
@@ -142,10 +150,42 @@ export class AmphoreusWebApi {
         : { kind: 'ready' }
     ))
     this.#seatDirs = options.seatDirs ?? []
+    this.#assetsCacheDir = options.assetsCacheDir === undefined ? undefined : resolve(options.assetsCacheDir)
     this.nonce = options.nonce ?? randomBytes(24).toString('base64url')
   }
 
+  async prepareAssets(): Promise<void> {
+    if (this.#assetsPrepared) return
+    if (this.#assetsPreparation !== undefined) return this.#assetsPreparation
+    const preparation = (async () => {
+      try {
+        await this.#scanDerived()
+      } catch (error) {
+        this.#assetsCacheRealDir = undefined
+        this.#derived = new Set()
+        this.#warn(`amphoreus derived cache scan failed; using original assets: ${String(error)}`)
+      }
+      try {
+        this.#magick = await probeMagick() ?? null
+      } catch (error) {
+        this.#magick = null
+        this.#warn(`amphoreus ImageMagick probe failed: ${String(error)}`)
+      }
+      this.#assetsPrepared = true
+    })()
+    this.#assetsPreparation = preparation
+    try {
+      await preparation
+    } catch (error) {
+      if (this.#assetsPreparation === preparation) this.#assetsPreparation = undefined
+      throw error
+    }
+  }
+
   register(): () => void {
+    void this.prepareAssets().catch(error => {
+      this.#warn(`amphoreus assets preparation failed: ${String(error)}`)
+    })
     const route = this.#ctx.webServer.register({
       kind: 'prefix',
       path: '/amphoreus',
@@ -170,12 +210,19 @@ export class AmphoreusWebApi {
     }
   }
 
+  #warn(message: string): void {
+    const logger = (this.#ctx as HostContext & { logger?: { warn(value: string): void } }).logger
+    logger?.warn(message)
+  }
+
   async handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
     try {
       const url = new URL(request.url ?? '/', 'http://localhost')
-      const write = request.method !== 'GET' && request.method !== 'HEAD'
-      if (!this.#authorize(request, response, write)) return
       const path = url.pathname
+      const derivedAssetRequest = path.startsWith('/amphoreus/derived/')
+      const write = request.method !== 'GET' && request.method !== 'HEAD' && !derivedAssetRequest
+      if (!this.#authorize(request, response, write)) return
+      if (path === '/amphoreus/api/state' || path.startsWith('/amphoreus/derived/')) await this.prepareAssets()
 
       if (path === '/amphoreus' || path === '/amphoreus/workbench') {
         redirect(response, '/amphoreus/workbench/')
@@ -280,6 +327,10 @@ export class AmphoreusWebApi {
         await this.#serveWallpaper(response, decodeTail(path, '/amphoreus/wallpaper/'))
         return
       }
+      if (path.startsWith('/amphoreus/derived/')) {
+        await this.#derivedRoute(request, response, decodeTail(path, '/amphoreus/derived/'))
+        return
+      }
       if (path.startsWith('/amphoreus/assets/')) {
         if (!method(request, response, 'GET')) return
         await this.#serveLocalAsset(response, decodeTail(path, '/amphoreus/assets/'))
@@ -315,6 +366,15 @@ export class AmphoreusWebApi {
       prefs: global.prefs,
       suiteEvents: values(this.#stores.main.table('suite_events').entries()).sort((a, b) => b.at - a.at),
       canvas: [...this.#stores.canvas.table('canvas').entries()].map(([sessionId, value]) => ({ sessionId, value })),
+      assets: {
+        root: this.#config.assetsRoot.trim(),
+        cacheDir: this.#assetsCacheDir ?? '',
+        derivedCount: this.#derived.size,
+        derived: [...this.#derived].sort(),
+        magick: this.#magick,
+        running: false,
+        lastDerive: null,
+      },
       workbench: {
         status: this.#workbenchStatus(),
         unprojectable: this.#workbench?.unprojectable() ?? [],
@@ -500,6 +560,119 @@ export class AmphoreusWebApi {
     await this.#serveAssetPath(response, ['昔涟壁纸', name])
   }
 
+  derivedWallpaperUrl(index: number): string | null {
+    if (!this.#assetsPrepared || !Number.isSafeInteger(index) || index < 0 || index >= GLOBAL_WALLPAPERS.length) return null
+    return this.#derivedUrl('_global', `wallpaper-${index}.webp`)
+  }
+
+  #derivedUrl(directory: string, file: string): string | null {
+    return this.#derived.has(`${directory}/${file}`) ? `/amphoreus/derived/${directory}/${file}` : null
+  }
+
+  async #scanDerived(): Promise<void> {
+    const next = new Set<string>()
+    const configured = this.#assetsCacheDir
+    if (configured === undefined) {
+      this.#assetsCacheRealDir = undefined
+      this.#derived = next
+      return
+    }
+    let root: string
+    try {
+      root = await realpath(configured)
+      if (!(await stat(root)).isDirectory()) throw new Error('assets cache is not a directory')
+    } catch (error) {
+      if (isErrno(error, 'ENOENT')) {
+        this.#assetsCacheRealDir = undefined
+        this.#derived = next
+        return
+      }
+      throw error
+    }
+    const directories = (await readdir(root, { withFileTypes: true }))
+      .filter(entry => entry.isDirectory() && /^[a-z0-9_]+$/u.test(entry.name))
+      .sort((left, right) => left.name.localeCompare(right.name, 'en'))
+    for (const directory of directories) {
+      let files
+      try {
+        files = await readdir(join(root, directory.name), { withFileTypes: true })
+      } catch (error) {
+        if (isErrno(error, 'ENOENT')) continue
+        throw error
+      }
+      for (const file of files
+        .filter(entry => entry.isFile() && /^[a-z0-9-]+\.webp$/u.test(entry.name))
+        .sort((left, right) => left.name.localeCompare(right.name, 'en'))) {
+        next.add(`${directory.name}/${file.name}`)
+      }
+    }
+    this.#assetsCacheRealDir = root
+    this.#derived = next
+  }
+
+  async #derivedRoute(request: IncomingMessage, response: ServerResponse, rel: string | undefined): Promise<void> {
+    if (request.method !== 'GET' && request.method !== 'HEAD') {
+      response.writeHead(405, { allow: 'GET, HEAD' })
+      response.end()
+      return
+    }
+    const match = rel === undefined ? null : /^([a-z0-9_]+)\/([a-z0-9-]+\.webp)$/u.exec(rel)
+    const root = this.#assetsCacheRealDir
+    const key = match === null ? undefined : `${match[1]}/${match[2]}`
+    if (match === null || root === undefined || key === undefined || !this.#derived.has(key)) {
+      json(response, 404, { error: 'derived asset not found' })
+      return
+    }
+    const candidate = join(root, match[1]!, match[2]!)
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      let handle
+      try {
+        const beforeResolved = await realpath(candidate)
+        if (!contained(root, beforeResolved)) throw new Error('derived asset escaped cache directory')
+        const beforeInfo = await stat(beforeResolved)
+        if (!beforeInfo.isFile()) throw new Error('derived asset is not a file')
+        handle = await open(beforeResolved, 'r')
+        const afterResolved = await realpath(candidate)
+        if (!contained(root, afterResolved) || !samePath(beforeResolved, afterResolved)) {
+          throw new Error('derived asset changed during lookup')
+        }
+        const pathInfo = await stat(afterResolved)
+        const openedInfo = await handle.stat()
+        if (!openedInfo.isFile() || openedInfo.dev !== pathInfo.dev || openedInfo.ino !== pathInfo.ino) {
+          throw new Error('derived asset changed during lookup')
+        }
+        const headers = {
+          'content-type': 'image/webp',
+          'content-length': String(openedInfo.size),
+          'cache-control': 'private, max-age=86400',
+          'x-content-type-options': 'nosniff',
+        }
+        if (request.method === 'HEAD') {
+          response.writeHead(200, headers)
+          response.end()
+          return
+        }
+        const body = await handle.readFile()
+        send(response, 200, 'image/webp', body, { 'content-length': String(body.byteLength), 'cache-control': headers['cache-control'] })
+        return
+      } catch (error) {
+        const lookupFailure = isErrno(error, 'ENOENT') || (error instanceof Error && error.message.startsWith('derived asset '))
+        if (!lookupFailure) throw error
+        if (attempt === 0) {
+          await new Promise<void>(resolveRetry => setImmediate(resolveRetry))
+          continue
+        }
+        if (this.#derived.delete(key)) {
+          this.#sse.publish('state-change', { domain: 'amphoreus', table: 'assets', key, operation: 'remove' })
+        }
+        json(response, 404, { error: 'derived asset not found' })
+        return
+      } finally {
+        await handle?.close()
+      }
+    }
+  }
+
   async #serveLocalAsset(response: ServerResponse, rel: string | undefined): Promise<void> {
     if (rel === undefined) {
       json(response, 404, { error: 'asset not found' })
@@ -668,6 +841,16 @@ function contained(root: string, child: string): boolean {
   const target = fold(resolve(child))
   const rel = relative(base, target)
   return rel === '' || (!rel.startsWith(`..${sep}`) && rel !== '..' && !isAbsolute(rel))
+}
+
+function samePath(left: string, right: string): boolean {
+  return process.platform === 'win32'
+    ? resolve(left).toLowerCase() === resolve(right).toLowerCase()
+    : resolve(left) === resolve(right)
+}
+
+function isErrno(error: unknown, code: string): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error && (error as NodeJS.ErrnoException).code === code
 }
 
 export function workbenchPage(boot: WorkbenchBoot): string {

@@ -101,6 +101,21 @@ export interface AmphoreusBoot {
   }
 }
 
+export interface AmphoreusAssetsStatus {
+  readonly root: string
+  readonly cacheDir: string
+  readonly derivedCount: number
+  readonly derived: readonly string[]
+  readonly magick: string | null
+  readonly running: boolean
+  readonly lastDerive: {
+    readonly at: number
+    readonly written: number
+    readonly failed: number
+    readonly error?: string
+  } | null
+}
+
 export interface AmphoreusState {
   readonly revision: number
   readonly nonce: string
@@ -113,6 +128,7 @@ export interface AmphoreusState {
   readonly prefs: AmphoreusGlobal['prefs']
   readonly suiteEvents: readonly SuiteEventRecord[]
   readonly canvas: readonly { readonly sessionId: string; readonly value: CanvasRecord }[]
+  readonly assets: AmphoreusAssetsStatus
   readonly workbench: {
     readonly status: WorkbenchStatus
     readonly unprojectable: readonly UnprojectableRecord[]

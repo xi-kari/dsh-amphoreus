@@ -187,10 +187,12 @@ export function apply(ctx: Context, config: AmphoreusConfig): void {
           stores,
           resolver: bridge.resolver,
           nonce,
+          assetsCacheDir: join(dataDir, 'assets-cache'),
           workbenchStatus: () => workbenchStatus,
           ...(workbench === undefined ? {} : { workbench }),
           ...(seatDirs === undefined ? {} : { seatDirs: seatDirs.dirs }),
         })
+    await webApi?.prepareAssets()
     const disposeWebApi = webApi?.register() ?? (() => {})
     const disposeInjector = stores === undefined ? () => {} : registerInjector(ctx, { config, stores })
     const disposeFirstFrame = registerFirstFrame(ctx, {
@@ -198,6 +200,7 @@ export function apply(ctx: Context, config: AmphoreusConfig): void {
       nonce,
       current: () => bridge.resolver.current(),
       wallpaperIndex: randomInt(6),
+      derivedWallpaper: index => webApi?.derivedWallpaperUrl(index) ?? null,
     })
     await bridge.start()
     startColdReplay()

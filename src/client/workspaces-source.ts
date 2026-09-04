@@ -18,6 +18,8 @@ export interface WorkspaceSeat {
   darkBase: string | null
   volume: number | null
   motif: { name: string; light: string; dark: string } | null
+  coverUrl: string | null
+  coverWideUrl: string | null
   chronicleUrl: string | null
   cardUrl: string | null
   stickerUrl: string | null
@@ -55,8 +57,13 @@ interface ListSnapshot {
 const assetUrl = (directory: string, fileName: string): string =>
   `/amphoreus/assets/${encodeURIComponent(directory)}/${encodeURIComponent(fileName)}`
 
+export function derivedUrl(derived: readonly string[], heroId: string, file: string): string | null {
+  return derived.includes(`${heroId}/${file}`) ? `/amphoreus/derived/${heroId}/${file}` : null
+}
+
 function composeWorkspaces(list: ListSnapshot, state: AmphoreusState | undefined): WorkspacesPayload {
   const assetsConfigured = state?.effectiveConfig.assetsConfigured ?? false
+  const derived = state?.assets?.derived ?? []
   const seats = (state?.seats ?? [])
     .filter(seat => seat.hidden !== true)
     .map((seat): WorkspaceSeat => {
@@ -83,15 +90,14 @@ function composeWorkspaces(list: ListSnapshot, state: AmphoreusState | undefined
           light: motifDataUri(visual.motif, { color: visual.palette.accent, opacity: 0.12 }),
           dark: motifDataUri(visual.motif, { color: visual.palette.accent2, opacity: 0.16 }),
         },
-        chronicleUrl: assetsConfigured && visual !== undefined
-          ? assetUrl('翁法罗斯英雄纪', visual.assets.chronicle)
-          : null,
-        cardUrl: assetsConfigured && visual !== undefined
-          ? assetUrl('翁法罗斯如我所书卡牌', visual.assets.card)
-          : null,
-        stickerUrl: assetsConfigured && visual !== undefined
-          ? assetUrl('表情包', visual.assets.sticker)
-          : null,
+        coverUrl: visual === undefined ? null : derivedUrl(derived, visual.heroId, 'cover-34.webp'),
+        coverWideUrl: visual === undefined ? null : derivedUrl(derived, visual.heroId, 'cover-169.webp'),
+        chronicleUrl: visual === undefined ? null : derivedUrl(derived, visual.heroId, 'chronicle.webp')
+          ?? (assetsConfigured ? assetUrl('翁法罗斯英雄纪', visual.assets.chronicle) : null),
+        cardUrl: visual === undefined ? null : derivedUrl(derived, visual.heroId, 'card.webp')
+          ?? (assetsConfigured ? assetUrl('翁法罗斯如我所书卡牌', visual.assets.card) : null),
+        stickerUrl: visual === undefined ? null : derivedUrl(derived, visual.heroId, 'sticker.webp')
+          ?? (assetsConfigured ? assetUrl('表情包', visual.assets.sticker) : null),
       }
     })
     .sort((left, right) => left.order - right.order)
