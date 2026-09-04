@@ -204,7 +204,7 @@
 - 偏离与理由：A-DoD-16 的任务书字面计数与 TA3 两处必要调用冲突，已用等价局部变量消除重复字面量并复跑全门通过；TA3 readiness 竞态也在 TA11 修正为 resolve 后才宣告 ready。
 - 遗留：无
 ## TB1 G1：注入消息不成卡 — 2026-09-04 16:49
-- commit: PENDING-TB1
+- commit: 393c2a1
 - 验收：
   - `node --test tests/workbench-projection.test.ts` → `tests 1; pass 1; fail 0; skipped 0; duration_ms 128.1887` PASS（exit: `0`）
   - `npm run typecheck` → 无诊断 PASS（exit: `0`）
@@ -213,3 +213,16 @@
 - 人工断言：✓ 普通 `source.kind=user` 与无 source 旧消息保留；✓ skill-invocation/skill-catalog/plugin 过滤；✓ 无 source 的 system-reminder/skill-content/runtime-context 回退过滤；✓ 仅 error/aborted/interrupted 成错误；✓ 首条用户正文不再生标题。
 - 偏离与理由：TB2 尚未替换旧 WorkbenchStore，本任务按任务书将其过渡期消息正文置空；下一任务改为纯结构索引后该旧路径整体删除。提交短 SHA 按下一提交回填规则处理。
 - 遗留：无
+## TB2 G8/G16：`WorkbenchStore` → 内存 `ProjectionIndex` — 2026-09-04 17:09
+- commit: PENDING-TB2
+- 验收：
+  - 动手前 `grep -n global src/host/seats.ts` → `global` 构造位于 111 行且 112 行 `...currentGlobal`，新增字段会保留 PASS（exit: `0`）
+  - 动手前 `grep -n 'interface SessionStorageMetadata' -A 8 …/session-persistence/src/index.ts` → `meta`、`inheritedEventCount` 字段位于 34/36 行，`SessionInspection` 继承该结构 PASS（exit: `0`）
+  - `node --test tests/workbench-projection.test.ts tests/store-seats.test.ts` → `tests 9; pass 9; fail 0; skipped 0; duration_ms 1039.7173` PASS（exit: `0`）
+  - `grep -rn 'workbench.json\|acquireLock\|\.lock\|writeFile\|rename(' src/host/workbench.ts` → `无输出` PASS（grep exit: `1`）
+  - `grep -n "'sessionPersistence'" src/index.ts` → `1` 行（inject）PASS
+  - `firstLiveSeq` 与旧 `WorkbenchStore/projectSession/projectEvents/createSeatResolver` 符号 → `0`；`amphoreus` 与 `amphoreus_canvas` 域 version 均保持 `1` PASS
+  - 运行态（旧文件不再生成、磁盘 N、冷/活索引数量及未点开旧会话卡）：TB2-RUNTIME-DEFERRED
+- 人工断言：✓ 索引无 text/preview/snippet/arguments/result 字段；✓ 根、冷 fork、live fork 重放与幂等锁定；✓ 隐藏级联写 domain global 并同步刷新 revision；✓ 800ms 通知合并；✓ J-13 四方法保留且变化可通知。
+- 偏离与理由：TB2 指定文件重写后，尚待 TB3 修改的 `webapi.ts` 仍导入旧 `WorkbenchStore`，故阶段性 `npm run typecheck` 仅报 `TS2305` 1 项（exit `2`）；TB2 自带验收未要求 typecheck。其运行态命令又依赖 TB3 才新增的 `/api/index` 路由，因此在 TB3 实现、构建、重启后回填实测结果。提交短 SHA按下一提交回填规则处理。
+- 遗留：仅上述 TB3 顺序依赖；无代码遗留。

@@ -11,9 +11,8 @@ import { ensureSeatDirs, type EnsureSeatDirsResult } from './host/seatdirs.ts'
 import { reconcileSeats } from './host/seats.ts'
 import { openAmphoreusStores, type AmphoreusStores } from './host/store.ts'
 import { AmphoreusWebApi } from './host/webapi.ts'
-import { createSeatResolver, WorkbenchStore, type ProjectableEvent, type ProjectableSession } from './host/workbench.ts'
+import { ProjectionIndex, type ProjectableEvent, type ProjectableSession } from './host/workbench.ts'
 import type { WorkbenchStatus } from './shared/api.ts'
-import { heroVisualOf } from './shared/heroes.ts'
 
 export { Config }
 export type { AmphoreusConfig }
@@ -22,7 +21,7 @@ export type { AmphoreusConfig }
 export const name = 'amphoreus'
 
 /** Host services this row waits for before mounting. */
-export const inject = ['webServer', 'connection', 'skills', 'storageDomain', 'sessions', 'agents', 'commands']
+export const inject = ['webServer', 'connection', 'skills', 'storageDomain', 'sessions', 'sessionPersistence', 'agents', 'commands']
 
 export function apply(ctx: Context, config: AmphoreusConfig): void {
   ctx.effect(async () => {
@@ -42,54 +41,63 @@ export function apply(ctx: Context, config: AmphoreusConfig): void {
           ctx.logger.info(`amphoreus seats reconciled added=${result.added} updated=${result.updated} undeployed=${result.undeployed} renamed=${result.renamed}`)
         })
 
-    // Seat workspace folders (one per hero) + the seat-scoped workbench store.
+    // Seat workspace folders (one per hero).
     let seatDirs: EnsureSeatDirsResult | undefined
-    let seatDirsError: string | undefined
     try {
       seatDirs = await ensureSeatDirs(dataDir, bridge.resolver.current())
       ctx.logger.info(`amphoreus seat dirs ready at ${seatDirs.seatsRoot} (created=${seatDirs.created})`)
     } catch (error) {
-      seatDirsError = String(error)
-      ctx.logger.error(`amphoreus seat dirs unavailable: ${seatDirsError}`)
+      ctx.logger.error(`amphoreus seat dirs unavailable: ${String(error)}`)
     }
-    let workbench: WorkbenchStore | undefined
+
+    let workbench: ProjectionIndex | undefined
     let workbenchStatus: WorkbenchStatus = { kind: 'ready' }
     let disposeProjection = () => {}
+    let startColdReplay = () => {}
     if (!config.workbench.enabled) {
       workbenchStatus = { kind: 'disabled' }
-    } else if (seatDirs === undefined) {
-      workbenchStatus = { kind: 'unavailable', reason: `席位目录不可用：${seatDirsError ?? '未知错误'}` }
-    } else if (stores !== undefined) {
-      const resolver = createSeatResolver({
-        bindingSeat: sessionId => stores!.main.table('bindings').get(sessionId)?.skillName,
-        heroIdOfSkill: skillName => heroVisualOf(skillName)?.heroId,
-        seatDirs: seatDirs.dirs,
-        seatTitle: heroId => {
-          const visual = [...(bridge.resolver.current()?.cards.values() ?? [])]
-            .find(card => heroVisualOf(card.name)?.heroId === heroId)
-          return visual?.displayName ?? heroId
-        },
+    } else if (stores === undefined) {
+      workbenchStatus = { kind: 'unavailable', reason: '存储域不可用' }
+    } else {
+      const main = stores.main
+      workbench = new ProjectionIndex({
+        get: () => main.global.get().workbench.hiddenSessionIds,
+        set: ids => main.global.set({
+          ...main.global.get(),
+          workbench: { hiddenSessionIds: [...ids] },
+        }),
       })
-      workbench = new WorkbenchStore(join(dataDir, 'workbench.json'), resolver)
       workbenchStatus = { kind: 'unavailable', reason: '工作台正在初始化' }
       void workbench.ready()
         .then(() => { workbenchStatus = { kind: 'ready' } })
         .catch(error => {
-          workbenchStatus = { kind: 'unavailable', reason: `workbench.json 读取失败：${String(error)}` }
+          workbenchStatus = { kind: 'unavailable', reason: `工作台初始化失败：${String(error)}` }
         })
       if (config.workbench.autoProjection) {
-        const sessions = (ctx as Context & { sessions: { list(): ProjectableSession[] } }).sessions
-        const replay = (session: ProjectableSession & { firstLiveSeq?: number; snapshotEvents?: () => readonly ProjectableEvent[] }): void => {
-          const events = session.snapshotEvents?.() ?? session.events ?? []
-          const replayFrom = session.header?.parentSession === undefined ? 0 : (session.firstLiveSeq ?? 0)
-          void workbench!.projectSession({ ...session, events }, replayFrom)
-            .then(() => workbench!.clearUnprojectable(session.id))
-            .catch(error => {
-              ctx.logger.warn(`amphoreus workbench projection: ${String(error)}`)
-              workbench!.markUnprojectable(session, error)
-            })
+        interface ColdHeader { id: string; cwd?: string; parentSession?: string }
+        const sessions = (ctx as Context & {
+          sessions: { list(): ProjectableSession[]; get(id: string): unknown }
+        }).sessions
+        const persistence = (ctx as Context & {
+          sessionPersistence: {
+            list(): Promise<ColdHeader[]>
+            inspect(id: string): Promise<{
+              meta: ColdHeader
+              inheritedEventCount: number
+              events: readonly ProjectableEvent[]
+            }>
+          }
+        }).sessionPersistence
+        const replay = (session: ProjectableSession): void => {
+          try {
+            workbench!.replay(session)
+            workbench!.clearUnprojectable(session.id)
+          } catch (error) {
+            ctx.logger.warn(`amphoreus workbench projection: ${String(error)}`)
+            workbench!.markUnprojectable(session, error)
+          }
         }
-        // Coalesce a burst of turn events into one deferred write per session.
+
         const queue: { session: ProjectableSession; event: ProjectableEvent }[] = []
         let scheduled = false
         const disposeCreated = ctx.on('session/created', replay)
@@ -107,17 +115,39 @@ export function apply(ctx: Context, config: AmphoreusConfig): void {
               else entry[1].push(item.event)
             }
             for (const [, [session, events]] of bySession) {
-              void workbench!.projectEvents(session, events)
-                .then(() => workbench!.clearUnprojectable(session.id))
-                .catch(error => {
-                  ctx.logger.warn(`amphoreus workbench projection: ${String(error)}`)
-                  workbench!.markUnprojectable(session, error)
-                })
+              try {
+                workbench!.apply(session, events)
+                workbench!.clearUnprojectable(session.id)
+              } catch (error) {
+                ctx.logger.warn(`amphoreus workbench projection: ${String(error)}`)
+                workbench!.markUnprojectable(session, error)
+              }
             }
           })
         })
-        for (const session of sessions.list()) {
-          replay(session as ProjectableSession & { firstLiveSeq?: number; snapshotEvents?: () => readonly ProjectableEvent[] })
+        for (const session of sessions.list()) replay(session)
+
+        const COLD_REPLAY_CONCURRENCY = 4
+        startColdReplay = () => {
+          void (async () => {
+            const headers = await persistence.list()
+            const cold = headers.filter(header => header.cwd !== undefined && sessions.get(header.id) === undefined)
+            for (let index = 0; index < cold.length; index += COLD_REPLAY_CONCURRENCY) {
+              await Promise.all(cold.slice(index, index + COLD_REPLAY_CONCURRENCY).map(async header => {
+                try {
+                  const inspection = await persistence.inspect(header.id)
+                  replay({
+                    id: header.id,
+                    header: inspection.meta,
+                    inheritedEventCount: inspection.inheritedEventCount,
+                    events: inspection.events,
+                  })
+                } catch (error) {
+                  ctx.logger.warn(`amphoreus workbench cold replay ${header.id}: ${String(error)}`)
+                }
+              }))
+            }
+          })().catch(error => ctx.logger.warn(`amphoreus workbench cold replay: ${String(error)}`))
         }
         disposeProjection = () => {
           disposeCreated()
@@ -146,13 +176,14 @@ export function apply(ctx: Context, config: AmphoreusConfig): void {
       wallpaperIndex: randomInt(6),
     })
     await bridge.start()
+    startColdReplay()
     return async () => {
       disposeFirstFrame()
       disposeInjector()
       disposeWebApi()
       disposeProjection()
       detach()
-      await workbench?.flush()
+      workbench?.flush()
       await bridge.close()
       await stores?.close()
     }

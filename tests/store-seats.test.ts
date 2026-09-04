@@ -27,6 +27,7 @@ test('storage domains expose the required single and per-record table layouts', 
     source: 'seat-new', injection: { state: 'pending' },
   }).success, true)
   assert.equal(CanvasSchema.safeParse({ positions: {}, collapsed: [], branchAnchors: {}, updatedAt: 1 }).success, true)
+  assert.deepEqual(INITIAL_GLOBAL.workbench, { hiddenSessionIds: [] })
 })
 
 test('seat reconciliation creates every fictional card once with deterministic unknown-card order', () => {
