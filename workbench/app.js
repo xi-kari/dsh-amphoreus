@@ -1214,6 +1214,33 @@ function canvasConnectors(cards) {
   if (placement !== null) {
     links.push(`<path class="draft-connector" data-from="${escapeHtml(placement.parent.id)}" data-to="draft" d="${connectorPath(placement.parent.position, placement.position)}"></path>`)
   }
+  const byThreadAssistantSeq = new Map()
+  const firstCardOfThread = new Map()
+  const lastCardOfThread = new Map()
+  for (const card of cards) {
+    if (Number.isSafeInteger(card.answer?.sourceSeq)) {
+      byThreadAssistantSeq.set(`${card.dshThreadId}:${card.answer.sourceSeq}`, card)
+    }
+    const first = firstCardOfThread.get(card.dshThreadId)
+    if (first === undefined || card.turnIndex < first.turnIndex) firstCardOfThread.set(card.dshThreadId, card)
+    const last = lastCardOfThread.get(card.dshThreadId)
+    if (last === undefined || card.turnIndex > last.turnIndex) lastCardOfThread.set(card.dshThreadId, card)
+  }
+  const threadBySession = new Map((state.workspace?.threads ?? [])
+    .filter(thread => typeof thread.dshSessionId === 'string')
+    .map(thread => [thread.dshSessionId, thread]))
+  for (const observation of state.amph?.observations ?? []) {
+    if (observation?.kind !== 'handoff' || observation.status !== 'accepted'
+      || typeof observation.sessionId !== 'string' || !Number.isSafeInteger(observation.seq)
+      || typeof observation.acceptedSessionId !== 'string') continue
+    const fromThread = threadBySession.get(observation.sessionId)
+    const toThread = threadBySession.get(observation.acceptedSessionId)
+    if (fromThread === undefined || toThread === undefined) continue
+    const from = byThreadAssistantSeq.get(`${fromThread.id}:${observation.seq}`) ?? lastCardOfThread.get(fromThread.id)
+    const to = firstCardOfThread.get(toThread.id)
+    if (from === undefined || to === undefined || from.id === to.id) continue
+    links.push(`<path class="handoff-connector" data-from="${escapeHtml(from.id)}" data-to="${escapeHtml(to.id)}" d="${connectorPath(from.position, to.position)}"></path>`)
+  }
   return links.join('')
 }
 
@@ -1231,6 +1258,24 @@ function seatOfCard(card) {
   return { skillName, seat, accent, face: thread?.face ?? null, source: thread?.source ?? null }
 }
 
+function handoffFromBadge(card, thread) {
+  if (card.turnIndex !== 0 || typeof thread?.dshSessionId !== 'string') return ''
+  const binding = (state.amph?.bindings ?? []).find(candidate => candidate?.sessionId === thread.dshSessionId)
+  if (binding === undefined || (binding.source !== 'handoff-fork' && binding.source !== 'handoff')
+    || typeof binding.handoffFrom?.sessionId !== 'string') return ''
+  if ((state.workspace?.threads ?? []).some(candidate => candidate.dshSessionId === binding.handoffFrom.sessionId)) return ''
+  const observation = (state.amph?.observations ?? []).find(candidate => candidate?.kind === 'handoff'
+    && candidate.status === 'accepted' && candidate.acceptedSessionId === thread.dshSessionId)
+  const sourceSkill = typeof observation?.skillName === 'string' ? observation.skillName : null
+  const sourceCard = sourceSkill === null
+    ? undefined
+    : (state.amph?.cards ?? []).find(candidate => candidate?.name === sourceSkill)
+  const sourceName = typeof sourceCard?.displayName === 'string' && sourceCard.displayName !== ''
+    ? sourceCard.displayName
+    : '上游'
+  return `<span class="card-handoff-from" title="移交自另一席">移交自 ${escapeHtml(sourceName)}</span>`
+}
+
 function conversationCard(card, graph) {
   const seatInfo = seatOfCard(card)
   const cardThread = state.workspace?.threads.find(item => item.id === card.dshThreadId)
@@ -1240,6 +1285,7 @@ function conversationCard(card, graph) {
     && (state.amph?.observations ?? []).some(observation => observation?.kind === 'dispatch' && observation.sessionId === cardThread.dshSessionId)
     ? '<span class="card-dispatched" title="由全体会议派发">派发</span>'
     : ''
+  const handoffBadge = handoffFromBadge(card, cardThread)
   const selected = card.id === state.selectedCardId ? 'selected' : ''
   const source = card.parentId === null ? 'DSH 会话' : card.turnIndex === 0 ? 'DSH 分支' : '追问'
   const continueButton = card.canContinue === true
@@ -1255,7 +1301,7 @@ function conversationCard(card, graph) {
     <button class="node-handle" data-drag-card="${card.id}" aria-label="拖动 ${escapeHtml(card.question)}" title="拖动卡片"></button>
     ${continueButton}${foldButton}${branchButton}
     <div class="thread-card-head"><span class="topic-dot"></span>${badge}<button class="thread-title" data-action="show-thread" data-thread="${card.dshThreadId}" data-card="${escapeHtml(card.id)}" title="查看完整会话：${escapeHtml(card.question)}">${escapeHtml(card.question)}</button></div>
-    <div class="thread-meta"><span>${source}</span>${seatInfo.face ? `<span class="card-seat-face">${escapeHtml(seatInfo.face)}</span>` : ''}<span>第 ${card.turnIndex + 1} 轮</span>${dispatchedBadge}${card.error === null ? '' : '<span class="card-error-status">失败</span>'}${unprojectableBadge}${card.processCount > 0 ? `<span class="card-process-count">工具 ${card.processCount}</span>` : ''}</div>
+    <div class="thread-meta"><span>${source}</span>${seatInfo.face ? `<span class="card-seat-face">${escapeHtml(seatInfo.face)}</span>` : ''}<span>第 ${card.turnIndex + 1} 轮</span>${dispatchedBadge}${handoffBadge}${card.error === null ? '' : '<span class="card-error-status">失败</span>'}${unprojectableBadge}${card.processCount > 0 ? `<span class="card-process-count">工具 ${card.processCount}</span>` : ''}</div>
     <div class="thread-answer">${card.placeholder ? '<p class="thread-answer-empty">选中此会话后加载正文</p>' : card.answer === null ? (card.error === null ? '<p class="thread-answer-empty">等待助手回复</p>' : '') : card.answer.pending && card.answer.text === '' ? '<p class="thread-answer-pending">正在回复</p>' : `${renderMarkdown(clampCardText(card.answer.text))}${card.answer.pending ? '<p class="thread-answer-pending">正在回复</p>' : ''}`}${card.error === null ? '' : `<p class="thread-answer-error" title="${escapeHtml(card.error.text)}">本轮失败：${escapeHtml(card.error.text)}</p>`}</div>
     <footer><button data-action="show-thread" data-thread="${card.dshThreadId}" data-card="${escapeHtml(card.id)}" title="查看完整会话" aria-label="查看完整会话"><svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="M2 8.5 8 2.5l6 6V13.5a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5Z"/><path d="M6.2 14v-3.6a1.8 1.8 0 0 1 3.6 0V14" /></svg>详情</button><button data-action="open-dsh" data-thread="${card.dshThreadId}" data-seq="${Number.isInteger(card.sourceSeq) ? card.sourceSeq : ''}" data-turn="${Number.isInteger(card.turn) ? card.turn : ''}" title="在 DSH 中打开" aria-label="在 DSH 中打开"><svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3.5H4.5A1.5 1.5 0 0 0 3 5v6.5A1.5 1.5 0 0 0 4.5 13H11a1.5 1.5 0 0 0 1.5-1.5V9"/><path d="M9.5 3.5h3v3M12.4 3.6 7.5 8.5"/></svg>DSH</button><button data-action="archive-thread" data-thread="${card.dshThreadId}" title="归档此会话" aria-label="归档此会话"><svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 5h11M5.5 7v5.5a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1V7"/><path d="M4 5 5 2.8a.7.7 0 0 1 .6-.4h4.8a.7.7 0 0 1 .6.4L12 5M6 9.5h4"/></svg>归档</button></footer>
   </article>`

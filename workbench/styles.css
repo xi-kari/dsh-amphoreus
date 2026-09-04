@@ -101,6 +101,7 @@ button.primary:hover { border-color: var(--dsw-alias-button-primary-hover, #000)
 .connectors path { fill: none; stroke: var(--dsw-alias-border-l4, #aebbc9); stroke-width: 1.5; }
 .connectors path.active-connector { stroke: var(--dsw-alias-brand-primary, #3478f6); }
 .connectors .draft-connector { stroke: var(--dsw-alias-brand-primary, #3478f6); stroke-dasharray: 5 4; }
+.connectors .handoff-connector { stroke: var(--dsw-alias-brand-primary, #8a681c); stroke-dasharray: 7 5; stroke-width: 1.6; }
 .cards-layer { position: absolute; inset: 0; }
 .thread-card { position: absolute; display: grid; width: 310px; height: 276px; grid-template-rows: auto auto minmax(0, 1fr) auto; border: 1px solid var(--dsw-alias-border-l2, #d8e0e8); border-radius: 7px; background: var(--dsw-alias-bg-layer-1, #fff); box-shadow: 0 3px 11px rgba(33,48,67,.08); overflow: visible; }
 .thread-card:hover { border-color: var(--dsw-alias-border-l4, #9ca3af); box-shadow: 0 8px 20px rgba(33,48,67,.13); }
@@ -129,6 +130,7 @@ button.primary:hover { border-color: var(--dsw-alias-button-primary-hover, #000)
 .thread-meta .card-process-count::before { content: none; }
 .thread-meta .card-error-status { color: var(--dsw-alias-state-error-primary, #b42318); font-weight: 650; }
 .thread-meta .card-unprojectable { color: var(--dsw-alias-state-warn-label, #b45309); font-weight: 650; }
+.thread-meta .card-handoff-from { color: var(--dsw-alias-brand-primary, #8a681c); font-weight: 650; white-space: nowrap; }
 .thread-card { border-color: color-mix(in srgb, var(--thread-color) 45%, var(--dsw-alias-border-l2, #d8e0e8)); box-shadow: inset 3px 0 0 var(--thread-color), 0 3px 11px rgba(33,48,67,.08); }
 .thread-card:hover { box-shadow: inset 3px 0 0 var(--thread-color), 0 8px 20px rgba(33,48,67,.13); }
 .thread-card.selected { box-shadow: inset 3px 0 0 var(--thread-color), 0 0 0 2px color-mix(in srgb, var(--thread-color) 35%, transparent), 0 8px 20px rgba(33,48,67,.13); }

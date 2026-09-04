@@ -896,7 +896,7 @@
 - 偏离与理由：任务书只扫描启动时 `ctx.sessions.list()`，真实重启时该表可为空且恢复会话 seed 不重放 `session/event`；真实验收捕获漏扫后增加 `session/created` typed replay，以相同队列去重。任务书只过滤 fence 边界会误读围栏正文，升级完整状态机。任务书旧 binding 读后 put 有竞态，改用 atomic update。
 - 遗留：open handoff 已留给 TE5/TE8 的真实 UI accept/dismiss 验收；E 结束前归档源/子测试会话并保留权威日志。
 ## TE5：会话输入区移交坞与共享席位徽记 — 2026-09-05 07:07
-- commit: PENDING-TASK
+- commit: c22d363
 - 动手前核对：实际执行任务书 `sed -n '4099,4172p'`；核实 conversation.input.dock 为 list/session，owner InputZone，现任 todo/goal/queue order=`0/10/20`、locale 插值与工作台条件边界 PASS
 - 验收：
   - 新增 HandoffDock/SeatBadge 双组件、双 CSS module 与 6 组专项测试；聚焦 → `tests 34; pass 34; fail 0; skipped 0; duration_ms 295.5828`；全量 → `tests 297; pass 296; fail 0; skipped 1; duration_ms 2976.2292` PASS
@@ -914,3 +914,18 @@
 - 人工断言：✓ 未经点击不 fork/不切会话/不发送；✓ 未部署目标没有 accept 按钮；✓ dismiss 不创建 child；✓ accept 不把 payload 作为用户消息；✓ 组件永不接触 ctx。
 - 偏离与理由：任务书 SeatBadge props 缺少 assetsConfigured 却要求素材 gate，增加显式布尔并拆独立 CSS；任务书两写动作只给 accept busy，改为共享同步锁阻止同 tick 双写；任务文件表漏列共享 SeatBadge 支持文件与 assembly 回归。
 - 遗留：child 当前 injection pending 属预期，因为 accept 本身不发送；后续用户首次输入才注入下游卡。TE8 仍需在 iframe 接受路径解决 open-before-reply 生命周期并验证零自动消息；E 结束归档 disposable 父/子会话。
+## TE6：画布移交虚线边与跨席来源角标 — 2026-09-05 07:16
+- commit: PENDING-TASK
+- 动手前核对：实际执行任务书 `sed -n '4170,4215p'` 并按当前函数重定位；确认 observation seq 对应 `answer.sourceSeq`、connectorPath 世界坐标、drag cache 查询全部 `path[data-from]`，且多数 handoff 因下游重新归席只显示跨席角标 PASS
+- 验收：
+  - 新增 `tests/workbench-handoff-edge.test.ts`；聚焦 → `tests 31; pass 31; fail 0; skipped 0; duration_ms 208.0953`；全量 → `tests 305; pass 304; fail 0; skipped 1` PASS
+  - `npm run build` → derive/client/host=`28.87/191.52/199.46 kB`；typecheck、node check、diff check 均 exit `0` PASS
+  - accepted handoff 同 workspace 才生成一条 handoff-connector；source 优先 assistant seq 精确卡、缺失时最大 turnIndex，target 总取最小 turnIndex；输入 cards 乱序、open/dismissed/缺端点/self/cross-workspace 全覆盖 PASS
+  - path 使用 connectorPath 世界坐标并保留 data-from/to；既有 cache/refresh 无 class 过滤，拖动源/目标和非 100% zoom 均复用同一 position 更新链；不新增 observer/DOM 坐标 PASS
+  - 跨席仅 child 首卡显示「移交自 来源」；严格要求 handoff-fork/handoff + lineage + accepted handoff，先出现 dispatch 不误取；来源 card 缺失退「上游」，名称 HTML escape；同 workspace/后续轮/无关 source 无角标 PASS
+  - 基础 `.connectors path` 实线规则逐字保留；仅加高特异 `.handoff-connector` brand 虚线 `7 5/1.6` 与角标；新增 dark selector=`0`、全文件仍=`1` PASS
+  - 真实 Anaxa→Phainon accepted child `session-4d9fde90-2108-4da2-8237-9f9254fc09af`：白厄席工作台 cards=`4`、cross badge=`1`、text=`移交自 那刻夏`、handoff connector=`0`，未伪造跨席源卡 PASS
+  - 已从全体会议真实派发 March7/Longnight 同 skill source `session-6b5fe04f-5c86-4186-ab19-e822dfb7082c`，binding=`amphoreus-march7th/face长夜月/dispatch/done`；模型尚运行，接受后同席 path 的实机拖动联验留后置回填
+- 人工断言：✓ 不修改普通 lineage 实线；✓ 不跨 workspace 画不存在端点；✓ 不为 source 造卡；✓ 同 endpoints 普通谱系与移交语义可并存；✓ 相机 pan/zoom 整体变换不重算世界 path。
+- 偏离与理由：任务书一行 Map 会为 answer 缺失写重复空键，改为显式 assistant/first/last 三表；跨席来源反查显式过滤 kind/status，避免 dispatch 同样带 acceptedSessionId 时误标。README 工作台总说明统一留 TE10 收口。
+- 遗留：真实同席 connector/drag 需当前 March7 disposable 会话完成并经后续接受后回填；TE8 将修 bridge open-before-reply 并继续用这些 observation/child 证据。
