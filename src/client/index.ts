@@ -22,6 +22,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   }
 }
 
+// A 章阶段不注入 uiConversation；B TB4 起注入它仅为 binding().target('chat') 读正文——其 binding().activate() 只激活装配目标、不切 Tab（见任务书 A.0 决策 A-2 与总纲裁决 J-2）。
 export const inject = ['slots', 'locale', 'theme', 'sessions']
 
 export function apply(ctx: ClientContext): void {

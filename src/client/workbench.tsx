@@ -27,6 +27,10 @@ export interface WorkbenchViewInjected {
 
 export type WorkbenchViewProps = PropsRuntime<'conversation.view'> & PropsLocale<'amphoreus'> & WorkbenchViewInjected
 
+const WORKBENCH_VIEW_ID = 'amphoreus-workbench'
+
+function rememberWorkbenchTab(_view: string): void {}
+
 interface BridgeMessage {
   source?: string
   type?: string
@@ -39,7 +43,7 @@ interface BridgeMessage {
   seatHeroId?: string
 }
 
-export function WorkbenchView({ sessions, bindSeat, seatSkillOf }: WorkbenchViewProps) {
+export function WorkbenchView({ sessionId, sessions, bindSeat, seatSkillOf, openView, completeViewRequest, viewRequest }: WorkbenchViewProps) {
   const frameRef = useRef<HTMLIFrameElement>(null)
 
   useEffect(() => {
@@ -99,13 +103,24 @@ export function WorkbenchView({ sessions, bindSeat, seatSkillOf }: WorkbenchView
               reply({ type: 'amphoreus:forked-session', requestId: data.requestId, session: summaryOf(childId) })
               return
             }
-            case 'amphoreus:open-session':
-            case 'amphoreus:activate-session': {
-              if (typeof data.sessionId === 'string') sessions.open(data.sessionId)
+            case 'amphoreus:open-session': {
+              if (typeof data.sessionId !== 'string') return
+              rememberWorkbenchTab('chat')
+              if (data.sessionId === sessionId) {
+                openView('chat', 'amphoreus:open-session')
+                completeViewRequest()
+              } else {
+                sessions.open(data.sessionId)
+              }
               return
             }
+            case 'amphoreus:activate-session':
+              if (typeof data.sessionId === 'string') sessions.open(data.sessionId)
+              return
             case 'amphoreus:close':
-              // The workbench lives in a tab, not an overlay; nothing to close.
+              rememberWorkbenchTab('chat')
+              openView('chat', 'amphoreus:close')
+              completeViewRequest()
               return
             default:
               return
@@ -117,7 +132,7 @@ export function WorkbenchView({ sessions, bindSeat, seatSkillOf }: WorkbenchView
     }
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
-  }, [sessions, bindSeat, seatSkillOf])
+  }, [sessionId, sessions, bindSeat, seatSkillOf, openView, completeViewRequest])
 
   // Keep the iframe informed about the current session so its canvas
   // highlights the active card.
@@ -136,6 +151,10 @@ export function WorkbenchView({ sessions, bindSeat, seatSkillOf }: WorkbenchView
     const dispose = (sessions.list as unknown as { subscribe(listener: () => void): () => void }).subscribe(push)
     return dispose
   }, [sessions])
+
+  useEffect(() => {
+    if (viewRequest?.view === WORKBENCH_VIEW_ID) completeViewRequest()
+  }, [viewRequest, completeViewRequest])
 
   return (
     <div className={css.root}>
