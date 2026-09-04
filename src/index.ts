@@ -71,9 +71,12 @@ export function apply(ctx: Context, config: AmphoreusConfig): void {
         },
       })
       workbench = new WorkbenchStore(join(dataDir, 'workbench.json'), resolver)
-      void workbench.ready().catch(error => {
-        workbenchStatus = { kind: 'unavailable', reason: `workbench.json 读取失败：${String(error)}` }
-      })
+      workbenchStatus = { kind: 'unavailable', reason: '工作台正在初始化' }
+      void workbench.ready()
+        .then(() => { workbenchStatus = { kind: 'ready' } })
+        .catch(error => {
+          workbenchStatus = { kind: 'unavailable', reason: `workbench.json 读取失败：${String(error)}` }
+        })
       if (config.workbench.autoProjection) {
         const sessions = (ctx as Context & { sessions: { list(): ProjectableSession[] } }).sessions
         const replay = (session: ProjectableSession & { firstLiveSeq?: number; snapshotEvents?: () => readonly ProjectableEvent[] }): void => {

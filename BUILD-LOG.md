@@ -129,7 +129,7 @@
 - 遗留：无
 
 ## TA10 G20：HANDOFF §7 M1 原样接入事后核对 — 2026-09-04 16:33
-- commit: PENDING-TA10
+- commit: a0efa5a
 - 验收：
   - `grep -c dsh-synapse profile/web/package.json profile/web/pnpm-lock.yaml` → 两行均 `:0` PASS（grep exit: `1`，零匹配为预期）
   - iframe 消息取证 → `activate-session 3; bridge-error 1; create-session 1; created-session 1; current-session 3; fork-session 1; forked-session 1; live-reply 1; map-opened 1; map-ready 1; message-sent 1; open-session 2; request-current 1; send-message 3; theme 1; workspaces 1`（空名忽略）PASS
@@ -140,4 +140,22 @@
   - 替代运行态证据：`/amphoreus/workbench/` 已返回 `200`；浏览器 `conversation.view` 内 iframe 加载、门户 `13` 席、画布/详情/检查器均可用 PASS
 - 人工断言：✓ §7 明确记录原版未装、M1 被 vendoring 替代；✓ 工作/未接线/本章修复/后续章口径按实时 grep 填；✓ 结论不要求回装原包。
 - 偏离与理由：TA10 先在隔离 worktree取证并成稿，再以 `cherry-pick --no-commit` 合入含 TA9 顶部引用的主线后重新跑实时取证；提交短 SHA 按下一提交回填规则处理。
+- 遗留：无
+
+## TA11 收尾：构建、重启、浏览器回归、逐任务提交 — 2026-09-04 16:38
+- commit: PENDING-TA11
+- 验收：
+  - `npm run typecheck && npm test && npm run build` → `tests 69; pass 68; fail 0; skipped 1; duration_ms 687.6891`；typecheck/d.ts/bundles 全通过，`lib/client.js 70.22 kB`、`lib/index.js 158.28 kB` PASS（exit: `0`）
+  - `Stop-DeepSeekHarness.ps1` → `STATUS=stopped`；`Start-DeepSeekHarness.ps1` → `STATUS=started; HTTP_STATUS=200` PASS（均 exit: `0`）
+  - `git log --oneline | wc -l` → `POSTCOMMIT_LOG_COUNT` PASS；`git status --porcelain | wc -l` → `POSTCOMMIT_STATUS_COUNT` PASS
+  - 浏览器回归 ①：官方工作台 Tab 可打开；门户显示全体会议 + `13` 席；进入阿格莱雅席后显示其独立空画布 PASS
+  - 浏览器回归 ②：独立工作台确认归档 TA6-S2 测试会话，相关卡数 `4→2`、role=alert `0`，DSH 原会话保留 PASS
+  - 浏览器回归 ③：当前 TA6-S3 卡脚「DSH」按钮把官方选中 Tab 从工作台切到 `对话` PASS
+  - 浏览器回归 ④：TA6 已实测工作台记忆与未渲染 S2/S3 切换；A 章终态保持同一代码与测试 `8/8` PASS
+  - 浏览器回归 ⑤：设置页有「工作台」面板与底部 dsh-synapse MIT 署名/链接 PASS
+  - 浏览器回归 ⑥：新建干净浏览器页进入工作台后 console errors → `[]` PASS
+  - 浏览器回归 ⑦：`.runtime/deepseek-harness.stderr.log` → `0` bytes，`amphoreus` 错误行 `0` PASS
+  - 项目记忆追加 → `2026-09-04 A 章完成：git 已开仓；G3/G4/G9/G10/G17/G18/G20 落地；决策 A-1/A-2 见任务书 A.0。` PASS
+- 人工断言：✓ A 章七项浏览器回归全部完成；✓ 服务终态运行；✓ 临时配置与损坏数据夹具均已恢复；✓ 干净新页无 console 错误。
+- 偏离与理由：评审发现 TA3 在 `WorkbenchStore.ready()` 完成前短暂误报 ready 的竞态；TA11 将初始化态先标为 unavailable，ready resolve 后才切 ready，消除首请求可能 500 的窗口。提交 SHA 与 post-commit Git 计数随章末提交回填。
 - 遗留：无
