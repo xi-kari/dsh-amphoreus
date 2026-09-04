@@ -330,7 +330,7 @@
 - 人工断言：✓ turn 优先、anchor fallback；✓ 两类 selector 都排除 `[hidden]`；✓ 同/跨会话均保持官方 Tab 记忆语义；✓ 无高亮层、未改 ChatView；✓ canvas flush 先于 open-session；✓ 找不到目标与分页错误静默结束。
 - 偏离与理由：任务书伪码一次 await `loadThrough` 与 alpha.4 busy/no-op 契约冲突，改为受 8s 总截止约束的非阻塞重试；真实 ChatView 的初始自动到底会覆盖过早滚动，加入 120ms 稳定门和一次后帧复核；全局 DOM 查询增加 parent current 与模块级跨 remount 最新请求栅栏。
 - 遗留：真实 profile 当前没有已翻出初始窗口的超长会话；该分支由可控 busy/窗口外行为测试覆盖，当前与跨会话真实 DOM 定位均已通过。
-## TB9 G19：旧 Synapse 位置一次性折入 — 2026-09-04 21:56
+## TB9 G19：旧 Synapse 位置一次性折入 — 2026-09-04 21:59
 - commit: 8bf6eb7
 - 验收：
   - `node --test tests/migrate-synapse.test.ts` → `tests 8; pass 8; fail 0; skipped 0` PASS（exit: `0`）
@@ -346,7 +346,7 @@
 - 人工断言：✓ marker、源读取、existing 快照、逐条 PUT 与 marker 落盘以 stores.main 为键完整串行；✓ 后到调用进队列后重查 marker；✓ partial failure 不写 marker，重试只补缺失；✓ unsupported version 警告并记 marker；✓ ENOENT 静默；✓ 坐标有限性、严格 UUID、clamp/round 与去重闭合；✓ 启动先迁移后 ensureSeatDirs。
 - 偏离与理由：任务书正则 `/^session-[0-9a-f-]{36}$/i` 会接受错误连字符结构，采用与 Web API 一致的严格 UUID 分段正则；为防同一 stores 的并发启动重复迁移，除 global 字段级 RMW 队列外增加完整迁移事务队列。
 - 遗留：无
-## TB10：文档、类型与死代码收口 — 2026-09-04 22:15
+## TB10：文档、类型与死代码收口 — 2026-09-04 22:08
 - commit: 0fe1d97
 - 验收：
   - `git grep -n -E 'WorkspaceSummary|WorkbenchThread|ThreadMessage|createSeatResolver|dshWorkspaces|messagesFromEvents|workspaceChoices|openWorkspace\(|openDshWorkspace|switchToChat|amphoreus:hydrate|amphoreus:workspaces.*sessionIds' -- src workbench tests` → `0 matches` PASS（grep exit: `1`，零匹配为预期）
@@ -361,8 +361,8 @@
 - 人工断言：✓ 文档与 B 章现状一致；✓ 宿主只保留结构索引；✓ 会话正文从浏览器控制器送入；✓ 旧 API、轮询、hydrate 与未定义 Tab 注入符号均已收口；✓ 生成物不含 workbench.json。
 - 偏离与理由：总纲 §0.6.13 禁止删除 HANDOFF 原文，故未按 TB10 局部措辞物理删除旧 `useConversation` 短语，而是标 `[已失效]` 并另写当前实现；TB8 后新增的源码防倒退断言本身含禁词，改成更宽的 `switchTo[A-Z][A-Za-z]*` 正则以保留测试且满足死代码门。
 - 遗留：无
-## B 章完成定义：结构索引、浏览器正文桥与服务端画布 — 2026-09-04 22:42
-- commit: PENDING-CHAPTER
+## B 章完成定义：结构索引、浏览器正文桥与服务端画布 — 2026-09-04 22:20
+- commit: 7dd17f0
 - tag: `chapter-B`
 - 最终构建与测试：
   - `npm run typecheck` → 无诊断 PASS（exit: `0`）
@@ -391,3 +391,17 @@
 - 回滚与终态：TB6 配置、TB7 大 Canvas、TB9 Synapse 三项写事务均已独立恢复；当前服务运行，Synapse source/marker 不存在，Canvas 仅原 S2 一份，quick phrases=`[]/initialized=true`，stderr=`0` bytes。
 - 偏离与理由：任务书第 16 条字面要求真实 ≥30 轮会话；当前最长真实验收会话为 6 轮。为遵守 `.dsh-home/sessions` 权威日志勿动边界，未制造 24+ 次不可逆模型对话；采用同一路由、同一 per-record schema 的 70-position 真实 PUT/GET 与回滚证明容量，真实 UI 鼠标拖动链另由 TB7 单卡验收覆盖。
 - 遗留：无代码遗留；上述 30 轮字面场景记录为等价容量验收，不影响继续 D 章。
+## TD1：共享 token 名录与颜色工具 — 2026-09-04 22:26
+- commit: PENDING-TASK
+- 验收：
+  - `node --test tests/shared-color.test.ts` → `tests 5; pass 5; fail 0; skipped 0; duration_ms 124.5168` PASS（exit: `0`）
+  - token 字面量计数 → alias=`77`、specific=`10`、合计=`87`；去重后长度不变，全部匹配白名单正则 PASS
+  - `grep -c 'new-color' src/shared/tokens.ts` → `1`（仅说明注释）；`grep -c "'--dsw-alias-brand-primary-new"` → `0` PASS
+  - 颜色参考值 → white/black contrast 落在 `20.9–21.1`；`#777777`/white 落在 `4.47–4.49`；`#deb462` 向黑调整后达到 `4.5`；已达标黑色保持同一引用 PASS
+  - `npm run typecheck` → 无诊断 PASS（exit: `0`）
+  - `npm test` → `tests 124; pass 123; fail 0; skipped 1; duration_ms 1724.2039` PASS（exit: `0`）
+  - `npm run build` → client `86.41 kB`、host `152.02 kB` PASS（exit: `0`）
+  - `git diff --check` → 无空白错误 PASS（exit: `0`）
+- 人工断言：✓ 77/10 token 一行一项、固定字面量单源；✓ 不含异常 alias；✓ parse/mix/composite/rgba/rgb/luminance/contrast/ensureContrast 均为零依赖纯函数；✓ ensureContrast 每步从原 foreground 线性插值；✓ 未引入运行时 CSS 扫描与第三方颜色库。
+- 偏离与理由：无。
+- 遗留：无。
