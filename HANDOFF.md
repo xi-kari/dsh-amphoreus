@@ -89,7 +89,8 @@ dsh-amphoreus/
   src/client/locales.ts zh/en 起始词典
   src/css-modules.d.ts  *.module.css / *.css?inline 声明
   tests/platform-modules.test.ts  平台模块表防漂移（通过）
-  workbench/app.js|styles.css|mark.svg  dsh-synapse v0.4.1 vendoring：路由 → /amphoreus/workbench/api、消息 synapse:* → amphoreus:*、source → 'dsh-amphoreus'、localStorage 键 → dsh-amphoreus:*；styles.css 仍是硬编码 hex（待 token 化）
+[已失效]   workbench/app.js|styles.css|mark.svg  dsh-synapse v0.4.1 vendoring：路由 → /amphoreus/workbench/api、消息 synapse:* → amphoreus:*、source → 'dsh-amphoreus'、localStorage 键 → dsh-amphoreus:*；styles.css 仍是硬编码 hex（待 token 化）
+  workbench/app.js|styles.css|mark.svg  dsh-synapse v0.4.1 vendoring；styles.css 第一步 token 化完成（var + 回退），暗色由宿主 DSW token 驱动；第二步删回退见 07 任务书 TD12
   src/host/workbench.ts  内存 seq 索引（ProjectionIndex），启动自 sessions.list() + sessionPersistence.list()/inspect() 重建，无正文、无 workbench.json
   reference/synapse-host-index.js  synapse 宿主半侧原件（H8 工作台投影的改造基底，不进包）
   reference/SYNAPSE-LICENSE.txt, reference/magazine-palette.json（13 册逐页明暗与色板实测 JSON，来自 06 附录脚本）
@@ -113,6 +114,8 @@ dsh-amphoreus/
 [已失效] **M2** 席位侧栏（`sidebar.workspaces` priority −10，两组：黄金裔席位 / 我的目录，D-E 预绑定建会话）、逐席 token 层与封面切换（切换协议：预加载 → 240ms 淡入 → 再换 token；失败退全局）、`src/host/injector.ts` 一次性注入状态机（session-start 置 pending、首个 pre-step 追加、手敲同名则 skipped）、`observer.ts` 回执/移交行解析、名牌（`conversation.session.header.actions` order −20）、工作台 Tab（iframe 承载 `workbench/`，桥接 `amphoreus:*` + 新增 `amphoreus:theme-tokens`，正文由宿主页 `useConversation` 喂入）。
 
 **M2 当前状态** 工作台以 iframe 承载 `workbench/`，宿主只维护无正文的内存 seq 索引；当前会话正文经 `uiConversation.binding(sessionId).target('chat')` 从浏览器控制器喂入。席位侧栏、逐席 token、技能卡身份与回执观察仍按 D、C、E 章继续建设。
+
+**D 章消息更新（2026-09-05 实测）**：`amphoreus:theme-tokens` 已接通 87 个 token 与 light/dark；`amphoreus:seat-changed` 已接通逐席主题；`amphoreus:magazine-mode` 已接通持久档位与原位版式切换。派生素材由宿主安全路由服务，设置区可后台重建并接收 `derive-progress`。
 **M3** 移交坞（`conversation.input.dock` order 20，点击才 fork）、站位轨、台账、评估 native 工作台。
 
 ## 6. 注意事项汇总
@@ -189,3 +192,13 @@ Vendoring 版 `/amphoreus/workbench/` 返回 200；iframe 在 `conversation.view
 ### 7.4 结论
 
 基底可运行已由 vendoring 版实证；不回头重装原包。
+
+### 7.5 D 章视觉验证记录（2026-09-05）
+
+- 全局 light/dark：宿主 body 与 iframe root 的 bg/label/sidebar token 同步，约 180ms 内完成双 rAF 桥接；切换前后服务 stderr 为 0。
+- 阿格莱雅：light 为 brand `rgb(169, 137, 74)`、bg `rgba(246, 241, 227, 0.22)`；dark 为 brand `rgb(229, 197, 133)`、bg `rgba(46, 38, 24, 0.4)`；回门户恢复全局 brand `rgb(138, 104, 28)`。
+- 那刻夏：星盘纹样以 SVG data URI 平铺，`.canvas-tabs` 为 relative；主题变化时草稿文字保留，纹样 URI 即时切换。
+- 昔涟：进入后不安装逐席层，保持全局 token 与壁纸语义。
+- 杂志档位：light→full 正式卡 DOM 数量 `16→16`；Q 字号 `22px`、字重 `800`，folio `01 / 06`；折叠后分母仍为 `06`；草稿切档时 value 不变且 active 仍为 true；恢复 light 后装饰消失。
+- 派生素材：84 个 WebP；门户 13 张 cover 均走 `/amphoreus/derived/` 且 aspect-ratio 为 3/4；阿格莱雅侧栏 cover、card、sticker 均为派生 URL；后台 force 派生 SSE 顺序完整，最终 `84/0`。
+- 第二步未做：首个 `map-ready` 前收到 `amphoreus:theme-tokens` 尚无确定的 happens-before；当前握手可能先在 1 rAF 发 ready、再在 2 rAF 发 token。全套测试虽通过，三席双主题同一验收矩阵也未同时闭合，因此继续保留原色回退。

@@ -496,7 +496,7 @@
 - 偏离与理由：任务书最小 register 异步 scan 有首请求竞态，增加 idempotent `prepareAssets()` 并在 async host effect 中显式 await；derived route 增加 symlink/TOCTOU 防护与稳定缺失清退。J-4 的席位 URL 实际修改 `client/workspaces-source.ts`。Start 脚本的单字段 PATH 扩展是本机服务满足任务书 magick 非空/TD11 后台派生的必要运维修正。
 - 遗留：TD11 强制重派生使用稳定 URL + 86400 浏览器缓存，需要以 query 版本或等价方式 cache-bust；本任务未提前实现 TD11 生命周期。
 ## TD11：视觉层设置、后台派生与 SSE 进度 — 2026-09-05 01:35
-- commit: PENDING-TASK
+- commit: e54a53a
 - 动手前 `sed -n '60,100p' src/host/webapi.ts` 核对 → `SseHub.publish(event: string, value: unknown)`，所有进度/状态调用均按 event,value 顺序 PASS
 - 自动化验收：
   - TD11 聚焦（client/host/settings/theme）→ `tests 13; pass 13; fail 0; skipped 0; duration_ms 438.8341` PASS（exit: `0`）
@@ -519,6 +519,22 @@
 - 偏离与理由：相对最小伪码增加 start state-change、严格 JSON、可控 derive/probe seam、SSE 文本上限、pending progress、refresh latest-wins 与同步 UI 锁；这些闭合并发和时序，不改任务协议。stable `.webp` URL + `max-age=86400` 的强制重派生 cache-bust 仍与 TD10 URL 终态契约冲突，本任务按既定裁决未改变 URL。
 - 回滚与终态：magazine prefs 已恢复 config/light；cache 内容与备份逐字节相同且服务扫描为84，故无需恢复目录；权威 sessions/storage-domain 未改。TD11 临时 cookie/nonce/second-response 与 backup 在 D 章总验收后清理。
 - 遗留：稳定派生 URL 的浏览器 24h 缓存刷新策略需后续版本化 URL 设计；不影响新安装、首载或本章验收。
+## TD12：素材包文档、NOTICE/HANDOFF 对账与回退条件裁决 — 2026-09-05 01:41
+- commit: PENDING-TASK
+- 验收：
+  - README `## 素材包`=`1`、`assets-cache`=`1`、`npm run derive`=`1`、`--data-dir`=`2`、`09阿格莱呀.jpg`=`2`；Markdown image=`0` PASS
+  - README 提供 profile insert 示例、6 个精确目录、6 张壁纸名、13 席 HERO_VISUALS 文件表、build/derive/magick/dataDir/cache/设置路径与版权边界；未建议把素材复制进包目录 PASS
+  - README 现状移除已完成 G2/G21，magazineMode 配置说明与 TD7/TD11 一致；新增稳定 URL 24h cache 已知限制 PASS
+  - NOTICE 精确短语 `magazine 'full' layout`=`1`；MIT 原文、版权行与既有 DSW/无正文说明未改 PASS
+  - HANDOFF 第1–4行与 HEAD 逐字相同、`## 7` 仍=`1`；旧 styles 行只加 `[已失效]` 纯前缀，新增现行 token 化说明、三种 D 消息、派生进度与 `### 7.5` 实测记录 PASS
+  - `待 token 化` raw grep=`1`，但唯一命中位于 `[已失效]` 原文；非失效命中=`0` PASS（语义门）
+  - fallback condition：全套测试虽绿，但 first map-ready 为 1 rAF、theme-token push 为 2 rAF，没有 token-before-ready happens-before；三席×双主题统一人工矩阵也未闭合，故按任务书不执行两遍 sed。DSW fallback 保留=`292`，文件头仍为 Step 1 PASS
+  - `npm test` → `tests 185; pass 184; fail 0; skipped 1; duration_ms 2108.3823` PASS（exit: `0`）
+  - `npm run build` → derive `28.87 kB`、client `121.16 kB`、host `184.52 kB` PASS（exit: `0`）
+  - `git diff --check` → 无空白错误 PASS（exit: `0`）
+- 人工断言：✓ README 不嵌图、不链接原图下载源；✓ Calendar 作为完整清单列出并注明当前 CLI 不消费；✓ HANDOFF 历史 append-only；✓ 验证记录只写已观察值；✓ fallback 的保留理由具体且可复验。
+- 偏离与理由：TD12 局部文字要求直接改 HANDOFF 原句并使 raw `待 token 化=0`，与总纲 §0.6.13“不删/不改原文，只加失效前缀”不可同时成立；服从全局硬规则，采用 `[已失效]` + 新行，语义活跃计数为0。README 目录表补入实际存在的 `翁法罗斯日历/`，避免每席 calendar 列无目录归属。
+- 遗留：第二步 fallback 删除明确未执行；只有在建立 token-before-first-ready 握手并完成至少三席 light/dark 同一人工矩阵后才能重审。
 ## TD2 G2：宿主页向 iframe 桥接 87 个主题 token — 2026-09-04 22:35
 - commit: 1722602
 - 验收：

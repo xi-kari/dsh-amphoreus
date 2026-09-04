@@ -8,6 +8,7 @@ dsh-amphoreus - third-party notices
    in-memory seq index rebuilt from session logs (no session text, no workbench.json/.lock),
    message bodies reach the canvas from the browser session controller only, colors bound
    to DSH --dsw-alias-* tokens, cards carry Chrysos-heir ownership and handoff edges.
+   The magazine 'full' layout is CSS-only layering (.magazine-full) over the original DOM.
    Original license text follows.
 
 MIT License
