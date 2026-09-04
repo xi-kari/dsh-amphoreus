@@ -87,6 +87,16 @@ export interface MagazineModeMessage {
   readonly mode: 'light' | 'full'
 }
 
+export type DeriveKind = 'covers' | 'chronicle' | 'cards' | 'stickers' | 'wallpapers'
+
+export interface DeriveProgress {
+  readonly kind: DeriveKind
+  readonly done: number
+  readonly total: number
+  readonly current: string
+  readonly error?: string
+}
+
 export interface AmphoreusBoot {
   readonly revision: number
   readonly nonce: string

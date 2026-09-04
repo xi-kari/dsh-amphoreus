@@ -1,5 +1,5 @@
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import { useState, useSyncExternalStore } from 'react'
+import { useRef, useState, useSyncExternalStore } from 'react'
 import type { AmphoreusClientModel } from './state.ts'
 import css from './settings.module.css'
 
@@ -9,10 +9,27 @@ export interface AmphoreusSettingsInjected {
 
 export type AmphoreusSettingsProps = PropsRuntime<'settings.section'> & PropsLocale<'amphoreus'> & AmphoreusSettingsInjected
 
+type SettingsAction = 'reparse' | 'magazine-light' | 'magazine-full' | 'magazine-reset' | 'derive' | 'derive-force'
+
 export function AmphoreusSettings({ model, t }: AmphoreusSettingsProps) {
   const snapshot = useSyncExternalStore(model.subscribe, model.getSnapshot)
   const [actionError, setActionError] = useState<string>()
-  const [reparsing, setReparsing] = useState(false)
+  const [activeAction, setActiveAction] = useState<SettingsAction>()
+  const actionLock = useRef(false)
+  const run = async (action: SettingsAction, operation: () => Promise<void>): Promise<void> => {
+    if (actionLock.current) return
+    actionLock.current = true
+    setActionError(undefined)
+    setActiveAction(action)
+    try {
+      await operation()
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : String(error))
+    } finally {
+      actionLock.current = false
+      setActiveAction(undefined)
+    }
+  }
 
   if (snapshot.phase === 'loading') {
     return (
@@ -47,17 +64,9 @@ export function AmphoreusSettings({ model, t }: AmphoreusSettingsProps) {
   const deployed = state.seats.filter(seat => seat.status === 'deployed').length
   const diagnostics = suite?.diagnostics ?? []
   const statusLabel = level === 'L0' ? t('settings.ready') : level === 'L3' ? t('settings.missing') : t('settings.degraded')
-  const reparse = async (): Promise<void> => {
-    setActionError(undefined)
-    setReparsing(true)
-    try {
-      await model.reparse()
-    } catch (error) {
-      setActionError(error instanceof Error ? error.message : String(error))
-    } finally {
-      setReparsing(false)
-    }
-  }
+  const busy = activeAction !== undefined || snapshot.refreshing
+  const deriving = state.assets.running || activeAction === 'derive' || activeAction === 'derive-force'
+  const deriveDisabled = busy || state.assets.running || state.assets.root === '' || state.assets.magick === null
 
   return (
     <section className={css.page}>
@@ -71,8 +80,8 @@ export function AmphoreusSettings({ model, t }: AmphoreusSettingsProps) {
           <p className={css.subtitle}>{t('settings.subtitle')}</p>
         </div>
         <div className={css.heroActions}>
-          <button className={css.primaryButton} type="button" disabled={reparsing || snapshot.refreshing} onClick={() => { void reparse() }}>
-            {reparsing ? t('settings.reparsing') : t('settings.reparse')}
+          <button className={css.primaryButton} type="button" disabled={busy} onClick={() => { void run('reparse', () => model.reparse()) }}>
+            {activeAction === 'reparse' ? t('settings.reparsing') : t('settings.reparse')}
           </button>
           {wb.enabled ? <a className={css.secondaryButton} href="/amphoreus/workbench/" target="_blank" rel="noreferrer">{t('settings.openWorkbench')}</a> : null}
         </div>
@@ -126,6 +135,46 @@ export function AmphoreusSettings({ model, t }: AmphoreusSettingsProps) {
               <div><dt>Parser</dt><dd>v{suite?.parserVersion ?? '—'}</dd></div>
               <div><dt>Assets</dt><dd>{state.effectiveConfig.assetsConfigured ? t('settings.assetsReady') : t('settings.assetsMissing')}</dd></div>
             </dl>
+          </section>
+
+          <section className={css.panel} aria-labelledby="amphoreus-visual">
+            <div className={css.sectionHeading}><div><h2 id="amphoreus-visual">{t('settings.visualHeading')}</h2><p>{t('settings.visualHint')}</p></div></div>
+            <div className={css.segmented} role="radiogroup" aria-label={t('settings.magazineMode')}>
+              {(['light', 'full'] as const).map(mode => (
+                <button
+                  key={mode}
+                  type="button"
+                  role="radio"
+                  aria-checked={state.effectiveConfig.magazineMode === mode}
+                  className={css.segment}
+                  disabled={busy}
+                  onClick={() => { void run(`magazine-${mode}`, () => model.setMagazineMode(mode)) }}
+                >
+                  {t(mode === 'light' ? 'settings.magazineLight' : 'settings.magazineFull')}
+                </button>
+              ))}
+            </div>
+            <p className={css.hintLine}>
+              {state.effectiveConfig.magazineModeSource === 'prefs' ? t('settings.magazineFromPrefs') : t('settings.magazineFromConfig')}
+              {state.effectiveConfig.magazineModeSource === 'prefs'
+                ? <button type="button" className={css.linkButton} disabled={busy} onClick={() => { void run('magazine-reset', () => model.setMagazineMode(null)) }}>{t('settings.magazineReset')}</button>
+                : null}
+            </p>
+            <dl className={css.factList}>
+              <div><dt>assetsRoot</dt><dd><code>{state.assets.root === '' ? '—' : state.assets.root}</code></dd></div>
+              <div><dt>{t('settings.assetsCache')}</dt><dd><code>{state.assets.cacheDir}</code><br />{t('settings.derivedCount', { n: String(state.assets.derivedCount) })}</dd></div>
+              <div><dt>ImageMagick</dt><dd>{state.assets.magick ?? t('settings.magickMissing')}</dd></div>
+            </dl>
+            <div className={css.heroActions}>
+              <button className={css.secondaryButton} type="button" disabled={deriveDisabled} onClick={() => { void run('derive', () => model.deriveAssets(false)) }}>{deriving ? t('settings.deriving') : t('settings.derive')}</button>
+              <button className={css.linkButton} type="button" disabled={deriveDisabled} onClick={() => { void run('derive-force', () => model.deriveAssets(true)) }}>{t('settings.deriveForce')}</button>
+            </div>
+            {snapshot.deriveProgress !== undefined && state.assets.running
+              ? <p className={css.hintLine} aria-live="polite" aria-atomic="true">{snapshot.deriveProgress.kind} {snapshot.deriveProgress.done}/{snapshot.deriveProgress.total} · {snapshot.deriveProgress.current}</p>
+              : null}
+            {state.assets.lastDerive === null
+              ? null
+              : <p className={css.hintLine}>{t('settings.lastDerive')} {formatTime(state.assets.lastDerive.at)} · {state.assets.lastDerive.written}/{state.assets.lastDerive.failed}{state.assets.lastDerive.error === undefined ? '' : ` · ${state.assets.lastDerive.error}`}</p>}
           </section>
 
           <section className={css.panel} aria-labelledby="amphoreus-workbench">

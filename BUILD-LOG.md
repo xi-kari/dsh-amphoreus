@@ -473,7 +473,7 @@
 - 回滚与终态：原 cache 为 absent，回滚动作是停服务后删除精确 `assets-cache`；本任务目标要求生成并供 TD10 服务，故当前有意保留已验证的 84 文件 cache。权威 sessions、两 storage-domain 与原素材均未改。
 - 遗留：无。
 ## TD10：确定性扫描并安全服务派生素材 — 2026-09-05 01:11
-- commit: PENDING-TASK
+- commit: e0b250d
 - 验收：
   - `node --test tests/derived-assets-webapi.test.ts tests/derived-firstframe.test.ts tests/workspaces-derived.test.ts` → `tests 8; pass 8; fail 0; skipped 0; duration_ms 314.076` PASS（exit: `0`）
   - 扩展聚焦（含原 firstframe/motif）→ `tests 17; pass 17; fail 0`；全量 → `tests 174; pass 173; fail 0; skipped 1; duration_ms 2047.4483` PASS
@@ -495,6 +495,30 @@
 - 人工断言：✓ host apply await prepareAssets 后才注册 route/firstframe；✓ prepare 并发合并、成功幂等、scan/probe fail-soft；✓ 两层仅普通 ASCII 目录/文件且排序；✓ GET/HEAD 使用 set membership + realpath/open/realpath + dev/ino，原子换档瞬态只重试一次，稳定缺失才删 membership 并发 SSE；✓ derived 独立于 assetsRoot 优先，原图只作已配置 root 的 fallback；✓ firstframe 同顺序。
 - 偏离与理由：任务书最小 register 异步 scan 有首请求竞态，增加 idempotent `prepareAssets()` 并在 async host effect 中显式 await；derived route 增加 symlink/TOCTOU 防护与稳定缺失清退。J-4 的席位 URL 实际修改 `client/workspaces-source.ts`。Start 脚本的单字段 PATH 扩展是本机服务满足任务书 magick 非空/TD11 后台派生的必要运维修正。
 - 遗留：TD11 强制重派生使用稳定 URL + 86400 浏览器缓存，需要以 query 版本或等价方式 cache-bust；本任务未提前实现 TD11 生命周期。
+## TD11：视觉层设置、后台派生与 SSE 进度 — 2026-09-05 01:35
+- commit: PENDING-TASK
+- 动手前 `sed -n '60,100p' src/host/webapi.ts` 核对 → `SseHub.publish(event: string, value: unknown)`，所有进度/状态调用均按 event,value 顺序 PASS
+- 自动化验收：
+  - TD11 聚焦（client/host/settings/theme）→ `tests 13; pass 13; fail 0; skipped 0; duration_ms 438.8341` PASS（exit: `0`）
+  - 全量最终 → `tests 185; pass 184; fail 0; skipped 1; duration_ms 2214.8636` PASS（exit: `0`）
+  - `npm run typecheck`、`node --check workbench/app.js`、Lightning CSS、`npm run build` 全通过；derive `28.87 kB`、client `121.16 kB`、host `184.52 kB` PASS（各 exit: `0`）
+  - auth/lifecycle tests → 415→403→400 顺序、strict extra/bad JSON 400、oversize 413、首请求202立即返回、并发第二请求409；success/partial/fatal/scan-fail 全部 running=false 并可重试 PASS
+  - host 事件顺序 → start state-change → ordered derive-progress → scan → running=false/lastDerive → final state-change；error/current 文本分别限 2000/500 PASS
+  - client tests → progress fail-closed、早到缓存、running 中展示/终态清除、POST racing progress 保留、refresh latest-wins PASS
+  - settings 静态门 → 15 zh +15 en、visual panel 位于 runtime/workbench 之间、同步 useRef action lock、两个派生按钮共用 deriveDisabled、root 只读、aria-live、CSS Module 无字面色 PASS
+  - `git diff --check` → 无空白错误 PASS（exit: `0`）
+- 真实运行态：
+  - 初始 state → running=`false`、derived=`84`、lastDerive=`null`、magick 非空；无 content-type POST=`415`，JSON 无 nonce=`403` PASS
+  - 设置 → 翁法罗斯 → 视觉层：显示 assetsRoot、cacheDir、已派生 `84`、ImageMagick 版本；点「重档」后 radio checked、reset 出现、iframe 即时 `magazine-full`/Q；点「恢复配置值」后 light checked、reset 消失、iframe `magazine-light` PASS
+  - 点「强制全部重做」后约120ms：主按钮文案「正在派生…」且两按钮 disabled；同一任务运行时第二个 nonce POST → HTTP `409`、body `{"error":"asset derivation is already running"}`；state running=`true` PASS
+  - SSE 实流 → start/final state-change 各1；derive-progress 共 `71` 个 job 事件：covers 1→13、chronicle 1→13、cards 1→13、stickers 1→26、wallpapers 1→6，顺序完整 PASS
+  - 第二轮 UI 中途真实捕获 `covers 2/13 · tribbie cover-34.webp` 与「正在派生…」；结束后显示「已派生 84 个文件」「上次派生 … · 84/0」PASS
+  - final state → running=`false`、derivedCount=`84`、lastDerive written=`84`/failed=`0`；服务 PID `64116` running、HTTP `200`、stderr=`0` bytes PASS
+  - 派生前已把 84 文件/9633300 bytes cache 复制到 `.runtime/td11-cache-backup-20260905-013024`；两次 force 后当前与备份逐文件 relative/size/SHA-256 diff=`0`，证明内容确定性相同；有意保留当前新 mtime cache
+- 人工断言：✓ running gate 在无 await 同步段设定；✓ 202 只表示接纳，后台 rejection 内部收口；✓ final state-change 晚于 scan；✓ client 不从 host 模块做 runtime import；✓ named action 避免把派生误标为“重新解析”；✓ assetsRoot 不可编辑；✓ reset/radio/两个派生按钮都共享 busy 门；✓ secondaryButton disabled 也有可见样式。
+- 偏离与理由：相对最小伪码增加 start state-change、严格 JSON、可控 derive/probe seam、SSE 文本上限、pending progress、refresh latest-wins 与同步 UI 锁；这些闭合并发和时序，不改任务协议。stable `.webp` URL + `max-age=86400` 的强制重派生 cache-bust 仍与 TD10 URL 终态契约冲突，本任务按既定裁决未改变 URL。
+- 回滚与终态：magazine prefs 已恢复 config/light；cache 内容与备份逐字节相同且服务扫描为84，故无需恢复目录；权威 sessions/storage-domain 未改。TD11 临时 cookie/nonce/second-response 与 backup 在 D 章总验收后清理。
+- 遗留：稳定派生 URL 的浏览器 24h 缓存刷新策略需后续版本化 URL 设计；不影响新安装、首载或本章验收。
 ## TD2 G2：宿主页向 iframe 桥接 87 个主题 token — 2026-09-04 22:35
 - commit: 1722602
 - 验收：

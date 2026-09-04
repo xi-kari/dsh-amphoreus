@@ -44,6 +44,7 @@ function api(cacheDir: string, assetsRoot = ''): AmphoreusWebApi {
     resolver: { current: () => undefined } as unknown as SuiteResolver,
     nonce: 'derived-assets-test',
     assetsCacheDir: cacheDir,
+    probeMagick: async () => 'Version: test-magick',
   })
 }
 

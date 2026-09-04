@@ -6,10 +6,10 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { z } from 'zod'
-import type { AmphoreusState, PublicSuite, WorkbenchBoot, WorkbenchStatus } from '../shared/api.ts'
+import type { AmphoreusAssetsStatus, AmphoreusState, DeriveProgress, PublicSuite, WorkbenchBoot, WorkbenchStatus } from '../shared/api.ts'
 import { GLOBAL_WALLPAPERS } from '../shared/heroes.ts'
 import type { AmphoreusConfig } from './config.ts'
-import { probeMagick } from './derive.ts'
+import { deriveAssets, probeMagick, type DeriveOptions, type DeriveResult } from './derive.ts'
 import { publicWorkbench } from './firstframe.ts'
 import { BindingSchema, CanvasSchema, MemorySchema, updateAmphoreusGlobal, type AmphoreusStores } from './store.ts'
 import type { SuiteResolver } from './bridge.ts'
@@ -43,6 +43,8 @@ const PrefsInput = z.object({
   magazineMode: z.enum(['light', 'full']).nullable().optional(),
 })
 
+const DeriveInput = z.object({ force: z.boolean().optional() }).strict()
+
 interface ConnectionFence {
   requestRejection(request: IncomingMessage): 401 | 403 | undefined
 }
@@ -62,6 +64,8 @@ export interface WebApiOptions {
   readonly workbenchStatus?: () => WorkbenchStatus
   readonly seatDirs?: readonly SeatDirRecord[]
   readonly assetsCacheDir?: string
+  readonly deriveAssets?: (options: DeriveOptions) => Promise<DeriveResult>
+  readonly probeMagick?: () => Promise<string | undefined>
 }
 
 interface SseClient {
@@ -129,6 +133,8 @@ export class AmphoreusWebApi {
   readonly #workbenchStatus: () => WorkbenchStatus
   readonly #seatDirs: readonly SeatDirRecord[]
   readonly #assetsCacheDir: string | undefined
+  readonly #deriveAssets: (options: DeriveOptions) => Promise<DeriveResult>
+  readonly #probeMagick: () => Promise<string | undefined>
   readonly #sse = new SseHub()
   readonly #canvasRevisions = new Map<string, number>()
   #assetsCacheRealDir: string | undefined
@@ -136,6 +142,9 @@ export class AmphoreusWebApi {
   #magick: string | null = null
   #assetsPrepared = false
   #assetsPreparation: Promise<void> | undefined
+  #deriveRunning = false
+  #deriveGeneration = 0
+  #lastDerive: AmphoreusAssetsStatus['lastDerive'] = null
 
   constructor(ctx: Context, options: WebApiOptions) {
     this.#ctx = ctx as HostContext
@@ -151,6 +160,8 @@ export class AmphoreusWebApi {
     ))
     this.#seatDirs = options.seatDirs ?? []
     this.#assetsCacheDir = options.assetsCacheDir === undefined ? undefined : resolve(options.assetsCacheDir)
+    this.#deriveAssets = options.deriveAssets ?? deriveAssets
+    this.#probeMagick = options.probeMagick ?? probeMagick
     this.nonce = options.nonce ?? randomBytes(24).toString('base64url')
   }
 
@@ -166,7 +177,7 @@ export class AmphoreusWebApi {
         this.#warn(`amphoreus derived cache scan failed; using original assets: ${String(error)}`)
       }
       try {
-        this.#magick = await probeMagick() ?? null
+        this.#magick = await this.#probeMagick() ?? null
       } catch (error) {
         this.#magick = null
         this.#warn(`amphoreus ImageMagick probe failed: ${String(error)}`)
@@ -249,6 +260,10 @@ export class AmphoreusWebApi {
         if (!method(request, response, 'POST')) return
         await this.#resolver.forceReparse()
         json(response, 200, { ok: true, revision: this.#resolver.current()?.generation ?? 0 })
+        return
+      }
+      if (path === '/amphoreus/api/assets/derive') {
+        await this.#deriveRoute(request, response)
         return
       }
       if (path === '/amphoreus/api/seats') {
@@ -372,8 +387,8 @@ export class AmphoreusWebApi {
         derivedCount: this.#derived.size,
         derived: [...this.#derived].sort(),
         magick: this.#magick,
-        running: false,
-        lastDerive: null,
+        running: this.#deriveRunning,
+        lastDerive: this.#lastDerive,
       },
       workbench: {
         status: this.#workbenchStatus(),
@@ -558,6 +573,102 @@ export class AmphoreusWebApi {
       return
     }
     await this.#serveAssetPath(response, ['昔涟壁纸', name])
+  }
+
+  async #deriveRoute(request: IncomingMessage, response: ServerResponse): Promise<void> {
+    if (!method(request, response, 'POST')) return
+    if (this.#deriveRunning) {
+      json(response, 409, { error: 'asset derivation is already running' })
+      return
+    }
+    let body: unknown
+    try {
+      body = await readJson(request)
+    } catch (error) {
+      if (error instanceof BodyTooLargeError) throw error
+      json(response, 400, { error: 'invalid derive request' })
+      return
+    }
+    const parsed = DeriveInput.safeParse(body)
+    if (!parsed.success) {
+      json(response, 400, { error: 'invalid derive request' })
+      return
+    }
+    const assetsRoot = this.#config.assetsRoot.trim()
+    if (assetsRoot === '') {
+      json(response, 400, { error: 'assetsRoot is not configured' })
+      return
+    }
+    const cacheDir = this.#assetsCacheDir
+    if (cacheDir === undefined) {
+      json(response, 400, { error: 'assets cache is not configured' })
+      return
+    }
+    if (this.#deriveRunning) {
+      json(response, 409, { error: 'asset derivation is already running' })
+      return
+    }
+    this.#deriveRunning = true
+    const generation = ++this.#deriveGeneration
+    this.#publishAssetState('put')
+    json(response, 202, { started: true })
+    queueMicrotask(() => { void this.#runDerive(generation, assetsRoot, cacheDir, parsed.data.force === true) })
+  }
+
+  async #runDerive(generation: number, assetsRoot: string, cacheDir: string, force: boolean): Promise<void> {
+    let written = 0
+    let failed = 0
+    let error: string | undefined
+    try {
+      const result = await this.#deriveAssets({
+        assetsRoot,
+        cacheDir,
+        force,
+        onProgress: (progress: DeriveProgress) => {
+          if (this.#deriveRunning && generation === this.#deriveGeneration) {
+            this.#publishSse('derive-progress', {
+              ...progress,
+              current: boundedText(progress.current, 500),
+              ...(progress.error === undefined ? {} : { error: boundedText(progress.error, 2_000) }),
+            })
+          }
+        },
+      })
+      written = result.written
+      failed = result.failed.length
+      if (failed > 0) error = boundedText(result.failed[0]?.error ?? `${failed} derived assets failed`, 2_000)
+    } catch (cause) {
+      failed = 1
+      error = boundedText(cause instanceof Error ? cause.message : String(cause), 2_000)
+    }
+    try {
+      await this.#scanDerived()
+    } catch (cause) {
+      failed = Math.max(1, failed)
+      const scanError = boundedText(cause instanceof Error ? cause.message : String(cause), 2_000)
+      error = boundedText(error === undefined ? scanError : `${error}; cache scan failed: ${scanError}`, 2_000)
+    }
+    if (generation !== this.#deriveGeneration) return
+    this.#lastDerive = {
+      at: Date.now(),
+      written,
+      failed,
+      ...(error === undefined ? {} : { error }),
+    }
+    this.#deriveRunning = false
+    this.#publishAssetState('put')
+  }
+
+  #publishAssetState(operation: 'put' | 'remove'): void {
+    this.#publishSse('state-change', { domain: 'amphoreus', table: 'assets', key: 'derive', operation })
+  }
+
+  #publishSse(event: string, value: unknown): void {
+    try {
+      this.#sse.publish(event, value)
+    } catch (error) {
+      this.#warn(`amphoreus SSE publish failed (${event}): ${String(error)}`)
+    }
   }
 
   derivedWallpaperUrl(index: number): string | null {
@@ -851,6 +962,10 @@ function samePath(left: string, right: string): boolean {
 
 function isErrno(error: unknown, code: string): boolean {
   return typeof error === 'object' && error !== null && 'code' in error && (error as NodeJS.ErrnoException).code === code
+}
+
+function boundedText(value: string, limit: number): string {
+  return value.length <= limit ? value : value.slice(0, limit)
 }
 
 export function workbenchPage(boot: WorkbenchBoot): string {

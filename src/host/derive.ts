@@ -7,17 +7,10 @@ import {
   GLOBAL_WALLPAPERS,
   HERO_VISUALS,
 } from '../shared/heroes.ts'
+import type { DeriveKind, DeriveProgress } from '../shared/api.ts'
 import { listZip, readZipEntry } from './zip.ts'
 
-export type DeriveKind = 'covers' | 'chronicle' | 'cards' | 'stickers' | 'wallpapers'
-
-export interface DeriveProgress {
-  readonly kind: DeriveKind
-  readonly done: number
-  readonly total: number
-  readonly current: string
-  readonly error?: string
-}
+export type { DeriveKind, DeriveProgress } from '../shared/api.ts'
 
 export interface DeriveOptions {
   readonly assetsRoot: string
