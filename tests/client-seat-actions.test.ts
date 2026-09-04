@@ -190,6 +190,40 @@ test('nonce absence fails before fetch and open:false leaves the matching create
   assert.equal(opens, 0)
 })
 
+test('dispatch options override cwd, preserve face, and keep the prebound session closed', async () => {
+  const calls: FetchCall[] = []
+  const customDir = 'D:/fixture/source-project'
+  let createOptions: { cwd?: string; sessionId?: string } | undefined
+  let opens = 0
+  const fixture = deps({
+    sessions: {
+      create: async options => {
+        createOptions = options
+        return options.sessionId!
+      },
+      open: () => { opens += 1 },
+    },
+  })
+
+  const id = await withFetch(async (input, init) => {
+    calls.push({ input, init })
+    return ok()
+  }, () => startSeatSession(fixture, SKILL, {
+    open: false,
+    boundBy: 'dispatch',
+    cwd: customDir,
+    face: '夜星',
+  }))
+
+  assert.deepEqual(createOptions, { sessionId: id, cwd: customDir })
+  assert.deepEqual(JSON.parse(String(calls[0]?.init?.body)), {
+    skill: SKILL,
+    boundBy: 'dispatch',
+    face: '夜星',
+  })
+  assert.equal(opens, 0)
+})
+
 test('putBinding includes face and reports an empty detail for a non-object error body', async () => {
   const sessionId = 'session-00000000-0000-0000-0000-000000000001'
   const calls: FetchCall[] = []
@@ -209,14 +243,38 @@ test('putBinding includes face and reports an empty detail for a non-object erro
   })
 })
 
+test('putBinding carries handoff lineage without rewriting it in the caller', async () => {
+  const sessionId = 'session-00000000-0000-4000-8000-000000000002'
+  const parentId = 'session-00000000-0000-4000-8000-000000000001'
+  let body: unknown
+  await withFetch(async (_input, init) => {
+    body = JSON.parse(String(init?.body))
+    return ok()
+  }, () => putBinding(deps(), sessionId, {
+    skill: SKILL,
+    boundBy: 'handoff-fork',
+    face: '夜星',
+    fromSessionId: parentId,
+    fromSeq: 17,
+  }))
+  assert.deepEqual(body, {
+    skill: SKILL,
+    boundBy: 'handoff-fork',
+    face: '夜星',
+    fromSessionId: parentId,
+    fromSeq: 17,
+  })
+})
+
 test('workbench and client injection use only the shared skillName seat-session surface', () => {
   const index = readFileSync(new URL('../src/client/index.ts', import.meta.url), 'utf8')
   const workbench = readFileSync(new URL('../src/client/workbench.tsx', import.meta.url), 'utf8')
   const app = readFileSync(new URL('../workbench/app.js', import.meta.url), 'utf8')
   const combined = `${index}\n${workbench}\n${app}`
   assert.doesNotMatch(combined, /\b(?:seatHeroId|bindSeat|seatSkillOf)\b/)
-  assert.match(index, /const seatDeps: SeatActionDeps/)
+  assert.match(index, /const seatDeps: HandoffDeps/)
   assert.match(index, /startSeatSession: skillName => startSeatSession\(seatDeps, skillName, \{ open: false \}\)/)
+  assert.ok((index.match(/\bseatDeps,?/g) ?? []).length >= 4)
   assert.match(workbench, /if \(typeof data\.skillName === 'string' && data\.skillName !== ''\)/)
   assert.match(workbench, /const id = await startSeatSession\(data\.skillName\)/)
   assert.match(app, /skillName: seatSkill\?\.skillName/)

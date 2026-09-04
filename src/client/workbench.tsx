@@ -11,6 +11,7 @@ import type { AmphoreusState, MagazineModeMessage, ThemeTokensMessage } from '..
 import { heroVisualOf } from '../shared/heroes.ts'
 import { promptWithDeferredActivation } from './activation-bridge.ts'
 import { feedFromChat, HARD_TEXT_CAP, liveTextOf } from './conversation-feed.ts'
+import { acceptHandoff, dismissHandoff, dispatchTask, type DispatchInput, type HandoffDeps } from './handoff.ts'
 import { beginScrollRequest, safeOptionalInteger, scrollToTurn } from './scroll-to-turn.ts'
 import { bindingIndex, currentSeatOf } from './seat-model.ts'
 import { rememberTab, WORKBENCH_VIEW_ID } from './tabmemory.ts'
@@ -63,6 +64,7 @@ export interface WorkbenchViewInjected {
   readonly setSeat: (heroId: string | null) => void
   readonly magazine: MagazineBridge
   readonly startSeatSession: (skillName: string) => Promise<string>
+  readonly seatDeps: HandoffDeps
   readonly openPortal?: () => void
 }
 
@@ -121,6 +123,7 @@ interface BridgeMessage {
   requestId?: string
   sessionId?: string
   cwd?: string
+  face?: string
   atSeq?: number
   text?: string
   seq?: number
@@ -129,6 +132,9 @@ interface BridgeMessage {
   heroId?: string | null
   defer?: boolean
   activate?: boolean
+  from?: DispatchInput['from']
+  pipeline?: string
+  station?: number
 }
 
 export interface WorkbenchBridgeDeps {
@@ -136,6 +142,7 @@ export interface WorkbenchBridgeDeps {
   readonly model: ObservableSnapshot<{ state?: AmphoreusState }>
   readonly workspaces: ObservableSnapshot<WorkspacesPayload>
   readonly startSeatSession: (skillName: string) => Promise<string>
+  readonly seatDeps: HandoffDeps
   readonly setSeat: (heroId: string | null) => void
   readonly conversationFeed?: (sessionId: string) => ObservableSnapshot<ChatSnapshot | undefined> | undefined
   readonly sessionFace?: (sessionId: string) => SessionFeedFace | undefined
@@ -166,6 +173,7 @@ export function useWorkbenchBridge(
     model,
     workspaces,
     startSeatSession,
+    seatDeps,
     setSeat,
     conversationFeed,
     sessionFace,
@@ -420,6 +428,60 @@ export function useWorkbenchBridge(
             case 'amphoreus:request-config':
               pushConfig()
               return
+            case 'amphoreus:dispatch': {
+              if (typeof data.skillName !== 'string' || data.skillName.trim() === '') {
+                throw new Error('缺少派发席位')
+              }
+              if (typeof data.text !== 'string') throw new Error('缺少派发文本')
+              if (data.from !== 'panel' && data.from !== 'rail' && data.from !== 'pipeline') {
+                throw new Error('派发来源无效')
+              }
+              if (data.cwd !== undefined && (typeof data.cwd !== 'string' || data.cwd.trim() === '')) {
+                throw new Error('派发目录无效')
+              }
+              if (data.face !== undefined && (typeof data.face !== 'string' || data.face.trim() === '')) {
+                throw new Error('派发角色面无效')
+              }
+              if (data.pipeline !== undefined && (typeof data.pipeline !== 'string' || data.pipeline.trim() === '')) {
+                throw new Error('流水线名无效')
+              }
+              const station = safeOptionalInteger(data.station)
+              if (data.station !== undefined && station === undefined) throw new Error('派发站序无效')
+              const id = await dispatchTask(seatDeps, {
+                skillName: data.skillName,
+                text: data.text,
+                from: data.from,
+                open: false,
+                ...(data.cwd === undefined ? {} : { cwd: data.cwd }),
+                ...(data.face === undefined ? {} : { face: data.face }),
+                ...(data.pipeline === undefined ? {} : { pipeline: data.pipeline }),
+                ...(station === undefined ? {} : { station }),
+              })
+              reply({ type: 'amphoreus:dispatched', requestId: data.requestId, session: summaryOf(id) })
+              return
+            }
+            case 'amphoreus:accept-handoff':
+            case 'amphoreus:dismiss-handoff': {
+              if (typeof data.sessionId !== 'string' || data.sessionId === '') {
+                throw new Error('缺少移交会话')
+              }
+              const seq = safeOptionalInteger(data.seq)
+              if (seq === undefined) throw new Error('移交序号无效')
+              const observation = model.getSnapshot().state?.observations.find(candidate =>
+                candidate.sessionId === data.sessionId
+                && candidate.seq === seq
+                && candidate.kind === 'handoff'
+                && candidate.status === 'open')
+              if (observation === undefined) throw new Error('移交记录不存在')
+              if (data.type === 'amphoreus:accept-handoff') {
+                const id = await acceptHandoff(seatDeps, observation)
+                reply({ type: 'amphoreus:handoff-accepted', requestId: data.requestId, session: summaryOf(id) })
+              } else {
+                await dismissHandoff(seatDeps, observation)
+                reply({ type: 'amphoreus:handoff-dismissed', requestId: data.requestId })
+              }
+              return
+            }
             case 'amphoreus:create-session': {
               if (typeof data.skillName === 'string' && data.skillName !== '') {
                 const id = await startSeatSession(data.skillName)
@@ -503,7 +565,7 @@ export function useWorkbenchBridge(
     }
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
-  }, [conversationFeed, frameRef, pushConfig, pushCurrent, pushWorkspaces, reply, sessionFace, sessions, setSeat, startSeatSession, summaryOf])
+  }, [conversationFeed, frameRef, model, pushConfig, pushCurrent, pushWorkspaces, reply, seatDeps, sessionFace, sessions, setSeat, startSeatSession, summaryOf])
 
   useEffect(() => {
     let last: CurrentSessionIdentity | undefined
@@ -541,6 +603,7 @@ export function WorkbenchView({
   setSeat,
   magazine,
   startSeatSession,
+  seatDeps,
   openPortal,
   openView,
   completeViewRequest,
@@ -571,6 +634,7 @@ export function WorkbenchView({
     model,
     workspaces,
     startSeatSession,
+    seatDeps,
     setSeat,
     conversationFeed,
     sessionFace,

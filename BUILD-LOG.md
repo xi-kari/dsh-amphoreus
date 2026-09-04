@@ -832,7 +832,7 @@
 - 偏离与理由：无。
 - 遗留：无。
 ## TE2：派发记录与全体会议派发泳道 — 2026-09-05 05:14
-- commit: PENDING-TASK
+- commit: 70177ad
 - 动手前核对：实际执行任务书 `sed -n '3772,3924p'`、E.0 `3460,3608p` 与 storage-domain `78,98p`；确认 `update(key, fn)`、domain/changed、现有 4 KiB/64 KiB 路由边界与 connectorPath 的卡片左上角语义 PASS
 - 验收：
   - 聚焦 → observations/firstframe/body-limits/bindings/lane 共 `tests 16; pass 16; fail 0; skipped 0; duration_ms 484.2495`；审查修正未解析 pipeline 站位 tooltip 后复跑核心 `tests 14; pass 14; fail 0; skipped 0; duration_ms 500.4729` PASS
@@ -845,3 +845,17 @@
 - 人工断言：✓ 浏览器只能创建 dispatch observation，observer 专属四类不对外开放；✓ rawLine 截前 200 字而 payload 保留全文；✓ stub 点击只 activate/enter-seat、不 prompt；✓ status/standby 只读现有状态；✓ 旧 ResizeObserver 不残留。
 - 偏离与理由：依赖环使可构建顺序采用 TE2→TE3→TE1；本任务先落宿主 API 与 lane 消费端，`state.amph` 实时桥、真实派发与 receipt 三态分别由 TE1/TE3/TE4 后置联验。任务书只写非负 seq，但 E.0 明定 dispatch 固定 `0`，输入 schema 收紧为 literal 0；任务书漏列 locales、bindings/body-limit 回归，均随领域扩展同步。任务书 connectorPath 端点描述与现实现不符，抽共享点曲线保持两类调用正确。
 - 遗留：真实浏览器 stub/edge/pipeline/三态在 TE1+TE3+TE4 联通后回填；未写入 dummy observation，避免无 DELETE 路由时污染真实 store。
+## TE3：宿主页派发与移交共享流程 — 2026-09-05 05:23
+- commit: PENDING-TASK
+- 动手前核对：实际执行 `sed -n '3924,3998p'` 与 `grep -n 'function decodeTail' -A 6`；确认 observation key 会 decodeURIComponent、TC4 PUT→create 补偿边界、TC2 fork-inherit 排队顺序与官方 create/fork resolve 后可寻址契约 PASS
+- 验收：
+  - 新增 `handoff.ts` 与 15 组流程测试；聚焦 → `tests 41; pass 41; fail 0; skipped 0; duration_ms 415.4498`；全量 → `tests 267; pass 266; fail 0; skipped 1; duration_ms 2480.0099` PASS
+  - `npm run build` → derive/client/host=`28.87/177.10/192.00 kB`；typecheck、diff check 均 exit `0`，clsx 仍仅为既有非失败 bundle 提示 PASS
+  - dispatch 精确顺序锁定为 binding PUT → create → observation POST → client binding → queue prompt → optional open；空文本零副作用，cwd/face/from/pipeline/station 完整透传，prompt/open 各失败后的 durable 部分状态由测试明确锁定 PASS
+  - accept 精确为 fork → child handoff-fork binding → source observation accepted → open child；lineage/session/seq/face 与 `%3A` 编码精确，accept 段 `.prompt(`=`0`；dismiss 仅 PUT observation，stale accepted/dismissed 零写入 PASS
+  - Workbench bridge 新增 dispatch/accept/dismiss 三类消息，严格校验 skill/text/from/cwd/face/pipeline/safe station/session/seq；accept/dismiss 只反查最新 open handoff；成功返回 dispatched/handoff-accepted/handoff-dismissed，错误沿用 bridge-error PASS
+  - 全插件 `seatDeps` 升为唯一 `HandoffDeps`，Tab 与 Portal overlay 共用；任务书漏列的 `portal.tsx` 已补齐必填注入；TC11 单例装配回归同步且全绿 PASS
+  - `src/client/handoff.ts` 导入 seat-actions=`1`、全文件 `.prompt(`=`1`；构建产物 `boundBy: "dispatch"`=`2`，未复制 bindings PUT PASS
+- 人工断言：✓ dispatch 只在用户明确点击后发送首条任务；✓ accept 不发送移交内容；✓ fork-inherit 后置 handoff-fork 在同一 storage write chain 最终覆盖；✓ face 贯通双面席；✓ 三流程不被描述成跨系统原子事务。
+- 偏离与理由：任务书文件表漏列 Portal overlay 的共享 deps 注入，按强类型真实调用面补入。任务书 DispatchInput 漏 face，会使长夜月派发退回三月七，故在共享层增加可选 face 并留给 TE1/TE7 透传。构建器统一双引号，原单引号 grep 字面为 0；采用 quote-agnostic 实测 2，而不向 bundle 塞伪字符串。
+- 遗留：真实 dispatch/accept/dismiss 浏览器消息由 TE1/TE4/TE5 界面触发后联验；已明确 observation/prompt/open 与 fork/patch/open 各失败点可能留下的部分完成状态。

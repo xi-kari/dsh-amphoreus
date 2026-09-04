@@ -10,6 +10,7 @@ import { bindingIndex, currentSeatOf } from '../src/client/seat-model.ts'
 
 const bridgeSource = readFileSync(new URL('../src/client/workbench.tsx', import.meta.url), 'utf8')
 const clientSource = readFileSync(new URL('../src/client/index.ts', import.meta.url), 'utf8')
+const portalSource = readFileSync(new URL('../src/client/portal.tsx', import.meta.url), 'utf8')
 
 const helperStart = bridgeSource.indexOf('export function currentSessionIdentity')
 const helperEnd = bridgeSource.indexOf('\ninterface BridgeMessage', helperStart)
@@ -154,4 +155,36 @@ test('TC4 no-open create flow and the temporary optional portal seam stay explic
     bridgeSource.indexOf("case 'amphoreus:send-message'"),
   )
   assert.doesNotMatch(createCase, /sessions\.open\(/)
+})
+
+test('TE3 bridge validates dispatch, routes handoff RPC, and shares seatDeps with both frames', () => {
+  const dispatchCase = bridgeSource.slice(
+    bridgeSource.indexOf("case 'amphoreus:dispatch'"),
+    bridgeSource.indexOf("case 'amphoreus:accept-handoff'"),
+  )
+  assert.match(dispatchCase, /data\.from !== 'panel'/)
+  assert.match(dispatchCase, /data\.from !== 'rail'/)
+  assert.match(dispatchCase, /data\.from !== 'pipeline'/)
+  assert.match(dispatchCase, /safeOptionalInteger\(data\.station\)/)
+  assert.match(dispatchCase, /dispatchTask\(seatDeps/)
+  assert.match(dispatchCase, /open: false/)
+  assert.match(dispatchCase, /type: 'amphoreus:dispatched'/)
+
+  const handoffCase = bridgeSource.slice(
+    bridgeSource.indexOf("case 'amphoreus:accept-handoff'"),
+    bridgeSource.indexOf("case 'amphoreus:create-session'"),
+  )
+  assert.match(handoffCase, /model\.getSnapshot\(\)\.state\?\.observations\.find/)
+  assert.match(handoffCase, /candidate\.kind === 'handoff'/)
+  assert.match(handoffCase, /candidate\.status === 'open'/)
+  assert.match(handoffCase, /移交记录不存在/)
+  assert.match(handoffCase, /acceptHandoff\(seatDeps, observation\)/)
+  assert.match(handoffCase, /dismissHandoff\(seatDeps, observation\)/)
+  assert.match(handoffCase, /type: 'amphoreus:handoff-accepted'/)
+  assert.match(handoffCase, /type: 'amphoreus:handoff-dismissed'/)
+
+  assert.match(clientSource, /const seatDeps: HandoffDeps/)
+  assert.ok((clientSource.match(/\n\s+seatDeps,/g) ?? []).length >= 2)
+  assert.match(portalSource, /readonly seatDeps: WorkbenchBridgeDeps\['seatDeps'\]/)
+  assert.match(portalSource, /useWorkbenchBridge\(frameRef, \{[\s\S]*?seatDeps,/)
 })

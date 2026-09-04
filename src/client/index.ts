@@ -15,11 +15,12 @@ import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { HeroBrandMark, SidebarBrandMark, SidebarBrandName } from './brand.tsx'
 import { installGarnish } from './garnish.ts'
+import type { HandoffDeps } from './handoff.ts'
 import { en, NS, zh, type AmphoreusKey } from './locales.ts'
 import { SeatNameplate } from './nameplate.tsx'
 import { PortalFooterAction, PortalOverlay, type PortalFooterInjected, type PortalOverlayInjected } from './portal.tsx'
 import { createPortalStore } from './portal-store.ts'
-import { startSeatSession, type SeatActionDeps } from './seat-actions.ts'
+import { startSeatSession } from './seat-actions.ts'
 import { SeatBrowser, type SeatBrowserInjected } from './seat-browser.tsx'
 import { seatViewsFrom } from './seat-model.ts'
 import { AmphoreusSettings } from './settings.tsx'
@@ -67,10 +68,10 @@ export function apply(ctx: ClientContext): void {
     ctx.sessions.list as unknown as Parameters<typeof createWorkspacesSource>[0],
     model,
   )
-  const seatDeps: SeatActionDeps = {
+  const seatDeps: HandoffDeps = {
     nonce: () => model.getSnapshot().state?.nonce ?? window.__AMPHOREUS_BOOT__?.nonce,
     seatDirOf: skillName => model.getSnapshot().state?.seatDirs.find(directory => directory.skillName === skillName)?.dir,
-    sessions: ctx.sessions as unknown as SeatActionDeps['sessions'],
+    sessions: ctx.sessions as unknown as HandoffDeps['sessions'],
   }
   const sessionsFace = ctx.sessions as unknown as SessionsFace
   const startPortalSeatSession = (skillName: string): Promise<string> => startSeatSession(seatDeps, skillName)
@@ -185,6 +186,7 @@ export function apply(ctx: ClientContext): void {
       sessions: sessionsFace,
       workspaces,
       startSeatSession: startPortalSeatSession,
+      seatDeps,
       setSeat: seatTheme.hint,
       theme: themeBridge,
       magazine: magazineBridge,
@@ -220,6 +222,7 @@ export function apply(ctx: ClientContext): void {
         setSeat: seatTheme.hint,
         magazine: magazineBridge,
         startSeatSession: skillName => startSeatSession(seatDeps, skillName, { open: false }),
+        seatDeps,
         openPortal,
       }),
     }, WorkbenchView))

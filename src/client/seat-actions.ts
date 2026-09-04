@@ -9,8 +9,10 @@ export interface SeatActionDeps {
 
 interface BindingBody {
   readonly skill: string
-  readonly boundBy: 'seat-new' | 'seat-enter' | 'manual'
+  readonly boundBy: 'seat-new' | 'seat-enter' | 'manual' | 'dispatch' | 'handoff-fork'
   readonly face?: string
+  readonly fromSessionId?: string
+  readonly fromSeq?: number
 }
 
 async function responseError(response: Response): Promise<string> {
@@ -53,14 +55,23 @@ export async function deleteBinding(deps: SeatActionDeps, sessionId: string): Pr
 export async function startSeatSession(
   deps: SeatActionDeps,
   skillName: string,
-  options: { open?: boolean } = { open: true },
+  options: {
+    open?: boolean
+    boundBy?: 'seat-new' | 'dispatch'
+    cwd?: string
+    face?: string
+  } = { open: true },
 ): Promise<string> {
   const nonce = deps.nonce()
   if (nonce === undefined) throw new Error('nonce 未就绪')
   const sessionId = `session-${crypto.randomUUID()}`
-  await putBinding(deps, sessionId, { skill: skillName, boundBy: 'seat-new' })
+  await putBinding(deps, sessionId, {
+    skill: skillName,
+    boundBy: options.boundBy ?? 'seat-new',
+    ...(options.face === undefined ? {} : { face: options.face }),
+  })
   try {
-    const cwd = deps.seatDirOf(skillName)
+    const cwd = options.cwd ?? deps.seatDirOf(skillName)
     const created = await deps.sessions.create({ sessionId, ...(cwd === undefined ? {} : { cwd }) })
     if (created !== sessionId) throw new Error(`宿主返回了不同的会话 id（${created}）`)
     if (options.open !== false) deps.sessions.open(sessionId)
