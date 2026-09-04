@@ -1,0 +1,36 @@
+.plate {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  max-width: 200px;
+  padding: 0 8px 0 4px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--amph-seat-accent) 45%, transparent);
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--amph-seat-accent) 12%, var(--dsw-alias-bg-layer-2));
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  line-height: 22px;
+  white-space: nowrap;
+}
+
+.mark {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  object-fit: contain;
+}
+
+.markGeneric {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  border-radius: 50%;
+  background: hsl(var(--amph-seat-hue) 45% 52%);
+}
+
+.text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

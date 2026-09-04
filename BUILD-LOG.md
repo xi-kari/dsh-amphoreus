@@ -444,7 +444,7 @@
 - 偏离与理由：任务书示例的 `open-before-reply` 与已验证的 TB6 iframe 生命周期冲突，且实机复现首条消息丢失；因此共享 helper 默认仍是 `PUT→create→open`，但 Workbench 组合事务以 `{open:false}` 创建，待首条 prompt 成功接纳后由现有原子激活路径打开。普通 Workbench create 同理不提前 open。任务书目标句要求“任一步失败回滚”，故 open failure 也 DELETE；同时保留 TB6 的 `sessionsById` cwd 与 TB7 的 pre-remount flush。
 - 遗留：首次复现留下一个权威空白会话；其测试 binding 将在 C 章综合回归后解除，权威 session 仅通过产品归档入口处理。
 ## TC5：DSH 侧栏黄金裔席位与我的目录双组 — 2026-09-05 02:53
-- commit: PENDING-TASK
+- commit: e1e5dba
 - 动手前核对：任务书 `1970-2088`；上游 `pickDirectory()` 成功返回路径、取消返回 `null`、失败抛错；本机 auto picker 选择 Win32 native；parser/settings 权威确认 missing=`L3`、ready=`L0` PASS
 - 验收：
   - 聚焦四文件 → `tests 19; pass 19; fail 0; skipped 0; duration_ms 202.502`；全量 → `tests 210; pass 209; fail 0; skipped 1; duration_ms 2374.8029`；typecheck 无诊断、diff 无错误 PASS
@@ -458,6 +458,20 @@
 - 人工断言：✓ 所有 hooks 在 wide 分支前无条件调用；✓ hidden 在组件层过滤，undeployed 独立 details；✓ 席位排序/会话过滤与颜色均复用 TC3；✓ 新建复用 TC4；✓ branded ID 只在 index adapter 边界；✓ picker cancel 与 error fallback 不混同。
 - 偏离与理由：任务书一处把 `L0` 写成“未识别”，与 parser 及既有设置页权威相反；按源事实使用 `L3`，避免完整套件错误显示 missing。为保持任务文件边界未新增 UI 测试文件，结构静态门与真实浏览器覆盖交互。
 - 遗留：主环境没有 undeployed/hidden fixture，相关分支由纯模型与静态结构覆盖；native picker error→prompt 仅以已核实 host 合同和错误传播路径覆盖，实机成功/取消两态已完成。
+## TC6：会话头承办名牌 — 2026-09-05 03:04
+- commit: PENDING-TASK
+- 动手前核对：任务书 `2092-2131`；`conversation.session.header.actions` 为 session-scope list slot；官方 agent-preset=`order:-10`；模型箭头订阅/快照、Binding 六态来源、TC3 色源与素材门均与预期一致 PASS
+- 验收：
+  - `node --test tests/client-seat-model.test.ts` → `tests 5; pass 5; fail 0; skipped 0; duration_ms 128.0893`；全量 → `tests 210; pass 209; fail 0; skipped 1; duration_ms 2342.5489` PASS
+  - typecheck/build/diff → 全部 exit `0`；build derive/client/host=`28.87/149.64/187.04 kB` PASS
+  - 静态 → registration/id/order=`2/1/1`、useSyncExternalStore refs=`2`、click/button=`0`、multiple 消费=`0`、CSS raw hex/rgb/non-var-hsl=`0/0/0`、bundle nameplate/header refs=`1/2` PASS
+  - 浏览器已绑定昔涟 → 可见 `昔涟 · 总结`、tooltip=`amphoreus-cyrene｜承办：席内新建｜已注入`、sticker img=`1`；header actions 直系顺序=`[昔涟 · 总结, 标准模式]` PASS
+  - 浏览器已绑定那刻夏 → `那刻夏 · 代码`、tooltip=`amphoreus-anaxa｜承办：席内新建｜已注入`、sticker img=`1`；直系顺序=`[那刻夏 · 代码, 标准模式]`，可见正文无“档位/回执” PASS
+  - 浏览器无绑定 `TA6-S3` → header anchor 仍在、名牌节点=`0`、直系仅 `[标准模式]` PASS
+  - TC6 验收会话新增 binding=`session-7c5f1e75-37af-4cce-b5d1-ed49bb065b1a/amphoreus-anaxa/seat-new/done`；服务 PID `55932`、stderr=`0` bytes PASS
+- 人工断言：✓ tooltip 才包含 skill/source/injection/reason/合法 face；✓ 正文仅运行时显示名+首职责；✓ 无点击/切席；✓ order −20 在 agent preset −10 前；✓ 名牌局部变量不复制 D token 层。
+- 偏离与理由：无。
+- 遗留：TE2 扩 Binding source 为 `dispatch` 时须同步补 zh/en `nameplate.source.dispatch`，否则当前穷举词典会缺键；本章预先记录，届时在 TE2 一并闭合。
 ## TD7：杂志档位 prefs 覆盖与 iframe 桥 — 2026-09-05 00:01
 - commit: 6f6bafa
 - 验收：

@@ -15,6 +15,7 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { HeroBrandMark, SidebarBrandMark, SidebarBrandName } from './brand.tsx'
 import { installGarnish } from './garnish.ts'
 import { en, NS, zh, type AmphoreusKey } from './locales.ts'
+import { SeatNameplate } from './nameplate.tsx'
 import { startSeatSession, type SeatActionDeps } from './seat-actions.ts'
 import { SeatBrowser, type SeatBrowserInjected } from './seat-browser.tsx'
 import { AmphoreusSettings } from './settings.tsx'
@@ -129,6 +130,13 @@ export function apply(ctx: ClientContext): void {
     locale: NS,
     inject: () => ({ model }),
   }, AmphoreusSettings))
+  ctx.slots.inject('conversation.session.header.actions', () => ctx.slots.register({
+    name: 'conversation.session.header.actions',
+    id: 'amphoreus-nameplate',
+    order: -20,
+    locale: NS,
+    inject: () => ({ model }),
+  }, SeatNameplate))
 
   if (workbenchEnabled) {
     // Workbench as a second conversation view (id/order shape mirrors ui-trajectory).
