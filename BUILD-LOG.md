@@ -405,6 +405,18 @@
 - 人工断言：✓ 77/10 token 一行一项、固定字面量单源；✓ 不含异常 alias；✓ parse/mix/composite/rgba/rgb/luminance/contrast/ensureContrast 均为零依赖纯函数；✓ ensureContrast 每步从原 foreground 线性插值；✓ 未引入运行时 CSS 扫描与第三方颜色库。
 - 偏离与理由：无。
 - 遗留：无。
+## TC2：fork 子会话继承父席 — 2026-09-05 02:18
+- commit: PENDING-TASK
+- 动手前核对：`deepseek-harness-source/packages/core/session/src/index.ts` 的 `inheritedEventCount`=`445/446`、`firstLiveSeq`=`475`、`snapshotEvents`=`600-608`；本插件既有 `session/created` 监听位于 `src/index.ts:113` PASS
+- 验收：
+  - `node --test tests/injector-inherit.test.ts` → `tests 10; pass 10; fail 0; skipped 0; duration_ms 162.7513` PASS（exit: `0`）
+  - 全量 → `tests 198; pass 197; fail 0; skipped 1; duration_ms 2181.3717`；typecheck/build/diff 全通过，host `187.04 kB` PASS
+  - 本地服务 Stop/Start → PID `36980`、HTTP `200`；真实在已有 `amphoreus-cyrene` 席会话的首轮后创建分支，bindings 总数=`4`，新增记录 `source=fork-inherit`、`injection.state=skipped`、`reason=inherited-from-parent` PASS
+  - 纯函数门 → 父无绑定、子已有绑定、`freshFork=false` 均不生成；无同名继承卡时为 `pending/fork-inherit` 并继承 face；auto-invoke 关闭为 `skipped/auto-invoke-disabled` PASS
+  - 排队竞态门 → Path 1/Path 2 均可在 durable put 落盘前读取 `inheritedPending`；put reject/sync throw、snapshot error 与 disposer 都清理 pending 且记录 warning PASS
+- 人工断言：✓ `session/created` 只读元数据与继承 seed，不读父正文；✓ 不调用 `agent.inject`/`session.append`；✓ 以 `firstLiveSeq === inheritedEventCount` 排除 resume；✓ existing child binding 永不覆盖；✓ Path 1/2 原去重逻辑未改。
+- 偏离与理由：任务书最少要求 5 例，补为 10 例以覆盖真实写队列竞态、失败与释放；真实分支取父卡已经注入后的路径，故精确命中 `skipped/inherited-from-parent`。
+- 遗留：注入前 seq 的真实 `pending→done` 与旧无绑定子会话重开，由纯函数与监听集成回归覆盖，并在 TC4/TC9 联合浏览器流继续观察。
 ## TD7：杂志档位 prefs 覆盖与 iframe 桥 — 2026-09-05 00:01
 - commit: 6f6bafa
 - 验收：
@@ -563,7 +575,7 @@
 - 回滚与终态：所有 prefs 恢复 config/light；cache 保留已验证84文件；TD11 backup 已在内容一致后安全删除；服务运行、stderr0；源素材与 sessions 未改。
 - 遗留：第二步 CSS fallback 按条件明确保留；固定蓝由紧接的 C/TC9 清零；稳定 URL 强制重派生 cache-bust 为后续版本化设计项。
 ## TC1：Binding DELETE API 与队列语义 — 2026-09-05 01:54
-- commit: PENDING-TASK
+- commit: 7301cac
 - 动手前核对：当前 #bindingsRoute=`409`、#authorize JSON gate=`826`；DELETE 原本会被 content-type 415；上游 table.delete 返回 Promise<boolean> 且在队列执行槽判存在性 PASS
 - 验收：
   - `node --test tests/bindings-delete.test.ts` → `tests 3; pass 3; fail 0; skipped 0; duration_ms 300.5128` PASS（exit: `0`）

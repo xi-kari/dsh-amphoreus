@@ -11,6 +11,8 @@ import type { Context } from '@deepseek-ai/cordis'
 // Type-only: merges the agent/* event declarations into cordis Events.
 import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
 import { createUserMessage, type UserMessage } from '@deepseek-ai/dsh-llm'
+// Type-only: merges the session/* event declarations into cordis Events.
+import type { SessionLogOffset } from '@deepseek-ai/dsh-session'
 import { isUserInvocable, renderSkillContent, type SkillRegistry } from '@deepseek-ai/dsh-skill'
 import type { AmphoreusConfig, SessionStartSourceName } from './config.ts'
 import type { AmphoreusStores, BindingRecord } from './store.ts'
@@ -22,11 +24,50 @@ export interface InjectorOptions {
   readonly stores: AmphoreusStores
 }
 
-/** Register both injection paths; returns a disposer. */
+export interface InheritSeedEvent {
+  readonly type: string
+  readonly seq: number
+  readonly data?: unknown
+}
+
+/** Derive a child binding only for a newly-created fork. */
+export function planForkInheritance(input: {
+  readonly childId: string
+  readonly parent: BindingRecord | undefined
+  readonly childExisting: BindingRecord | undefined
+  readonly freshFork: boolean
+  readonly seedEvents: readonly InheritSeedEvent[]
+  readonly autoInvokeEnabled: boolean
+  readonly now: number
+}): BindingRecord | undefined {
+  if (!input.freshFork || input.parent === undefined || input.childExisting !== undefined) return undefined
+  const inherited = input.seedEvents.some(event => {
+    const source = (event.data as { source?: { kind?: string; name?: string } } | undefined)?.source
+    return event.type === 'user/message'
+      && source?.kind === 'skill-invocation'
+      && source.name === input.parent!.skillName
+  })
+  const injection = !input.autoInvokeEnabled
+    ? { state: 'skipped' as const, at: input.now, reason: 'auto-invoke-disabled' }
+    : inherited
+      ? { state: 'skipped' as const, at: input.now, reason: 'inherited-from-parent' }
+      : { state: 'pending' as const }
+  return {
+    sessionId: input.childId,
+    skillName: input.parent.skillName,
+    ...(input.parent.face === undefined ? {} : { face: input.parent.face }),
+    boundAt: input.now,
+    source: 'fork-inherit',
+    injection,
+  }
+}
+
+/** Register fork inheritance and both injection paths; returns a disposer. */
 export function registerInjector(ctx: Context, options: InjectorOptions): () => void {
   const { config, stores } = options
   const skills = (ctx as InjectorContext).skills
   const bindings = () => stores.main.table('bindings')
+  const inheritedPending = new Map<string, BindingRecord>()
 
   const sourceEnabled = (source: SessionStartSourceName): boolean =>
     config.autoInvoke.enabled && config.autoInvoke.sources.includes(source)
@@ -46,12 +87,51 @@ export function registerInjector(ctx: Context, options: InjectorOptions): () => 
       ...binding,
       injection: { state, at: Date.now(), ...(reason === undefined ? {} : { reason }) },
     })
+    inheritedPending.delete(binding.sessionId)
   }
+
+  // Fork inheritance must be visible before agent/session-start can race the
+  // durable table write. Resumed sessions fail the exact fresh-fork equality.
+  const disposeCreated = ctx.on('session/created', session => {
+    try {
+      const parentId = session.header.parentSession
+      if (parentId === undefined) return
+      const plan = planForkInheritance({
+        childId: session.id,
+        parent: bindings().get(parentId),
+        childExisting: bindings().get(session.id),
+        freshFork: session.firstLiveSeq === session.inheritedEventCount,
+        seedEvents: session.snapshotEvents(0 as SessionLogOffset, session.inheritedEventCount),
+        autoInvokeEnabled: config.autoInvoke.enabled,
+        now: Date.now(),
+      })
+      if (plan === undefined) return
+      inheritedPending.set(session.id, plan)
+      let write: Promise<void>
+      try {
+        write = bindings().put(session.id, plan)
+      } catch (error) {
+        inheritedPending.delete(session.id)
+        ctx.logger.warn(`amphoreus injector (fork-inherit): ${String(error)}`)
+        return
+      }
+      void write.then(
+        () => { inheritedPending.delete(session.id) },
+        error => {
+          inheritedPending.delete(session.id)
+          ctx.logger.warn(`amphoreus injector (fork-inherit): ${String(error)}`)
+        },
+      )
+    } catch (error) {
+      inheritedPending.delete(session.id)
+      ctx.logger.warn(`amphoreus injector (fork-inherit): ${String(error)}`)
+    }
+  })
 
   // Path 1: seed at session start (before the first user prompt, F11/F12).
   const disposeStart = ctx.on('agent/session-start', ({ agent, source }) => {
     void (async () => {
-      const binding = bindings().get(agent.session.id)
+      const binding = bindings().get(agent.session.id) ?? inheritedPending.get(agent.session.id)
       if (binding === undefined || binding.injection.state !== 'pending') return
       if (source === 'resume') return
       if (!sourceEnabled(source)) return
@@ -72,7 +152,7 @@ export function registerInjector(ctx: Context, options: InjectorOptions): () => 
     async ({ agent, messages, signal }, next): Promise<PreStepDecision> => {
       const decision = await next()
       if (decision.kind === 'reject') return decision
-      const binding = bindings().get(agent.session.id)
+      const binding = bindings().get(agent.session.id) ?? inheritedPending.get(agent.session.id)
       if (binding === undefined || binding.injection.state !== 'pending') return decision
       if (!config.autoInvoke.enabled) return decision
       const already = [...decision.messages, ...messages].some(message =>
@@ -93,6 +173,8 @@ export function registerInjector(ctx: Context, options: InjectorOptions): () => 
   )
 
   return () => {
+    inheritedPending.clear()
+    disposeCreated()
     disposeStart()
     disposePreStep()
   }
