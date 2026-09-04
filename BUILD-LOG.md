@@ -430,7 +430,7 @@
 - 偏离与理由：最少验收项扩展为 5 个聚焦测试，额外锁定重复绑定、只在 `byId` 的会话、稳定 tie-break 与素材门。
 - 遗留：无。
 ## TC4：席内新建共享预绑定流程与工作台桥接 — 2026-09-05 02:35
-- commit: PENDING-TASK
+- commit: 4986097
 - 动手前核对：任务书 `1891-1966`；上游 `sessions.create({cwd?,sessionId?})→Promise<SessionId>` 与 `open(SessionId)→void`；当前 Host 会话 ID 正则、Binding PUT/DELETE、iframe `bridge-error→settleRpc→submitDraft catch→setError` 链均逐项存在 PASS
 - 验收：
   - `node --test tests/client-seat-actions.test.ts` → `tests 7; pass 7; fail 0; skipped 0; duration_ms 121.0986`；`node --check workbench/app.js`、typecheck、diff 均 exit `0` PASS
@@ -443,6 +443,21 @@
 - 人工断言：✓ nonce/PUT 先于 create；✓ cwd 使用真实 seatDirs；✓ binding 错误不吞；✓ rollback DELETE 忽略404；✓ canvas save 在任何潜在 remount 前 flush；✓ iframe 不直接 fetch binding。
 - 偏离与理由：任务书示例的 `open-before-reply` 与已验证的 TB6 iframe 生命周期冲突，且实机复现首条消息丢失；因此共享 helper 默认仍是 `PUT→create→open`，但 Workbench 组合事务以 `{open:false}` 创建，待首条 prompt 成功接纳后由现有原子激活路径打开。普通 Workbench create 同理不提前 open。任务书目标句要求“任一步失败回滚”，故 open failure 也 DELETE；同时保留 TB6 的 `sessionsById` cwd 与 TB7 的 pre-remount flush。
 - 遗留：首次复现留下一个权威空白会话；其测试 binding 将在 C 章综合回归后解除，权威 session 仅通过产品归档入口处理。
+## TC5：DSH 侧栏黄金裔席位与我的目录双组 — 2026-09-05 02:53
+- commit: PENDING-TASK
+- 动手前核对：任务书 `1970-2088`；上游 `pickDirectory()` 成功返回路径、取消返回 `null`、失败抛错；本机 auto picker 选择 Win32 native；parser/settings 权威确认 missing=`L3`、ready=`L0` PASS
+- 验收：
+  - 聚焦四文件 → `tests 19; pass 19; fail 0; skipped 0; duration_ms 202.502`；全量 → `tests 210; pass 209; fail 0; skipped 1; duration_ms 2374.8029`；typecheck 无诊断、diff 无错误 PASS
+  - build derive/client/host=`28.87/146.05/187.04 kB`，exit `0` PASS
+  - 静态 → `children=0`、`priority:-10=4`、CSS 白名单/hex/rgb/literal-hsl=`0/0/0/0`、宽窄 marker=`2`、`L0 missing=0`、`L3 missing=1`、directoryFlow 重声明=`0`、组件 ctx=`0`、inline object style=`0` PASS
+  - 浏览器宽栏 → custom marker=`1`、seats/directories groups=`1/1`、官方 workspace role=tree=`0`；主席位/新建按钮=`13/13`，第一席为昔涟；当前席高亮、席内会话展开、目录原顺序均实际可见 PASS
+  - 浏览器窄栏 → marker=`1`、直系按钮=`14`（13 席+目录加号）；逐席为单列圆徽，点击昔涟先展开宽栏再打开/展开其最近会话 PASS
+  - 席位新建 → 那刻夏加号创建 `session-855f0752-3dd9-4c7f-8710-a559d8117f42`，binding=`amphoreus-anaxa/seat-new/done`，bindings `6→7`；当前高亮切到那刻夏，展开后显示 `anaxa` 会话 PASS
+  - 原生目录流 → 第一次实际打开 Win32 `IFileOpenDialog`（标题 `Select Workspace Directory`）后取消，无 prompt、无 workspace；第二次在同一原生对话框选择 `D:\DeepSeek Harness\.runtime\tc5-picker-fixture`，侧栏新增同名目录且宿主新会话页当前 workspace 立即切换到它 PASS
+  - 服务终态 → PID `55932`、HTTP `200`、stderr=`0` bytes PASS
+- 人工断言：✓ 所有 hooks 在 wide 分支前无条件调用；✓ hidden 在组件层过滤，undeployed 独立 details；✓ 席位排序/会话过滤与颜色均复用 TC3；✓ 新建复用 TC4；✓ branded ID 只在 index adapter 边界；✓ picker cancel 与 error fallback 不混同。
+- 偏离与理由：任务书一处把 `L0` 写成“未识别”，与 parser 及既有设置页权威相反；按源事实使用 `L3`，避免完整套件错误显示 missing。为保持任务文件边界未新增 UI 测试文件，结构静态门与真实浏览器覆盖交互。
+- 遗留：主环境没有 undeployed/hidden fixture，相关分支由纯模型与静态结构覆盖；native picker error→prompt 仅以已核实 host 合同和错误传播路径覆盖，实机成功/取消两态已完成。
 ## TD7：杂志档位 prefs 覆盖与 iframe 桥 — 2026-09-05 00:01
 - commit: 6f6bafa
 - 验收：

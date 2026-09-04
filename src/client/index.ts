@@ -1,17 +1,22 @@
 /** dsh-amphoreus browser half. Components receive injected faces, never ctx. */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/dsh-api-session-controller/client'
+import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-chat/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
+import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type {} from '@deepseek-ai/dsh-client-ui-theme/client'
+import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { HeroBrandMark, SidebarBrandMark, SidebarBrandName } from './brand.tsx'
 import { installGarnish } from './garnish.ts'
 import { en, NS, zh, type AmphoreusKey } from './locales.ts'
 import { startSeatSession, type SeatActionDeps } from './seat-actions.ts'
+import { SeatBrowser, type SeatBrowserInjected } from './seat-browser.tsx'
 import { AmphoreusSettings } from './settings.tsx'
 import { AmphoreusClientModel } from './state.ts'
 import { seedConversationView } from './tabmemory.ts'
@@ -26,7 +31,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   }
 }
 
-export const inject = ['slots', 'locale', 'theme', 'sessions', 'uiConversation']
+export const inject = ['slots', 'locale', 'theme', 'sessions', 'uiConversation', 'workspaces', 'uiWorkspace']
 
 export function apply(ctx: ClientContext): void {
   const model = new AmphoreusClientModel()
@@ -89,6 +94,28 @@ export function apply(ctx: ClientContext): void {
     ctx.slots.register({ name: 'sidebar.brand.name', priority: -10, locale: NS }, SidebarBrandName))
   ctx.slots.inject('conversation.hero.brand.mark', () =>
     ctx.slots.register({ name: 'conversation.hero.brand.mark', priority: -10, inject: () => ({ assetsConfigured }) }, HeroBrandMark))
+  ctx.slots.inject('sidebar.workspaces', () => ctx.slots.register({
+    name: 'sidebar.workspaces',
+    priority: -10,
+    locale: NS,
+    inject: (): SeatBrowserInjected => ({
+      model,
+      openSession: sessionId => (ctx.sessions as unknown as { open(id: SessionId): void }).open(sessionId as SessionId),
+      startSeatSession: skillName => startSeatSession(seatDeps, skillName),
+      startDirectorySession: workspaceId => ctx.uiWorkspace.startSession(workspaceId as WorkspaceId),
+      createDirectoryWorkspace: async fallbackPrompt => {
+        let path: string | null
+        try {
+          path = await ctx.uiWorkspace.pickDirectory()
+        } catch {
+          path = fallbackPrompt()
+        }
+        if (path === null || path.trim() === '') return
+        const workspace = await ctx.workspaces.create({ path: path.trim() })
+        ctx.uiWorkspace.startSession(workspace.workspaceId)
+      },
+    }),
+  }, SeatBrowser))
 
   // DOM garnish: time-of-day greeting headline + chimera folder stickers.
   ctx.effect(() => installGarnish({ assetsConfigured }), 'amphoreus: garnish')
