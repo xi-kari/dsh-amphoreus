@@ -4,7 +4,9 @@ import type { AmphoreusConfig } from '../src/host/config.ts'
 import { createBootPayload, createFirstFrameRows } from '../src/host/firstframe.ts'
 import { parseSuite, type SuiteTextFile } from '../src/host/suite/parse.ts'
 import { publicSuite, trustedHost, workbenchPage } from '../src/host/webapi.ts'
+import { ProjectionIndex, type HiddenStore } from '../src/host/workbench.ts'
 import { GLOBAL_WALLPAPERS } from '../src/shared/heroes.ts'
+import { ASSISTANT, RUNTIME_CONTEXT, SKILL_INJECT, TOOL_CALL, TOOL_RESULT, TURN_END_ERROR, TURN_START, USER_PLAIN } from './fixtures/session-events.ts'
 
 test('first-frame rows put boot data first and add wallpaper style/html/script only when enabled', () => {
   const config = fixtureConfig()
@@ -79,6 +81,25 @@ test('host fence accepts loopback authorities and exact configured hosts only', 
   assert.equal(trustedHost('devbox.local:3081', ['devbox.local:3080']), false)
   assert.equal(trustedHost('evil.example', []), false)
   assert.equal(trustedHost(undefined, []), false)
+})
+
+test('index route payload has no text', () => {
+  const hidden: HiddenStore = {
+    get: () => [],
+    set: async () => {},
+  }
+  const index = new ProjectionIndex(hidden)
+  index.replay({
+    id: 'session-00000000-0000-0000-0000-000000000001',
+    events: [TURN_START, RUNTIME_CONTEXT, SKILL_INJECT, USER_PLAIN, TOOL_CALL, ASSISTANT, TOOL_RESULT, TURN_END_ERROR],
+  })
+
+  const payload = JSON.stringify(index.list())
+  assert.doesNotMatch(payload, /FIXTURE_/u)
+  assert.equal(payload.includes('帮我看看这个'), false)
+  assert.equal(payload.includes('"text"'), false)
+  assert.equal(payload.includes('"arguments"'), false)
+  index.flush()
 })
 
 function fixtureSnapshot() {

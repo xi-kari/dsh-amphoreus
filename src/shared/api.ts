@@ -1,4 +1,4 @@
-import type { BindingRecord, CanvasRecord, MemoryRecord, ObservationRecord, SeatRecord, SuiteEventRecord } from '../host/store.ts'
+import type { AmphoreusGlobal, BindingRecord, CanvasRecord, MemoryRecord, ObservationRecord, SeatRecord, SuiteEventRecord } from '../host/store.ts'
 import type { DiagnosticCode, FeatureSwitches, SuiteLevel } from '../host/suite/types.ts'
 
 export interface PublicCard {
@@ -87,9 +87,11 @@ export interface AmphoreusState {
   readonly nonce: string
   readonly suite: PublicSuite | undefined
   readonly seats: readonly SeatRecord[]
+  readonly seatDirs: readonly { readonly heroId: string; readonly skillName: string; readonly dir: string }[]
   readonly bindings: readonly BindingRecord[]
   readonly memory: readonly MemoryRecord[]
   readonly observations: readonly ObservationRecord[]
+  readonly prefs: AmphoreusGlobal['prefs']
   readonly suiteEvents: readonly SuiteEventRecord[]
   readonly canvas: readonly { readonly sessionId: string; readonly value: CanvasRecord }[]
   readonly workbench: {

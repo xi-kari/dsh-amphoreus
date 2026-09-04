@@ -2,11 +2,13 @@ dsh-amphoreus - third-party notices
 
 1. dsh-synapse (https://github.com/liangmianya/dsh-synapse), v0.4.1, MIT License.
    The canvas workbench under workbench/ (app.js, styles.css, mark.svg) and the host
-   projection logic in src/host/workbench.ts are adapted from dsh-synapse. Changes:
+   projection index in src/host/workbench.ts are adapted from dsh-synapse. Changes:
    routes moved under /amphoreus/workbench, bridge source renamed to dsh-amphoreus,
-   message types renamed synapse:* -> amphoreus:*, session bodies no longer persisted
-   host-side, colors bound to DSH --dsw-alias-* tokens, cards carry Chrysos-heir
-   ownership and handoff edges. Original license text follows.
+   message types renamed synapse:* -> amphoreus:*, the host projection keeps only an
+   in-memory seq index rebuilt from session logs (no session text, no workbench.json/.lock),
+   message bodies reach the canvas from the browser session controller only, colors bound
+   to DSH --dsw-alias-* tokens, cards carry Chrysos-heir ownership and handoff edges.
+   Original license text follows.
 
 MIT License
 

@@ -7,13 +7,13 @@ import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { z } from 'zod'
 import type { AmphoreusState, PublicSuite, WorkbenchBoot, WorkbenchStatus } from '../shared/api.ts'
-import { GLOBAL_WALLPAPERS, heroVisualOf } from '../shared/heroes.ts'
+import { GLOBAL_WALLPAPERS } from '../shared/heroes.ts'
 import type { AmphoreusConfig } from './config.ts'
 import { publicWorkbench } from './firstframe.ts'
-import { BindingSchema, CanvasSchema, MemorySchema, type AmphoreusStores } from './store.ts'
+import { BindingSchema, CanvasSchema, MemorySchema, updateAmphoreusGlobal, type AmphoreusStores } from './store.ts'
 import type { SuiteResolver } from './bridge.ts'
 import type { SuiteSnapshot } from './suite/types.ts'
-import { InputError, NotFoundError, type WorkbenchStore } from './workbench.ts'
+import { InputError, NotFoundError, type ProjectionIndex } from './workbench.ts'
 import type { SeatDirRecord } from './seatdirs.ts'
 
 const MAX_BODY_BYTES = 4 * 1024
@@ -27,6 +27,11 @@ const BindInput = z.object({
   boundBy: z.enum(['seat-new', 'seat-enter', 'handoff', 'handoff-fork', 'fork-inherit', 'manual']),
   fromSessionId: z.string().optional(),
   fromSeq: z.number().int().nonnegative().optional(),
+})
+
+const PrefsInput = z.object({
+  quickPhrases: z.array(z.string().max(16)).max(12).optional(),
+  lastSeat: z.string().nullable().optional(),
 })
 
 interface ConnectionFence {
@@ -44,7 +49,7 @@ export interface WebApiOptions {
   readonly resolver: SuiteResolver
   readonly nonce?: string
   readonly workbenchDir?: string
-  readonly workbench?: WorkbenchStore
+  readonly workbench?: ProjectionIndex
   readonly workbenchStatus?: () => WorkbenchStatus
   readonly seatDirs?: readonly SeatDirRecord[]
 }
@@ -110,7 +115,7 @@ export class AmphoreusWebApi {
   readonly #stores: AmphoreusStores
   readonly #resolver: SuiteResolver
   readonly #workbenchDir: string
-  readonly #workbench: WorkbenchStore | undefined
+  readonly #workbench: ProjectionIndex | undefined
   readonly #workbenchStatus: () => WorkbenchStatus
   readonly #seatDirs: readonly SeatDirRecord[]
   readonly #sse = new SseHub()
@@ -144,7 +149,11 @@ export class AmphoreusWebApi {
     const snapshot = this.#resolver.onSnapshot(value => {
       this.#sse.publish('snapshot', snapshotSignal(value))
     })
+    const workbench = this.#workbench?.subscribe(sessionIds => {
+      this.#sse.publish('workbench-change', { sessionIds, revision: this.#workbench!.revision })
+    }) ?? (() => {})
     return () => {
+      workbench()
       snapshot()
       domain()
       route()
@@ -214,6 +223,24 @@ export class AmphoreusWebApi {
         json(response, 200, { observations: values(this.#stores.main.table('observations').entries()) })
         return
       }
+      if (path === '/amphoreus/api/prefs') {
+        if (request.method === 'GET') {
+          json(response, 200, { prefs: this.#stores.main.global.get().prefs })
+          return
+        }
+        if (!method(request, response, 'PUT')) return
+        const input = PrefsInput.parse(await readJson(request))
+        const updated = await updateAmphoreusGlobal(this.#stores.main, current => ({
+          ...current,
+          prefs: {
+            ...current.prefs,
+            ...(input.quickPhrases === undefined ? {} : { quickPhrases: input.quickPhrases }),
+            ...(input.lastSeat === undefined ? {} : { lastSeat: input.lastSeat }),
+          },
+        }))
+        json(response, 200, { prefs: updated.prefs })
+        return
+      }
       if (path.startsWith('/amphoreus/api/canvas/')) {
         await this.#canvasRoute(request, response, decodeTail(path, '/amphoreus/api/canvas/'))
         return
@@ -229,7 +256,7 @@ export class AmphoreusWebApi {
         return
       }
       if (path.startsWith('/amphoreus/workbench/api/')) {
-        await this.#workbenchRoute(request, response, path)
+        await this.#workbenchRoute(request, response, url)
         return
       }
       if (path.startsWith('/amphoreus/workbench/')) {
@@ -256,14 +283,17 @@ export class AmphoreusWebApi {
 
   state(): AmphoreusState {
     const snapshot = this.#resolver.current()
+    const global = this.#stores.main.global.get()
     return {
       revision: snapshot?.generation ?? 0,
       nonce: this.nonce,
       suite: snapshot === undefined ? undefined : publicSuite(snapshot),
       seats: values(this.#stores.main.table('seats').entries()),
+      seatDirs: this.#seatDirs.map(({ heroId, skillName, dir }) => ({ heroId, skillName, dir })),
       bindings: values(this.#stores.main.table('bindings').entries()),
       memory: values(this.#stores.main.table('memory').entries()),
       observations: values(this.#stores.main.table('observations').entries()),
+      prefs: global.prefs,
       suiteEvents: values(this.#stores.main.table('suite_events').entries()).sort((a, b) => b.at - a.at),
       canvas: [...this.#stores.canvas.table('canvas').entries()].map(([sessionId, value]) => ({ sessionId, value })),
       workbench: {
@@ -363,7 +393,7 @@ export class AmphoreusWebApi {
    * the same nonce gate as the rest of the plugin API. When the store failed
    * to open, every route answers 503 so the iframe shows one clear error.
    */
-  async #workbenchRoute(request: IncomingMessage, response: ServerResponse, path: string): Promise<void> {
+  async #workbenchRoute(request: IncomingMessage, response: ServerResponse, url: URL): Promise<void> {
     const status = this.#workbenchStatus()
     const store = this.#workbench
     if (status.kind !== 'ready' || store === undefined) {
@@ -376,72 +406,39 @@ export class AmphoreusWebApi {
       })
       return
     }
+    const path = url.pathname
     try {
-      if (path === '/amphoreus/workbench/api/workspaces') {
+      if (path === '/amphoreus/workbench/api/index') {
         if (!method(request, response, 'GET')) return
-        const snapshot = this.#resolver.current()
-        const assetsConfigured = this.#config.assetsRoot.trim() !== ''
+        store.flush()
+        const tag = `"wb-${store.revision}"`
+        if (request.headers['if-none-match'] === tag) {
+          response.writeHead(304, { etag: tag, 'cache-control': 'no-store' })
+          response.end()
+          return
+        }
         json(response, 200, {
-          workspaces: await store.list(),
-          seats: this.#seatDirs.map(entry => {
-            const visual = heroVisualOf(entry.skillName)
-            const card = snapshot?.cards.get(entry.skillName)
-            return {
-              heroId: entry.heroId,
-              skillName: entry.skillName,
-              dir: entry.dir,
-              displayName: card?.displayName ?? null,
-              duties: card?.duties ?? [],
-              ordinal: card?.ordinal ?? null,
-              deployed: card !== undefined,
-              order: visual?.order ?? 99,
-              accent: visual?.palette.accent ?? null,
-              accent2: visual?.palette.accent2 ?? null,
-              lightBase: visual?.palette.lightBase ?? null,
-              darkBase: visual?.palette.darkBase ?? null,
-              // Chronicle art (英雄纪) as the portal card face; card art as detail bg.
-              chronicleUrl: assetsConfigured && visual !== undefined
-                ? `/amphoreus/assets/${encodeURIComponent('翁法罗斯英雄纪')}/${encodeURIComponent(visual.assets.chronicle)}`
-                : null,
-              cardUrl: assetsConfigured && visual !== undefined
-                ? `/amphoreus/assets/${encodeURIComponent('翁法罗斯如我所书卡牌')}/${encodeURIComponent(visual.assets.card)}`
-                : null,
-              stickerUrl: assetsConfigured && visual !== undefined
-                ? `/amphoreus/assets/${encodeURIComponent('表情包')}/${encodeURIComponent(visual.assets.sticker)}`
-                : null,
-            }
-          }).sort((left, right) => left.order - right.order),
-          assetsConfigured,
+          revision: store.revision,
+          sessions: store.list(url.searchParams.get('includeHidden') === '1'),
           unprojectable: store.unprojectable(),
-        })
+        }, { etag: tag })
         return
       }
-      const workspace = /^\/amphoreus\/workbench\/api\/workspaces\/([A-Za-z0-9:_-]+)$/.exec(path)
-      if (workspace !== null) {
-        if (!method(request, response, 'GET')) return
-        json(response, 200, { workspace: await store.get(workspace[1]!) })
-        return
-      }
-      const branch = /^\/amphoreus\/workbench\/api\/threads\/([0-9a-f-]+)\/branch$/i.exec(path)
-      if (branch !== null) {
-        if (!method(request, response, 'POST')) return
-        json(response, 201, { thread: await store.branch(branch[1]!, asRecord(await readJson(request))) })
-        return
-      }
-      const notes = /^\/amphoreus\/workbench\/api\/threads\/([0-9a-f-]+)\/messages$/i.exec(path)
-      if (notes !== null) {
-        if (!method(request, response, 'POST')) return
-        const body = asRecord(await readJson(request))
-        json(response, 201, { thread: await store.addNote(notes[1]!, String(body.text ?? '')) })
-        return
-      }
-      const thread = /^\/amphoreus\/workbench\/api\/threads\/([0-9a-f-]+)$/i.exec(path)
-      if (thread !== null && request.method === 'PATCH') {
-        json(response, 200, { thread: await store.updateThread(thread[1]!, asRecord(await readJson(request))) })
-        return
-      }
-      if (thread !== null && request.method === 'DELETE') {
-        json(response, 200, await store.removeThread(thread[1]!))
+
+      const sessionId = decodeTail(path, '/amphoreus/workbench/api/index/')
+      if (path.startsWith('/amphoreus/workbench/api/index/') && sessionId !== undefined && SESSION_ID.test(sessionId)) {
+        if (request.method === 'GET') {
+          const session = store.get(sessionId)
+          if (session === undefined) json(response, 404, { error: '会话不在索引中' })
+          else json(response, 200, { session })
+          return
+        }
+        if (request.method === 'DELETE') {
+          json(response, 200, await store.hide(sessionId))
+          return
+        }
+        response.writeHead(405, { allow: 'GET, DELETE' })
+        response.end()
         return
       }
       json(response, 404, { error: '接口不存在' })

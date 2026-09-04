@@ -214,7 +214,7 @@
 - 偏离与理由：TB2 尚未替换旧 WorkbenchStore，本任务按任务书将其过渡期消息正文置空；下一任务改为纯结构索引后该旧路径整体删除。提交短 SHA 按下一提交回填规则处理。
 - 遗留：无
 ## TB2 G8/G16：`WorkbenchStore` → 内存 `ProjectionIndex` — 2026-09-04 17:09
-- commit: PENDING-TB2
+- commit: aec4611
 - 验收：
   - 动手前 `grep -n global src/host/seats.ts` → `global` 构造位于 111 行且 112 行 `...currentGlobal`，新增字段会保留 PASS（exit: `0`）
   - 动手前 `grep -n 'interface SessionStorageMetadata' -A 8 …/session-persistence/src/index.ts` → `meta`、`inheritedEventCount` 字段位于 34/36 行，`SessionInspection` 继承该结构 PASS（exit: `0`）
@@ -222,7 +222,22 @@
   - `grep -rn 'workbench.json\|acquireLock\|\.lock\|writeFile\|rename(' src/host/workbench.ts` → `无输出` PASS（grep exit: `1`）
   - `grep -n "'sessionPersistence'" src/index.ts` → `1` 行（inject）PASS
   - `firstLiveSeq` 与旧 `WorkbenchStore/projectSession/projectEvents/createSeatResolver` 符号 → `0`；`amphoreus` 与 `amphoreus_canvas` 域 version 均保持 `1` PASS
-  - 运行态（旧文件不再生成、磁盘 N、冷/活索引数量及未点开旧会话卡）：TB2-RUNTIME-DEFERRED
+  - 运行态（旧文件不再生成、磁盘 N、冷/活索引数量及未点开旧会话卡）：``DSH_HOME/amphoreus`` 中 ``workbench.json*`` = ``0``；磁盘非空会话目录 ``N=13``；无浏览器连接重启后 index 六次稳定为 ``revision=1, sessions=13, sessionsWithCards=11, cards=19, containsText=false``，其中未点开的冷会话已有 cards；stderr 投影/cold replay 异常 ``0`` PASS（由 TB3 路由与修复提交 ``9b7150b`` 落地后实测）
 - 人工断言：✓ 索引无 text/preview/snippet/arguments/result 字段；✓ 根、冷 fork、live fork 重放与幂等锁定；✓ 隐藏级联写 domain global 并同步刷新 revision；✓ 800ms 通知合并；✓ J-13 四方法保留且变化可通知。
 - 偏离与理由：TB2 指定文件重写后，尚待 TB3 修改的 `webapi.ts` 仍导入旧 `WorkbenchStore`，故阶段性 `npm run typecheck` 仅报 `TS2305` 1 项（exit `2`）；TB2 自带验收未要求 typecheck。其运行态命令又依赖 TB3 才新增的 `/api/index` 路由，因此在 TB3 实现、构建、重启后回填实测结果。提交短 SHA按下一提交回填规则处理。
 - 遗留：仅上述 TB3 顺序依赖；无代码遗留。
+## TB3 G8/G14/G16：索引路由、SSE、state 与 prefs — 2026-09-04 17:28
+- commit: PENDING-TB3
+- 验收：
+  - `npm run typecheck && npm test && npm run build` → typecheck 恢复；`tests 77; pass 76; fail 0; skipped 1; duration_ms 1332.5523`；client `70.22 kB`、host `147.46 kB` PASS（exit: `0`）
+  - `GET /amphoreus/workbench/api/index` → `revision=1, sessions=13, sessionsWithCards=11, cards=19`；前 600 字含稳定 `sessionId/cards/userSeq/assistantSeq/toolCallIds`，`"text"` 与 `"arguments"` 计数均 `0` PASS
+  - 旧 `GET /amphoreus/workbench/api/workspaces` → HTTP `404` PASS
+  - SSE 初帧 → `event: snapshot`；会话追加消息后收到 `event: workbench-change`，载荷 revision `4`/`5` 且 sessionIds 为变更会话 PASS（800ms 合并窗内到达）
+  - index ETag → `"wb-5"`；相同 `If-None-Match` → HTTP `304`；单会话 GET → `200`；不存在 GET → `404` PASS
+  - 不存在会话 DELETE：无 nonce → `403`；有 nonce → `404`，未被 GET method 门挡成 405 PASS
+  - `GET /amphoreus/api/prefs` → `{"lastSeat":null,"wallpaperCursor":0,"quickPhrases":[]}`；state → `seatDirs=13`，prefs 三键齐全，workbench 五字段齐全 PASS
+  - 静态：`WorkbenchStore`/`heroVisualOf`/旧 api workspaces/threads → `0`；`PrefsInput` 定义 `1`；唯一 `/amphoreus/api/prefs` 分支 `1`；README `不经宿主路由` 与 NOTICE `in-memory seq index` 各存在 PASS
+  - `git diff --check` → `无输出` PASS（exit: `0`）
+- 人工断言：✓ 新 API 只暴露 seq 索引；✓ cold/live 会话均进入索引；✓ 旧正文路由 404；✓ SSE 先 snapshot 后 workbench-change；✓ prefs 合并不覆盖其他全局字段。
+- 偏离与理由：TB2 复核发现并发 hidden/global 写覆盖、后到子会话逃逸、冷重放游离、listener 反向破坏写结果与脏 ETag 风险；修复提交 `9b7150b` 引入全局串行 read-modify-write、hide 串行/祖先隐藏、冷任务 abort+await、观察者隔离，并在 GET 建立 flush 边界。TB3 提交短 SHA 按下一提交回填规则处理。
+- 遗留：无
