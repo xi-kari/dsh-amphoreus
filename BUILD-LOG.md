@@ -438,7 +438,7 @@
 - 偏离与理由：任务书给出的 CSS 文件头注释含内嵌 `*/`，改写为等义合法注释；接收器增加 parent、87-entry、纯 color 语义门；滚动条采用已桥接的专用 scrollbar token；这些收口不改变协议目标。
 - 遗留：无。
 ## TD4：逐席 token 合成层与 104 项对比度门 — 2026-09-04 23:18
-- commit: PENDING-TASK
+- commit: 7b188fc
 - 验收：
   - `node --test tests/seat-theme.test.ts` → `tests 5; pass 5; fail 0; skipped 0; duration_ms 124.6176` PASS（exit: `0`）
   - `node scripts/check-contrast.ts` → 数据行=`104`（13×2×4）、FAIL=`0` PASS（exit: `0`）
@@ -456,4 +456,23 @@
   - 最终浏览器恢复「全体会议」与原系统外观；服务 PID `61248` running、HTTP `200`、stderr=`0` bytes PASS
 - 人工断言：✓ light/dark 合成方向按 palette mode；✓ 同 source 先 override 再调用旧 disposer，更新无全局色闪隙；✓ seatStyle 关闭只清 layer 并保留 selected intent，重新开启可恢复；✓ Cyrene/null/未知席只清层、不永久退订；✓ model 只有 seatStyle/surfaceAlpha 变化时重算；✓ iframe 只上报 heroId，不自行合成 token。
 - 偏离与理由：任务书 `SeatSchemeInput` 仅有当前 `base`，但 light ink 需要 `darkBase`、dark ink 需要 `lightBase`，数学上信息不足；新增 `oppositeBase` 精确表达反极性底色。`seatContrastReport(hero)` 无 alpha 参数，静态审计固定使用配置默认 `.22/.4` 并写明，运行时仍使用 live alpha。
+- 遗留：无。
+## TD5：13 种共享 SVG 纹样与画布层 — 2026-09-04 23:39
+- commit: PENDING-TASK
+- 验收：
+  - `node --test tests/shared-motifs.test.ts tests/workbench-motif.test.ts` → `tests 8; pass 8; fail 0; skipped 0; duration_ms 148.4768` PASS（exit: `0`）
+  - 全量测试 → `tests 145; pass 144; fail 0; skipped 1` PASS（exit: `0`）；首次未用精简 PATH 的 `npm test` 复现工作区已知 `'node' is not recognized`（exit `1`），按 §0 固化 PATH 重跑通过
+  - `npm run typecheck`、`node --check workbench/app.js`、Lightning CSS 解析、`npm run build` 全通过；client `107.65 kB`、host `152.02 kB` PASS（各 exit: `0`）
+  - 13 个 `HeroMotif` 与 MOTIFS keys 精确相等、unique SVG=`13`、URI round-trip=`13`；每个 SVG 有固定 viewBox、颜色、opacity、geometricPrecision 且无 script/foreignObject/href/src PASS
+  - J-4 workspaces 浏览器侧载荷：13 席均生成 `volume` 与 light/dark motif；`src/host/webapi.ts` diff=`0` PASS
+  - CSS/JS 静态门 → main-stage `::before=1`、原 `::after=1`、四直接子元素层级规则=`1`、CSS motif refs=`2`、app motif refs=`2`、CARD 310×276 不变；`git diff --check` 无空白错误 PASS
+- 浏览器验收：
+  - 黄金裔门户渲染 portal cards=`13`；进「那刻夏」席后 host dataset=`anaxa`、brand=`rgb(35, 102, 77)` PASS
+  - `.main-stage` 的 motif 自定义属性长度=`1785`，前缀为 `url("data:image/svg+xml;utf8,`，含 astrolabe `circle` 与 `r="22"` 编码；`::before` backgroundImage 为同一 data URI、opacity=`0.55` PASS
+  - `.canvas-tabs` computed position=`relative`，纹样层位于其下 PASS
+  - 新会话草稿输入 `TD5-纹样切换焦点与草稿保留` 后 textarea active=`true`；切 DSH 深色后草稿文字逐字保留、motif URI 立即变化且 iframe theme=`dark` PASS
+  - 设置 UI 点击本身把浏览器焦点移到宿主按钮（复核时 textarea active=`false`），但 `canReplaceView()`/protected branch 行为测试确认主题消息不重建 textarea DOM；随后恢复「跟随系统」、取消未发送草稿、回到「全体会议」，未生成会话 PASS
+  - 最终服务 PID `57072` running、HTTP `200`、stderr=`0` bytes PASS
+- 人工断言：✓ 纹样以共享纯函数单源生成，不使用位图/外部 SVG/资源路由；✓ 载荷 URI 再做 data-URI prefix 门；✓ 合并后的 main-stage style 整体 escapeHtml；✓ 主题变化先原位更新 motif，再按 canReplaceView 受保护重绘/延后；✓ portal 不铺单席纹样；✓ 原卡牌艺术 ::after 保留。
+- 偏离与理由：任务书改动文件仍写已删除路由所在 `host/webapi.ts`，按其同段 J-4 裁决改实际 `client/workspaces-source.ts`；额外增加 workbench-motif 行为测试。浏览器通过宿主设置按钮切主题会按交互语义转移焦点，因此焦点不丢以无 DOM 重建的行为门验证，而真实浏览器同时验证草稿值完整保留。
 - 遗留：无。

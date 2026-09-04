@@ -1,6 +1,7 @@
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type { AmphoreusState } from '../shared/api.ts'
 import { heroVisualOf } from '../shared/heroes.ts'
+import { motifDataUri } from '../shared/motifs.ts'
 
 export interface WorkspaceSeat {
   heroId: string | null
@@ -15,6 +16,8 @@ export interface WorkspaceSeat {
   accent2: string | null
   lightBase: string | null
   darkBase: string | null
+  volume: number | null
+  motif: { name: string; light: string; dark: string } | null
   chronicleUrl: string | null
   cardUrl: string | null
   stickerUrl: string | null
@@ -74,6 +77,12 @@ function composeWorkspaces(list: ListSnapshot, state: AmphoreusState | undefined
         accent2: visual?.palette.accent2 ?? null,
         lightBase: visual?.palette.lightBase ?? null,
         darkBase: visual?.palette.darkBase ?? null,
+        volume: visual?.volume ?? null,
+        motif: visual === undefined ? null : {
+          name: visual.motif,
+          light: motifDataUri(visual.motif, { color: visual.palette.accent, opacity: 0.12 }),
+          dark: motifDataUri(visual.motif, { color: visual.palette.accent2, opacity: 0.16 }),
+        },
         chronicleUrl: assetsConfigured && visual !== undefined
           ? assetUrl('翁法罗斯英雄纪', visual.assets.chronicle)
           : null,
