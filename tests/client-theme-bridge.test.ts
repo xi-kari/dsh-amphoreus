@@ -21,7 +21,8 @@ test('workbench pushes the same two-frame theme bridge on lifecycle signals and 
   const ready = workbench.slice(workbench.indexOf("case 'amphoreus:map-ready'"), workbench.indexOf("case 'amphoreus:map-opened'"))
   assert.match(ready, /pushThemeTokensRef\.current\(\)/)
   const frame = workbench.slice(workbench.indexOf('<iframe'), workbench.indexOf('/>', workbench.indexOf('<iframe')))
-  assert.match(frame, /amphoreus:map-opened[\s\S]*pushThemeTokensRef\.current\(\)/)
+  assert.match(frame, /onLoad=\{onFrameLoad\}/)
+  assert.match(workbench, /const onFrameLoad = useCallback\([\s\S]*amphoreus:map-opened[\s\S]*pushThemeTokensRef\.current\(\)/)
   assert.doesNotMatch(workbench, /type:\s*['"]amphoreus:theme['"]/)
 })
 

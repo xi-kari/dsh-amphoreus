@@ -167,7 +167,7 @@ export function apply(ctx: ClientContext): void {
           }
         },
         sessionFace: sessionId => sessionAdapter.binding(sessionId as SessionId)?.session,
-        config: model,
+        model,
         theme: themeBridge,
         setSeat: seatTheme.hint,
         magazine: magazineBridge,

@@ -473,7 +473,7 @@
 - 偏离与理由：无。
 - 遗留：TE2 扩 Binding source 为 `dispatch` 时须同步补 zh/en `nameplate.source.dispatch`，否则当前穷举词典会缺键；本章预先记录，届时在 TE2 一并闭合。
 ## TC7：当前席换装、首帧静态底色与双层壁纸 — 2026-09-05 03:31
-- commit: PENDING-TASK
+- commit: d1f66e9
 - 动手前核对：任务书 `2135-2250`；日历目录文件=`14`，13 个 `HERO_VISUALS.assets.calendar` 引用全部存在，额外仅 `2026阴历版本.jpeg`；`VolumeMode=light|mid|dark` 与 wallpaper 配置字段逐项一致 PASS
 - 验收：
   - 聚焦 → `tests 22; pass 22; fail 0; skipped 0; duration_ms 362.507`；全量 → `tests 219; pass 218; fail 0; skipped 1; duration_ms 2421.1556` PASS
@@ -489,6 +489,20 @@
 - 人工断言：✓ binding 胜过 iframe hint；✓ hint 随 session 清空；✓ full key 覆盖配置/候选/派生版本但不含 revision；✓ derived 失败再试 calendar；✓ 无候选 token-only 不 warn；✓ 全失败只 warn 一次并退全局；✓ disposer 真实取消 decode/timer、退订并封住迟到写入。
 - 偏离与理由：D 章已先产出 `cover-169.webp`，正常路径按最终事实优先派生图并用 `lastDerive.at` query cache-bust，日历作为二级 decode fallback；因此任务书旧浏览器预期“直接看到8月日历”更新为派生封面。为封闭真实首帧竞态，对 D `createSeatLayer` 增加显式所有权语义，并同步更新必要的既有 D 测试。
 - 遗留：主环境未破坏 derived/calendar 文件来强制全失败；calendar fallback、全失败一次 warn、token-only 与 dispose 均由可控 DOM/Image integration fixture 实际执行。
+## TC8：workspaces 身份载荷与共享 Workbench bridge — 2026-09-05 03:49
+- commit: PENDING-TASK
+- 动手前核对：任务书 `2254-2291`；当前 WorkspacesSeat 已含 D 的 volume/motif/cover 字段；fallbackHue 与 TC3 bindingIndex/currentSeatOf 可复用；SessionSummary 有 cwd；旧 bridge 的 workspaces/config/messages/live/theme/magazine/RPC/scroll 全锚点逐一定位 PASS
+- 验收：
+  - 聚焦 10 文件 → `tests 47; pass 47; fail 0; skipped 0; duration_ms 485.7121`；全量 → `tests 225; pass 224; fail 0; skipped 1; duration_ms 2266.4314` PASS
+  - typecheck/build/diff → 全部 exit `0`；build derive/client/host=`28.87/163.47/188.25 kB` PASS
+  - 静态 → `WorkspaceSeat.hue=1`、workspace source refs=`2`、`useWorkbenchBridge=2`、open-seat/open-portal cases=`2`、`openView('chat')=2`、seatHeroId=`0`、生产 openPortal noop=`0` PASS
+  - 实机 map-ready 重放 → 消息包含 workspaces/current/config/messages/live/magazine/theme（theme 因双 rAF 后到）；seats=`13`、sessions=`16`、hue 字段=`13`、13 个已知席 hue 全 null、session source 字段=`16`、seat sessionIds 泄漏=`0` PASS
+  - 当前那刻夏消息 → session=`session-7c5f1e75-37af-4cce-b5d1-ed49bb065b1a`、title=`TC6那刻夏名牌验收`、cwd=`D:\DeepSeek Harness\.dsh-home\amphoreus\seats\anaxa`、seat=`amphoreus-anaxa/anaxa`；对应 workspace session source=`seat-new` PASS
+  - late-binding 实机 → 当前 `TA6-S3` 首条同 id `seat:null`；PUT `manual` 后 ≤900ms 补发同 id `seat:{amphoreus-anaxa,anaxa}`，workspaces source=`manual`；DELETE 回滚=`200 true` 后再补发 `seat:null`，最终 TA6 binding=`0`、总 bindings 恢复=`9` PASS
+  - 服务终态 → PID `60676`、HTTP `200`、stderr=`0` bytes PASS
+- 人工断言：✓ hook 完整迁移原桥所有副作用；✓ origin/contentWindow/source 三重门保留；✓ current 主动推同时订阅 sessions+model 并按 id+seatKey 去重；✓ unknown seat/skill 不被过滤且 heroId null/hue 确定；✓ 跨会话 open 先 remember chat 再 navigation；✓ TC4 Workbench open:false 不回归。
+- 偏离与理由：任务书的简化 hook deps 无法承载既有 feed/theme/magazine，故将其作为显式可选依赖，Tab 传全、未来 Portal 传最小；返回面额外含 `onFrameLoad` 以单源保留 map-opened+theme 握手。Portal store 归 TC10，TC8 使用 optional `openPortal` 且不注入假 noop。
+- 遗留：open-seat/open-portal 的最终 UI 消费分别由 TC9/TC10 接通；当前 handler 路由已由测试执行，未伪称门户已完成。
 ## TD7：杂志档位 prefs 覆盖与 iframe 桥 — 2026-09-05 00:01
 - commit: 6f6bafa
 - 验收：

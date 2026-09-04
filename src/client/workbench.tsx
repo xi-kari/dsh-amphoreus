@@ -1,37 +1,56 @@
 /**
- * Workbench tab: hosts /amphoreus/workbench/ in an iframe and answers its
- * postMessage RPC (amphoreus:create-session / send-message / fork-session /
- * open-session / activate-session) with the injected session service, so the
- * canvas can create seat sessions, prompt them, and fork branches. All skill
- * binding stays host-side (the shared seat action + the injector); the iframe
- * receives only the bounded browser conversation feed for the active session.
+ * Workbench bridge shared by the conversation tab and the portal overlay.
+ * It projects bounded session metadata and conversation feeds into one iframe,
+ * and handles the iframe's session RPC without exposing the client context.
  */
-import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
+import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ChatSnapshot } from '@deepseek-ai/dsh-client-ui-chat/client'
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, type RefObject } from 'react'
 import type { AmphoreusState, MagazineModeMessage, ThemeTokensMessage } from '../shared/api.ts'
+import { heroVisualOf } from '../shared/heroes.ts'
 import { promptWithDeferredActivation } from './activation-bridge.ts'
 import { feedFromChat, HARD_TEXT_CAP, liveTextOf } from './conversation-feed.ts'
 import { beginScrollRequest, safeOptionalInteger, scrollToTurn } from './scroll-to-turn.ts'
+import { bindingIndex, currentSeatOf } from './seat-model.ts'
 import { rememberTab, WORKBENCH_VIEW_ID } from './tabmemory.ts'
 import type { BridgedTokens } from './theme.ts'
 import css from './workbench.module.css'
 import type { WorkspacesPayload } from './workspaces-source.ts'
 
-interface SessionFeedFace {
+export interface SessionFeedFace {
   prompt(content: { type: 'text'; text: string }[], mode: 'queue' | 'steer'): Promise<{ ok: boolean; error?: { message?: string } }>
   loadThrough(seq: number): Promise<void>
   getSnapshot(): { running: boolean; openState: 'cold' | 'loading' | 'open' | 'error'; hasMore: boolean; loadingOlder: boolean }
   subscribe(listener: () => void): () => void
 }
 
-interface SessionsFace {
+export interface SessionListSnapshot {
+  readonly byId: Record<string, {
+    readonly title?: string
+    readonly displayTitle: string
+    readonly cwd?: string
+  } | undefined>
+  readonly current: string | undefined
+}
+
+export interface SessionsFace {
   create(opts: { cwd?: string; sessionId?: string }): Promise<string>
   fork(opts: { sessionId: string; atSeq?: number; increaseTitle?: boolean }): Promise<string>
   open(id: string): void
   binding(id: string): { session: SessionFeedFace } | undefined
-  readonly list: { getSnapshot(): { byId: Record<string, { title?: string; displayTitle: string } | undefined>; current: string | undefined } }
+  readonly list: ObservableSnapshot<SessionListSnapshot>
+}
+
+interface ThemeBridge {
+  readonly read: () => BridgedTokens
+  readonly isDark: () => boolean
+  readonly subscribe: (listener: () => void) => () => void
+}
+
+interface MagazineBridge {
+  readonly mode: () => 'light' | 'full'
+  readonly subscribe: (listener: () => void) => () => void
 }
 
 export interface WorkbenchViewInjected {
@@ -39,21 +58,62 @@ export interface WorkbenchViewInjected {
   readonly workspaces: ObservableSnapshot<WorkspacesPayload>
   readonly conversationFeed: (sessionId: string) => ObservableSnapshot<ChatSnapshot | undefined> | undefined
   readonly sessionFace: (sessionId: string) => SessionFeedFace | undefined
-  readonly config: ObservableSnapshot<{ state?: AmphoreusState }>
-  readonly theme: {
-    readonly read: () => BridgedTokens
-    readonly isDark: () => boolean
-    readonly subscribe: (listener: () => void) => () => void
-  }
+  readonly model: ObservableSnapshot<{ state?: AmphoreusState }>
+  readonly theme: ThemeBridge
   readonly setSeat: (heroId: string | null) => void
-  readonly magazine: {
-    readonly mode: () => 'light' | 'full'
-    readonly subscribe: (listener: () => void) => () => void
-  }
+  readonly magazine: MagazineBridge
   readonly startSeatSession: (skillName: string) => Promise<string>
+  readonly openPortal?: () => void
 }
 
 export type WorkbenchViewProps = PropsRuntime<'conversation.view'> & PropsLocale<'amphoreus'> & WorkbenchViewInjected
+
+export interface AmphoreusCurrentSessionMessage {
+  readonly source: 'dsh-amphoreus'
+  readonly type: 'amphoreus:current-session'
+  readonly session: { readonly id: string; readonly title: string | undefined; readonly cwd: string | undefined } | null
+  readonly seat: { readonly skillName: string; readonly heroId: string | null } | null
+}
+
+export interface CurrentSessionIdentity {
+  readonly id: string | undefined
+  readonly seatKey: string | null
+}
+
+export function currentSessionIdentity(
+  list: SessionListSnapshot,
+  state: AmphoreusState | undefined,
+): CurrentSessionIdentity {
+  const binding = currentSeatOf(bindingIndex(state?.bindings ?? []), list.current)
+  if (binding === undefined) return { id: list.current, seatKey: null }
+  const heroId = heroVisualOf(binding.skillName)?.heroId ?? null
+  return { id: list.current, seatKey: `${binding.skillName}\u0000${heroId ?? ''}` }
+}
+
+export function buildCurrentSessionMessage(
+  list: SessionListSnapshot,
+  state: AmphoreusState | undefined,
+): AmphoreusCurrentSessionMessage {
+  const current = list.current
+  if (current === undefined) {
+    return { source: 'dsh-amphoreus', type: 'amphoreus:current-session', session: null, seat: null }
+  }
+  const summary = list.byId[current]
+  const binding = currentSeatOf(bindingIndex(state?.bindings ?? []), current)
+  return {
+    source: 'dsh-amphoreus',
+    type: 'amphoreus:current-session',
+    session: {
+      id: current,
+      title: summary?.title ?? summary?.displayTitle ?? current,
+      cwd: summary?.cwd,
+    },
+    seat: binding === undefined ? null : {
+      skillName: binding.skillName,
+      heroId: heroVisualOf(binding.skillName)?.heroId ?? null,
+    },
+  }
+}
 
 interface BridgeMessage {
   source?: string
@@ -71,62 +131,87 @@ interface BridgeMessage {
   activate?: boolean
 }
 
-export function WorkbenchView({
-  sessionId,
-  sessions,
-  workspaces,
-  conversationFeed,
-  sessionFace,
-  config,
-  theme,
-  setSeat,
-  magazine,
-  startSeatSession,
-  openView,
-  completeViewRequest,
-  viewRequest,
-}: WorkbenchViewProps) {
-  const frameRef = useRef<HTMLIFrameElement>(null)
+export interface WorkbenchBridgeDeps {
+  readonly sessions: SessionsFace
+  readonly model: ObservableSnapshot<{ state?: AmphoreusState }>
+  readonly workspaces: ObservableSnapshot<WorkspacesPayload>
+  readonly startSeatSession: (skillName: string) => Promise<string>
+  readonly setSeat: (heroId: string | null) => void
+  readonly conversationFeed?: (sessionId: string) => ObservableSnapshot<ChatSnapshot | undefined> | undefined
+  readonly sessionFace?: (sessionId: string) => SessionFeedFace | undefined
+  readonly theme?: ThemeBridge
+  readonly magazine?: MagazineBridge
+  readonly openChat?: (focus: string) => void
+}
+
+export interface WorkbenchBridgeHandlers {
+  readonly onOpenSeat?: (heroId: string | null) => void | Promise<void>
+  readonly onOpenPortal?: () => void
+  readonly onClose?: () => void
+  readonly onOpened?: () => void
+}
+
+export interface WorkbenchBridgeController {
+  readonly pushCurrent: () => void
+  readonly onFrameLoad: () => void
+}
+
+export function useWorkbenchBridge(
+  frameRef: RefObject<HTMLIFrameElement>,
+  deps: WorkbenchBridgeDeps,
+  handlers: WorkbenchBridgeHandlers,
+): WorkbenchBridgeController {
+  const {
+    sessions,
+    model,
+    workspaces,
+    startSeatSession,
+    setSeat,
+    conversationFeed,
+    sessionFace,
+    theme,
+    magazine,
+    openChat,
+  } = deps
   const revisionRef = useRef(0)
   const pushMessagesRef = useRef<() => void>(() => {})
   const pushLiveRef = useRef<() => void>(() => {})
   const pushThemeTokensRef = useRef<() => void>(() => {})
   const pushMagazineRef = useRef<() => void>(() => {})
   const deferredActivationsRef = useRef(new Set<string>())
-  const reply = useCallback((payload: Record<string, unknown>): void => {
+  const handlersRef = useRef(handlers)
+  const openChatRef = useRef(openChat)
+  handlersRef.current = handlers
+  openChatRef.current = openChat
+
+  const reply = useCallback((payload: object): void => {
     frameRef.current?.contentWindow?.postMessage({ source: 'dsh-amphoreus', ...payload }, window.location.origin)
-  }, [])
-  const summaryOf = useCallback((id: string): { id: string; title: string } => {
+  }, [frameRef])
+  const summaryOf = useCallback((id: string): { id: string; title: string; cwd: string | undefined } => {
     const summary = sessions.list.getSnapshot().byId[id]
-    return { id, title: summary?.title ?? summary?.displayTitle ?? id }
+    return { id, title: summary?.title ?? summary?.displayTitle ?? id, cwd: summary?.cwd }
   }, [sessions])
   const pushWorkspaces = useCallback((): void => {
     reply({ type: 'amphoreus:workspaces', ...workspaces.getSnapshot() })
   }, [reply, workspaces])
   const pushCurrent = useCallback((): void => {
-    const current = sessions.list.getSnapshot().current
-    reply({ type: 'amphoreus:current-session', session: current === undefined ? null : summaryOf(current) })
-  }, [reply, sessions, summaryOf])
+    reply(buildCurrentSessionMessage(sessions.list.getSnapshot(), model.getSnapshot().state))
+  }, [model, reply, sessions])
   const pushConfig = useCallback((): void => {
     reply({
       type: 'amphoreus:config',
-      cardTextLimit: config.getSnapshot().state?.effectiveConfig.workbench.cardTextLimit ?? 8000,
+      cardTextLimit: model.getSnapshot().state?.effectiveConfig.workbench.cardTextLimit ?? 8000,
     })
-  }, [config, reply])
-
-  useEffect(() => {
-    rememberTab(localStorage, WORKBENCH_VIEW_ID)
-    return () => {
-      // 仍是同一会话却卸载 ≈ 用户点了别的 Tab；会话切换导致的卸载不改记忆。
-      if (sessions.list.getSnapshot().current === sessionId) rememberTab(localStorage, 'chat')
-    }
-  }, [sessionId, sessions])
+  }, [model, reply])
 
   useEffect(() => workspaces.subscribe(pushWorkspaces), [workspaces, pushWorkspaces])
-
-  useEffect(() => config.subscribe(pushConfig), [config, pushConfig])
+  useEffect(() => model.subscribe(pushConfig), [model, pushConfig])
 
   useEffect(() => {
+    if (magazine === undefined) {
+      pushMagazineRef.current = () => {}
+      return
+    }
     const push = (): void => {
       const message: MagazineModeMessage = {
         source: 'dsh-amphoreus',
@@ -142,9 +227,13 @@ export function WorkbenchView({
       unsubscribe()
       if (pushMagazineRef.current === push) pushMagazineRef.current = () => {}
     }
-  }, [magazine])
+  }, [frameRef, magazine])
 
   useEffect(() => {
+    if (theme === undefined) {
+      pushThemeTokensRef.current = () => {}
+      return
+    }
     let active = true
     const pendingFrames = new Set<number>()
     const afterFrame = (callback: () => void): void => {
@@ -180,9 +269,14 @@ export function WorkbenchView({
       pendingFrames.clear()
       if (pushThemeTokensRef.current === push) pushThemeTokensRef.current = () => {}
     }
-  }, [theme])
+  }, [frameRef, theme])
 
   useEffect(() => {
+    if (conversationFeed === undefined || sessionFace === undefined) {
+      pushMessagesRef.current = () => {}
+      pushLiveRef.current = () => {}
+      return
+    }
     let followedId: string | undefined
     let lastNodes: ChatSnapshot['legacy']['nodes'] | undefined
     let lastHasMore: boolean | undefined
@@ -207,12 +301,8 @@ export function WorkbenchView({
       stopFeed = () => {}
       stopFace = () => {}
       clearScheduled()
-      if (resendMessages !== undefined && pushMessagesRef.current === resendMessages) {
-        pushMessagesRef.current = () => {}
-      }
-      if (resendLive !== undefined && pushLiveRef.current === resendLive) {
-        pushLiveRef.current = () => {}
-      }
+      if (resendMessages !== undefined && pushMessagesRef.current === resendMessages) pushMessagesRef.current = () => {}
+      if (resendLive !== undefined && pushLiveRef.current === resendLive) pushLiveRef.current = () => {}
       resendMessages = undefined
       resendLive = undefined
     }
@@ -240,10 +330,7 @@ export function WorkbenchView({
         if (!force && nodes === lastNodes && hasMore === lastHasMore) return
         lastNodes = nodes
         lastHasMore = hasMore
-        reply({
-          type: 'amphoreus:messages',
-          ...feedFromChat(id, chat, ++revisionRef.current, hasMore),
-        })
+        reply({ type: 'amphoreus:messages', ...feedFromChat(id, chat, ++revisionRef.current, hasMore) })
       }
       const postLive = (force = false): void => {
         const running = face.getSnapshot().running
@@ -284,9 +371,7 @@ export function WorkbenchView({
       postLive()
     }
 
-    const stopList = (sessions.list as unknown as {
-      subscribe(listener: () => void): () => void
-    }).subscribe(follow)
+    const stopList = sessions.list.subscribe(follow)
     follow()
     return () => {
       stopList()
@@ -320,11 +405,18 @@ export function WorkbenchView({
             case 'amphoreus:seat-changed':
               setSeat(typeof data.heroId === 'string' && data.heroId !== '' ? data.heroId : null)
               return
-            case 'amphoreus:request-current': {
-              const current = sessions.list.getSnapshot().current
-              reply({ type: 'amphoreus:current-session', session: current === undefined ? null : summaryOf(current) })
+            case 'amphoreus:open-seat': {
+              const handler = handlersRef.current.onOpenSeat
+              if (data.heroId === null) await handler?.(null)
+              else if (typeof data.heroId === 'string' && data.heroId !== '') await handler?.(data.heroId)
               return
             }
+            case 'amphoreus:open-portal':
+              handlersRef.current.onOpenPortal?.()
+              return
+            case 'amphoreus:request-current':
+              pushCurrent()
+              return
             case 'amphoreus:request-config':
               pushConfig()
               return
@@ -371,23 +463,22 @@ export function WorkbenchView({
               const turn = safeOptionalInteger(data.turn)
               const focus = turn !== undefined ? `turn:${turn}` : seq !== undefined ? `seq:${seq}` : 'amphoreus:open-session'
               rememberTab(localStorage, 'chat')
-              if (targetId === sessionId) {
-                openView('chat', focus)
-                completeViewRequest()
-              } else {
-                sessions.open(targetId)
-              }
+              if (targetId === sessions.list.getSnapshot().current) openChatRef.current?.(focus)
+              else sessions.open(targetId)
               if (seq !== undefined || turn !== undefined) {
-                void scrollToTurn(
-                  targetId,
-                  seq,
-                  turn,
-                  sessionFace,
-                  conversationFeed,
-                  () => sessions.list.getSnapshot().current,
-                  isLatestRequest,
-                ).catch(() => {})
+                if (sessionFace !== undefined && conversationFeed !== undefined) {
+                  void scrollToTurn(
+                    targetId,
+                    seq,
+                    turn,
+                    sessionFace,
+                    conversationFeed,
+                    () => sessions.list.getSnapshot().current,
+                    isLatestRequest,
+                  ).catch(() => {})
+                }
               }
+              handlersRef.current.onOpened?.()
               return
             }
             case 'amphoreus:activate-session':
@@ -400,9 +491,7 @@ export function WorkbenchView({
               sessions.open(data.sessionId)
               return
             case 'amphoreus:close':
-              rememberTab(localStorage, 'chat')
-              openView('chat', 'amphoreus:close')
-              completeViewRequest()
+              handlersRef.current.onClose?.()
               return
             default:
               return
@@ -414,35 +503,84 @@ export function WorkbenchView({
     }
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
-  }, [
-    sessionId,
-    sessions,
-    startSeatSession,
-    setSeat,
-    openView,
-    completeViewRequest,
-    pushWorkspaces,
-    pushCurrent,
-    pushConfig,
-    conversationFeed,
-    reply,
-    sessionFace,
-    summaryOf,
-  ])
+  }, [conversationFeed, frameRef, pushConfig, pushCurrent, pushWorkspaces, reply, sessionFace, sessions, setSeat, startSeatSession, summaryOf])
 
-  // Keep the iframe informed about the current session so its canvas
-  // highlights the active card.
   useEffect(() => {
-    let last: string | undefined
+    let last: CurrentSessionIdentity | undefined
     const push = (): void => {
-      const current = sessions.list.getSnapshot().current
-      if (current === last) return
-      last = current
+      const identity = currentSessionIdentity(sessions.list.getSnapshot(), model.getSnapshot().state)
+      if (last !== undefined && identity.id === last.id && identity.seatKey === last.seatKey) return
+      last = identity
       pushCurrent()
     }
-    const dispose = (sessions.list as unknown as { subscribe(listener: () => void): () => void }).subscribe(push)
-    return dispose
-  }, [sessions, pushCurrent])
+    const disposeSessions = sessions.list.subscribe(push)
+    const disposeModel = model.subscribe(push)
+    push()
+    return () => {
+      disposeSessions()
+      disposeModel()
+    }
+  }, [model, pushCurrent, sessions])
+
+  const onFrameLoad = useCallback((): void => {
+    reply({ type: 'amphoreus:map-opened' })
+    pushThemeTokensRef.current()
+  }, [reply])
+
+  return { pushCurrent, onFrameLoad }
+}
+
+export function WorkbenchView({
+  sessionId,
+  sessions,
+  workspaces,
+  conversationFeed,
+  sessionFace,
+  model,
+  theme,
+  setSeat,
+  magazine,
+  startSeatSession,
+  openPortal,
+  openView,
+  completeViewRequest,
+  viewRequest,
+}: WorkbenchViewProps) {
+  const frameRef = useRef<HTMLIFrameElement>(null)
+
+  useEffect(() => {
+    rememberTab(localStorage, WORKBENCH_VIEW_ID)
+    return () => {
+      // 仍是同一会话却卸载 ≈ 用户点了别的 Tab；会话切换导致的卸载不改记忆。
+      if (sessions.list.getSnapshot().current === sessionId) rememberTab(localStorage, 'chat')
+    }
+  }, [sessionId, sessions])
+
+  const openChat = useCallback((focus: string): void => {
+    rememberTab(localStorage, 'chat')
+    openView('chat', focus)
+    completeViewRequest()
+  }, [completeViewRequest, openView])
+  const closeWorkbench = useCallback((): void => {
+    rememberTab(localStorage, 'chat')
+    openView('chat', 'amphoreus:close')
+    completeViewRequest()
+  }, [completeViewRequest, openView])
+  const { onFrameLoad } = useWorkbenchBridge(frameRef, {
+    sessions,
+    model,
+    workspaces,
+    startSeatSession,
+    setSeat,
+    conversationFeed,
+    sessionFace,
+    theme,
+    magazine,
+    openChat,
+  }, {
+    ...(openPortal === undefined ? {} : { onOpenPortal: openPortal }),
+    onClose: closeWorkbench,
+  })
 
   useEffect(() => {
     if (viewRequest?.view === WORKBENCH_VIEW_ID) completeViewRequest()
@@ -455,10 +593,7 @@ export function WorkbenchView({
         className={css.frame}
         src="/amphoreus/workbench/"
         title="翁法罗斯工作台"
-        onLoad={() => {
-          reply({ type: 'amphoreus:map-opened' })
-          pushThemeTokensRef.current()
-        }}
+        onLoad={onFrameLoad}
       />
     </div>
   )

@@ -1,6 +1,7 @@
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
+import type { BindingRecord } from '../host/store.ts'
 import type { AmphoreusState } from '../shared/api.ts'
-import { heroVisualOf } from '../shared/heroes.ts'
+import { fallbackHue, heroVisualOf } from '../shared/heroes.ts'
 import { motifDataUri } from '../shared/motifs.ts'
 
 export interface WorkspaceSeat {
@@ -14,6 +15,7 @@ export interface WorkspaceSeat {
   order: number
   accent: string | null
   accent2: string | null
+  hue: number | null
   lightBase: string | null
   darkBase: string | null
   volume: number | null
@@ -34,6 +36,7 @@ export interface WorkspaceSession {
   blank: boolean
   skillName: string | null
   face: string | null
+  source: BindingRecord['source'] | null
 }
 
 export interface WorkspacesPayload {
@@ -82,6 +85,7 @@ function composeWorkspaces(list: ListSnapshot, state: AmphoreusState | undefined
         order,
         accent: visual?.palette.accent ?? null,
         accent2: visual?.palette.accent2 ?? null,
+        hue: visual === undefined ? fallbackHue(seat.skillName) : null,
         lightBase: visual?.palette.lightBase ?? null,
         darkBase: visual?.palette.darkBase ?? null,
         volume: visual?.volume ?? null,
@@ -117,6 +121,7 @@ function composeWorkspaces(list: ListSnapshot, state: AmphoreusState | undefined
       blank: session.blank,
       skillName: binding?.skillName ?? null,
       face: binding?.face ?? null,
+      source: binding?.source ?? null,
     })
   }
 
