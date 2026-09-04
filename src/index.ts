@@ -8,6 +8,7 @@ import { Config, type AmphoreusConfig } from './host/config.ts'
 import { registerFirstFrame } from './host/firstframe.ts'
 import { registerInjector } from './host/injector.ts'
 import { migrateSynapse } from './host/migrate-synapse.ts'
+import { registerObserver } from './host/observer.ts'
 import { ensureSeatDirs, type EnsureSeatDirsResult } from './host/seatdirs.ts'
 import { reconcileSeats } from './host/seats.ts'
 import { openAmphoreusStores, updateAmphoreusGlobal, type AmphoreusStores } from './host/store.ts'
@@ -203,8 +204,12 @@ export function apply(ctx: Context, config: AmphoreusConfig): void {
       derivedWallpaper: index => webApi?.derivedWallpaperUrl(index) ?? null,
     })
     await bridge.start()
+    const disposeObserver = stores === undefined
+      ? () => Promise.resolve()
+      : registerObserver(ctx, { config, stores, resolver: bridge.resolver })
     startColdReplay()
     return async () => {
+      await disposeObserver()
       disposeFirstFrame()
       disposeInjector()
       disposeWebApi()

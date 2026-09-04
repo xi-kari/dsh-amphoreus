@@ -34,6 +34,7 @@ import {
 } from './types.ts'
 
 export const PARSER_VERSION = '1'
+export const NOTIFY_VERB = '此事知会'
 
 const FALLBACK_ABSENCE = '角色未部署｜原因：module_unavailable｜未完成职责：<职责>'
 const FALLBACK_HANDOFF = '此事移交◯◯：<移交物>'
@@ -818,7 +819,7 @@ function parseCardHandoffs(
   const section = findSection(card.sections, '协作与移交', aliases, card.path, diagnostics, true, card.name)
   if (section === undefined) return []
   const verb = contracts?.handoff.verb ?? '此事移交'
-  const matcher = new RegExp(`^(?<verb>${escapeRegExp(verb)}|此事知会)(?<target>[^：:\\x60]{1,12}?)[：:]<(?<payload>[^>\\x60]*)>$`, 'u')
+  const matcher = new RegExp(`^(?<verb>${escapeRegExp(verb)}|${escapeRegExp(NOTIFY_VERB)})(?<target>[^：:\\x60]{1,12}?)[：:]<(?<payload>[^>\\x60]*)>$`, 'u')
   const edges: HandoffEdge[] = []
   for (let lineIndex = 0; lineIndex < section.lines.length; lineIndex++) {
     for (const code of inlineCodes(section.lines[lineIndex]!)) {

@@ -860,7 +860,7 @@
 - 偏离与理由：任务书文件表漏列 Portal overlay 的共享 deps 注入，按强类型真实调用面补入。任务书 DispatchInput 漏 face，会使长夜月派发退回三月七，故在共享层增加可选 face 并留给 TE1/TE7 透传。构建器统一双引号，原单引号 grep 字面为 0；采用 quote-agnostic 实测 2，而不向 bundle 塞伪字符串。
 - 遗留：真实 dispatch/accept/dismiss 浏览器消息由 TE1/TE4/TE5 界面触发后联验；已明确 observation/prompt/open 与 fork/patch/open 各失败点可能留下的部分完成状态。
 ## TE1：状态桥、全体会议入口与派发面板 — 2026-09-05 06:16
-- commit: PENDING-TASK
+- commit: 87f4849
 - 动手前核对：实际重读 E.0/TE1、`FeatureSwitches` 八键、portal/bridge/Tab contracts；依赖环按 TE2→TE3→TE1 落地，TE3 dispatch case 只核对且精确 `1` 处 PASS
 - 验收：
   - 新增 bridge-state/enter-seat-queue/dispatch-match 与面板测试；聚焦 → `tests 23; pass 23; fail 0; skipped 0; duration_ms 421.4346`，最终门户/桥/面板 → `tests 16; pass 16; fail 0; skipped 0; duration_ms 301.4442` PASS
@@ -878,3 +878,20 @@
 - 人工断言：✓ dispatch 仅明确点击后发送；✓ 面板不调模型做意图推断；✓ pipeline 只派第一站；✓ portal overlay 与 Tab 复用同一 state/dispatch bridge；✓ 输入焦点、原 Chat draft 与当前会话均不被门户 fallback 破坏。
 - 偏离与理由：任务书 matcher 预期 `11` 与三处命中长度冲突，按唯一词累计修正为 `13`。任务书假设新建 blank session 可立即承载 Workbench，但 alpha.4 源码 `ConversationSession.tsx` 明确 blank phase 返回 null，且真实 `{sessionId}`、`{sessionId,workspaceId}` 两次均只出现空白 Hero；最终采用覆盖层内同一 all 画布，完整保留功能且不制造孤立/不可见会话。README 记录该稳定平台事实。
 - 遗留：TE2 泳道「已回应」需 TE4 observer 写 receipt 后回填；真实 pipeline 首站派发、handoff accept/dismiss 在后续 UI 任务联合验收；本次真实 Anaxa dispatch 会话留作 TE4 replay 验证后再归档。
+## TE4：移交、知会、回执与缺席观察器 — 2026-09-05 06:43
+- commit: PENDING-TASK
+- 动手前核对：实际执行任务书 TE4 与上游 SessionStore `sed -n`；确认 `session/event`、typed `list()/ownEvents()`、assistant interrupted 位置、domain change durability，以及 observer 必须在 `await bridge.start()` 后注册 PASS
+- 验收：
+  - 新增 `observer.ts` 与 `tests/observer.test.ts`；聚焦 → `tests 14; pass 14; fail 0; skipped 0`；组合 parser/API → `tests 28; pass 28; fail 0; skipped 0; duration_ms 568.3695`；全量 → `tests 291; pass 290; fail 0; skipped 1` PASS
+  - `npm run build` → derive/client/host=`28.87/180.47/199.46 kB`；typecheck、diff check 均 exit `0`；observer 中 session.append/prompt/user-message/as-any 均=`0` PASS
+  - live listener 先挂，session/created 与启动 list 共用 typed ownEvents replay；所有任务进单一 Promise 队列，重复 live/created/replay 按 `${sessionId}:${seq}:${kind}` 幂等，同 seq 多 kind 共存 PASS
+  - live/replay interrupted 均跳过；只取 assistant text blocks；```/~~~ 完整 fence 状态机排除示例；handoff/notify 只看末六非空行、receipt 只看末行、absence 看围栏外全文；g/y matcher 前后 lastIndex 归零 PASS
+  - handoff/receiptParsing 开关独立；已有 open/accepted/dismissed 不覆写；receipt 后以 binding table update 再验 skill，只改 face 并保留 source/injection/handoffFrom；已落 observation 可在 replay 补 face PASS
+  - async disposer 立即 off session/event、session/created、snapshot 三监听，再 drain queue；host teardown 在 bridge/store close 前 await；单次写失败 warn 后下一事件继续 PASS
+  - 默认 fixture 仍一卡；可选双面 fixture 的 `夜星` 精确解析为 testcard-b + face；NOTIFY_VERB 单源导出并被 parser/observer 共用 PASS
+  - 真实重启后初始 live list 为空时，打开已完成 dispatch 会话触发 created replay：新增 receipt seq `1948`，payload=`common.md、persona.md`、tier=`标准`；全体会议 lane 从「进行中」最终显示「那刻夏 · 已回应」 PASS
+  - 真实 live 消息在 seq `11263` 同时写 handoff+receipt 两键；handoff=`open`、target=`amphoreus-phainon/白厄`、payload 为已展开整改单，receipt=`accepted/标准`；源 binding 仍 `amphoreus-anaxa` PASS
+  - 服务 PID `46872`、HTTP `200`、stderr=`0` bytes PASS
+- 人工断言：✓ 不写自定义会话事件；✓ 不解析 user message/工具参数；✓ 不改归属 skill；✓ replay 只读 ownEvents 排除 fork 继承前缀；✓ storage-domain 自然发 state change，无重复 emit。
+- 偏离与理由：任务书只扫描启动时 `ctx.sessions.list()`，真实重启时该表可为空且恢复会话 seed 不重放 `session/event`；真实验收捕获漏扫后增加 `session/created` typed replay，以相同队列去重。任务书只过滤 fence 边界会误读围栏正文，升级完整状态机。任务书旧 binding 读后 put 有竞态，改用 atomic update。
+- 遗留：open handoff 已留给 TE5/TE8 的真实 UI accept/dismiss 验收；E 结束前归档源/子测试会话并保留权威日志。
