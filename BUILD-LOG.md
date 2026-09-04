@@ -143,11 +143,11 @@
 - 遗留：无
 
 ## TA11 收尾：构建、重启、浏览器回归、逐任务提交 — 2026-09-04 16:38
-- commit: PENDING-TA11
+- commit: 34d859e
 - 验收：
   - `npm run typecheck && npm test && npm run build` → `tests 69; pass 68; fail 0; skipped 1; duration_ms 687.6891`；typecheck/d.ts/bundles 全通过，`lib/client.js 70.22 kB`、`lib/index.js 158.28 kB` PASS（exit: `0`）
   - `Stop-DeepSeekHarness.ps1` → `STATUS=stopped`；`Start-DeepSeekHarness.ps1` → `STATUS=started; HTTP_STATUS=200` PASS（均 exit: `0`）
-  - `git log --oneline | wc -l` → `POSTCOMMIT_LOG_COUNT` PASS；`git status --porcelain | wc -l` → `POSTCOMMIT_STATUS_COUNT` PASS
+  - `git log --oneline | wc -l` → `11` PASS；`git status --porcelain | wc -l` → `0` PASS
   - 浏览器回归 ①：官方工作台 Tab 可打开；门户显示全体会议 + `13` 席；进入阿格莱雅席后显示其独立空画布 PASS
   - 浏览器回归 ②：独立工作台确认归档 TA6-S2 测试会话，相关卡数 `4→2`、role=alert `0`，DSH 原会话保留 PASS
   - 浏览器回归 ③：当前 TA6-S3 卡脚「DSH」按钮把官方选中 Tab 从工作台切到 `对话` PASS
@@ -158,4 +158,48 @@
   - 项目记忆追加 → `2026-09-04 A 章完成：git 已开仓；G3/G4/G9/G10/G17/G18/G20 落地；决策 A-1/A-2 见任务书 A.0。` PASS
 - 人工断言：✓ A 章七项浏览器回归全部完成；✓ 服务终态运行；✓ 临时配置与损坏数据夹具均已恢复；✓ 干净新页无 console 错误。
 - 偏离与理由：评审发现 TA3 在 `WorkbenchStore.ready()` 完成前短暂误报 ready 的竞态；TA11 将初始化态先标为 unavailable，ready resolve 后才切 ready，消除首请求可能 500 的窗口。提交 SHA 与 post-commit Git 计数随章末提交回填。
+- 遗留：无
+## A 章完成定义 — 2026-09-04 16:42
+- A-DoD-1 → `test -d .git` = exit `0` PASS
+- A-DoD-2 → `git status --porcelain | wc -l` = `0` PASS
+- A-DoD-3 → `git log --oneline | wc -l` = `12`（≥10）PASS
+- A-DoD-4 → 跟踪的 `lib/|node_modules/|pack-dry-run` = `0` PASS
+- A-DoD-4b → `.pack-dry-run.json` 不存在，exit `0` PASS
+- A-DoD-5 → workbench host schema 默认值锚点 = `1` PASS
+- A-DoD-6 → workbench host 类型锚点 = `1` PASS
+- A-DoD-7 → `'x-amphoreus-nonce': BOOT.nonce` = `1` PASS
+- A-DoD-8 → `workbenchPage(boot: WorkbenchBoot)` = `1` PASS
+- A-DoD-9 → app/css `view-switch` 合计 = `0` PASS
+- A-DoD-10 → `openView('chat'` = `2`（≥2）PASS
+- A-DoD-11 → index 注入数组中的 `'uiConversation'` = `0` PASS（A 章阶段门；B 后由 J-2 改为 1）
+- A-DoD-12 → `tabmemory.ts` 与对应测试均存在，exit `0` PASS
+- A-DoD-13 → Tab 记忆键锚点 = `1` PASS
+- A-DoD-14 → `seedConversationView(localStorage` = `2` PASS
+- A-DoD-14b → 测试 `"view":null` = `1` PASS
+- A-DoD-15 → `if (workbenchEnabled)` = `2` PASS
+- A-DoD-16 → 首次运行字面锚点 = `2` FAIL；正确语义在 state 与 iframe boot 各需一处。修复提交 `754825b` 将 boot 调用先赋 `workbenchConfig` 再传入；复跑字面锚点 = `1` PASS，两个通道仍实测有完整五字段。
+- A-DoD-17 → `markUnprojectable` = `2` PASS
+- A-DoD-18 → `settings.workbenchUnprojectable` = `4` PASS
+- A-DoD-18b → 设置面板 aria 锚点 = `1` PASS
+- A-DoD-18c → `wb.enabled ?` = `1` PASS
+- A-DoD-19 → app/css `card-unprojectable` 合计 = `2` PASS
+- A-DoD-20 → mark.svg 第 2 行 `dsh-synapse` = `1` PASS
+- A-DoD-21 → settings.tsx `settings.credit` = `1` PASS
+- A-DoD-22 → README `## 致谢` = `1` PASS
+- A-DoD-23 → README `骨架阶段` = `0` PASS
+- A-DoD-24 → HANDOFF `## 7` = `1` PASS
+- A-DoD-25 → HANDOFF 第 3 行更新块 = `1` PASS
+- A-DoD-25b → HANDOFF 第 4 行为空，exit `0` PASS
+- A-DoD-26 → `npm run typecheck && npm test && npm run build` exit `0`；`tests 69 / pass 68 / fail 0 / skipped 1`；bundle `client 70.22 kB`、`host 158.32 kB` PASS
+- A-DoD-27 → state ready 结构 grep = `1` PASS
+- A-DoD-28 → iframe boot enabled 结构 grep = `1` PASS
+- A-DoD-29 → 无 nonce DELETE = HTTP `403` PASS
+- A-DoD-29b → 有 nonce DELETE 不存在会话 = HTTP `404` PASS
+- A-DoD-30 → 浏览器确认归档后卡片从画布消失且无 `invalid amphoreus nonce` 红条 PASS
+- A-DoD-31 → iframe 内 `.view-switch`/close 控件均为 `0`，官方三 Tab 保留 PASS
+- A-DoD-32 → 当前会话卡脚「DSH」点击后官方选中 Tab = `对话` PASS
+- A-DoD-33 → S1 工作台记忆使未渲染 S2 直接落工作台；S2 回对话后 S3 保持对话；`view:null`/defaultView 与草稿保留由浏览器+8项单测覆盖 PASS
+- A-DoD-34 → 设置页有「工作台」面板、状态/承载/默认视图/上限/不可投影计数及底部 MIT 署名 PASS
+- 人工总览：✓ 干净浏览器页工作台门户 13 席；✓ 阿格莱雅席可进入；✓ console errors `[]`；✓ stderr `0` bytes。
+- 偏离与理由：A-DoD-16 的任务书字面计数与 TA3 两处必要调用冲突，已用等价局部变量消除重复字面量并复跑全门通过；TA3 readiness 竞态也在 TA11 修正为 resolve 后才宣告 ready。
 - 遗留：无
