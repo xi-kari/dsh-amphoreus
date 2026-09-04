@@ -220,10 +220,11 @@ export class AmphoreusWebApi {
       }
       if (path === '/amphoreus/workbench/' || path === '/amphoreus/workbench/index.html') {
         if (!method(request, response, 'GET')) return
+        const workbenchConfig = publicWorkbench(this.#config)
         send(response, 200, 'text/html; charset=utf-8', workbenchPage({
           nonce: this.nonce,
           revision: this.#resolver.current()?.generation ?? 0,
-          workbench: publicWorkbench(this.#config),
+          workbench: workbenchConfig,
         }))
         return
       }
