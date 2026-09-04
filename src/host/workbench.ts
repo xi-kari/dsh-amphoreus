@@ -4,7 +4,7 @@
  * workspace for unassigned sessions. A session belongs to a seat when the
  * amphoreus `bindings` table says so, or when its cwd sits under that seat's
  * folder (`<dataDir>/seats/<heroId>`). DSH stays the source of session truth;
- * this file persists only the canvas graph + projected message text.
+ * this file persists only the canvas graph + structural projection markers.
  *
  * Ported from liangmianya/dsh-synapse (MIT, see NOTICE); trimmed to the parts
  * the amphoreus workbench uses: projection, branch/thread graph, notes.
@@ -16,8 +16,6 @@ import type { UnprojectableRecord } from '../shared/api.ts'
 
 const MAX_TITLE_LENGTH = 120
 const MAX_NOTE_LENGTH = 4_000
-const MAX_PROJECTION_LENGTH = 8_000
-const PROJECTION_TRUNCATED_SUFFIX = '\n——…（详情查看全文）'
 const SAVE_DEBOUNCE_MS = 800
 const LOCK_STALE_MS = 60_000
 const TOPIC_COLORS = ['#8a681c', '#37305e', '#2563eb', '#be123c', '#0f766e'] as const
@@ -469,7 +467,7 @@ export class WorkbenchStore {
     const data = event.data as { turn?: number; step?: number } | undefined
     const message: ThreadMessage = {
       id: randomUUID(),
-      text: projection.text,
+      text: '',
       kind: projection.kind,
       sourceSeq: event.seq,
       at,
@@ -481,10 +479,6 @@ export class WorkbenchStore {
     thread.messages.push(message)
     thread.updatedAt = at
     workspace.updatedAt = at
-    if (thread.dshSessionTitle === null && projection.kind === 'user') {
-      thread.title = titleFromText(projection.text)
-      thread.dshSessionTitle = thread.title
-    }
   }
 
   #foldToolProcess(thread: WorkbenchThread, event: ProjectableEvent): void {
@@ -596,41 +590,35 @@ export function createSeatResolver(options: {
 
 // ---- pure helpers ----------------------------------------------------------
 
-export function projectableEvent(event: ProjectableEvent): { kind: ThreadMessage['kind']; text: string } | null {
+export type ProjectionKind = 'user' | 'assistant' | 'error'
+
+export function projectableEvent(event: ProjectableEvent): { kind: ProjectionKind } | null {
   const data = event.data as Record<string, unknown> | undefined
   switch (event.type) {
     case 'user/message': {
-      const text = contentText((data as { content?: unknown } | undefined)?.content)
-      return isRuntimeContextText(text) ? null : noteProjection('user', text)
+      const source = (data?.source ?? undefined) as { kind?: unknown } | undefined
+      if (typeof source?.kind === 'string' && source.kind !== 'user') return null
+      const text = contentText(data?.content)
+      if (isInjectedText(text)) return null
+      return text.trim() === '' ? null : { kind: 'user' }
     }
     case 'assistant/message':
-      return noteProjection('assistant', contentText((data?.message as { content?: unknown } | undefined)?.content))
-    case 'todo/write':
-      return noteProjection('todo', Array.isArray(data?.todos)
-        ? (data.todos as { status?: unknown; content?: unknown }[]).map(todo => `[${String(todo.status)}] ${String(todo.content)}`).join('\n')
-        : '')
+      return contentText((data?.message as { content?: unknown } | undefined)?.content).trim() === '' ? null : { kind: 'assistant' }
     case 'turn/end': {
-      const reason = data?.reason as { kind?: string; error?: unknown } | undefined
-      if (reason?.kind === 'error') return noteProjection('error', errorText(reason.error) ?? '本轮执行失败')
-      if (reason?.kind === 'cancelled' || reason?.kind === 'canceled' || reason?.kind === 'aborted') return noteProjection('error', '本轮已取消')
+      const reason = data?.reason as { kind?: string } | undefined
+      if (reason?.kind === 'error' || reason?.kind === 'aborted' || reason?.kind === 'interrupted') return { kind: 'error' }
       return null
     }
     default:
-      return /(?:error|failed|failure|cancel(?:led)?|abort)/i.test(event.type)
-        ? noteProjection('error', errorText(data?.error ?? data?.reason ?? data) ?? 'Harness 运行失败')
-        : null
+      return null
   }
 }
 
-function noteProjection(kind: ThreadMessage['kind'], text: string): { kind: ThreadMessage['kind']; text: string } | null {
-  const normalized = text.trim()
-  if (normalized === '') return null
-  if (normalized.length <= MAX_PROJECTION_LENGTH) return { kind, text: normalized }
-  return { kind, text: `${normalized.slice(0, MAX_PROJECTION_LENGTH)}${PROJECTION_TRUNCATED_SUFFIX}` }
-}
-
-function isRuntimeContextText(text: string): boolean {
-  return text.trimStart().startsWith('Current runtime context. This snapshot supersedes earlier runtime-context snapshots.')
+export function isInjectedText(text: string): boolean {
+  const head = text.trimStart()
+  return head.startsWith('<system-reminder>')
+    || head.startsWith('<skill_content')
+    || head.startsWith('Current runtime context. This snapshot supersedes earlier runtime-context snapshots.')
 }
 
 export function contentText(content: unknown): string {
@@ -652,11 +640,6 @@ function errorText(value: unknown): string | null {
   const message = typeof record.message === 'string' && record.message.trim() !== '' ? record.message.trim() : ''
   if (message !== '') return [name, code].filter(Boolean).concat(message).join(': ')
   return [name, code].filter(Boolean).join(': ') || null
-}
-
-function titleFromText(text: string): string {
-  const line = text.replaceAll(/\s+/g, ' ').trim()
-  return (line.length > 42 ? `${line.slice(0, 42)}...` : line) || 'DSH 会话'
 }
 
 function positionOf(value: { x?: unknown; y?: unknown } | undefined): { x: number; y: number } {

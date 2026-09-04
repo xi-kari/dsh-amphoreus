@@ -203,3 +203,13 @@
 - 人工总览：✓ 干净浏览器页工作台门户 13 席；✓ 阿格莱雅席可进入；✓ console errors `[]`；✓ stderr `0` bytes。
 - 偏离与理由：A-DoD-16 的任务书字面计数与 TA3 两处必要调用冲突，已用等价局部变量消除重复字面量并复跑全门通过；TA3 readiness 竞态也在 TA11 修正为 resolve 后才宣告 ready。
 - 遗留：无
+## TB1 G1：注入消息不成卡 — 2026-09-04 16:49
+- commit: PENDING-TB1
+- 验收：
+  - `node --test tests/workbench-projection.test.ts` → `tests 1; pass 1; fail 0; skipped 0; duration_ms 128.1887` PASS（exit: `0`）
+  - `npm run typecheck` → 无诊断 PASS（exit: `0`）
+  - `grep -n 'titleFromText\|noteProjection\|isRuntimeContextText\|cancelled\|canceled' src/host/workbench.ts` → `无输出` PASS（grep exit: `1`，零匹配为预期）
+  - `git diff --check` → `无空白错误` PASS（exit: `0`）
+- 人工断言：✓ 普通 `source.kind=user` 与无 source 旧消息保留；✓ skill-invocation/skill-catalog/plugin 过滤；✓ 无 source 的 system-reminder/skill-content/runtime-context 回退过滤；✓ 仅 error/aborted/interrupted 成错误；✓ 首条用户正文不再生标题。
+- 偏离与理由：TB2 尚未替换旧 WorkbenchStore，本任务按任务书将其过渡期消息正文置空；下一任务改为纯结构索引后该旧路径整体删除。提交短 SHA 按下一提交回填规则处理。
+- 遗留：无
