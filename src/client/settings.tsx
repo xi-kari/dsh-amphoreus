@@ -167,6 +167,10 @@ export function AmphoreusSettings({ model, t }: AmphoreusSettingsProps) {
           </section>
         </aside>
       </div>
+      <footer className={css.credit}>
+        <span>{t('settings.credit')}</span>
+        <a href="https://github.com/liangmianya/dsh-synapse" target="_blank" rel="noreferrer">github.com/liangmianya/dsh-synapse</a>
+      </footer>
     </section>
   )
 }

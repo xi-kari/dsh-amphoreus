@@ -47,6 +47,7 @@ export const zh = {
   'settings.modelCallable': '模型可调用',
   'settings.personaMissing': 'persona 缺失',
   'settings.noDuty': '分派表未登记职责',
+  'settings.credit': '工作台源自 dsh-synapse v0.4.1（MIT，liangmianya），经改造；原始许可见包内 NOTICE。',
   'view.workbench': '工作台',
 } as const
 
@@ -100,6 +101,7 @@ export const en: Record<AmphoreusKey, string> = {
   'settings.modelCallable': 'Model callable',
   'settings.personaMissing': 'persona missing',
   'settings.noDuty': 'No duty in dispatch table',
+  'settings.credit': 'The workbench derives from dsh-synapse v0.4.1 (MIT, liangmianya), adapted; original license in NOTICE.',
   'view.workbench': 'Workbench',
 }
 

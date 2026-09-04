@@ -84,7 +84,7 @@
 - 遗留：无
 
 ## TA7 G10：禁用态隐藏 Tab、设置工作台面板、标记不可投影 — 2026-09-04 16:29
-- commit: PENDING-TA7
+- commit: e355f00
 - 验收：
   - `npm run typecheck && npm run build` → typecheck、d.ts、client/host bundle 全通过；`lib/client.js 69.10 kB`、`lib/index.js 158.13 kB` PASS（exit: `0`）
   - `node --check workbench/app.js` → `无标准输出` PASS（exit: `0`）
@@ -97,4 +97,18 @@
   - 清除损坏夹具并恢复原数据 → SHA-256 `c56fd725de669f73d68f291d6870b431c8db6664b02fa0614d59d216f970b390`、`191522` bytes；重启后 state → `{"status":{"kind":"ready"},"unprojectable":[]}` PASS
 - 人工断言：✓ disabled 时 Tab 和外链都消失；✓ native 仅提示不改变行为；✓ 不可用真实原因同时出现在设置页和 iframe；✓ 未增加暗色选择器，三处新增画布色均保留 token 回退；✓ 临时配置/数据全部恢复。
 - 偏离与理由：验收后未丢弃原有测试投影数据；先移除损坏夹具，再逐字节恢复原文件，兼顾任务语义与可回滚性。提交短 SHA 按下一提交回填规则处理。
+- 遗留：无
+
+## TA8 G18：设置、README 与 mark.svg 补齐署名 — 2026-09-04 16:31
+- commit: PENDING-TA8
+- 验收：
+  - `sed -n 2p workbench/mark.svg | grep -c dsh-synapse` → `1` PASS（exit: `0`）
+  - `grep -c '^## 致谢' README.md` → `1` PASS（exit: `0`）
+  - `grep -c "'settings.credit'" src/client/locales.ts` → `2` PASS（zh/en 各一）
+  - `npm run typecheck && npm run build` → typecheck、d.ts、client/host bundle 全通过；`lib/client.js 70.22 kB`、`lib/index.js 158.13 kB` PASS（exit: `0`）
+  - `curl …/workbench/mark.svg -w '%{content_type}'` → `image/svg+xml; charset=utf-8` PASS（exit: `0`）
+  - 浏览器直接打开 `/amphoreus/workbench/mark.svg` → AX 树含唯一 `image`，图形正常渲染 PASS
+  - 设置页底部 → 灰字 `工作台源自 dsh-synapse v0.4.1（MIT，liangmianya）…` 与 `github.com/liangmianya/dsh-synapse` 链接均可见 PASS
+- 人工断言：✓ 设置区署名位于内容栅格之后；✓ README 致谢固定三条齐全；✓ SVG 第 2 行为 vendoring 注释且 path 未改；✓ NOTICE 版权行未改。
+- 偏离与理由：实现先在隔离 worktree 验证，再以 `cherry-pick --no-commit` 三方合并到 TA7 后主线并重新构建/浏览器验收；提交短 SHA 按下一提交回填规则处理。
 - 遗留：无

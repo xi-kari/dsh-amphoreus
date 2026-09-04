@@ -238,6 +238,26 @@
   animation: pulse 1.2s ease-in-out infinite alternate;
 }
 
+.credit {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin-top: 28px;
+  padding-top: 14px;
+  border-top: 1px solid var(--dsw-alias-border-l1);
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 10px;
+  letter-spacing: .02em;
+  line-height: 1.5;
+}
+
+.credit a {
+  color: var(--dsw-alias-label-secondary);
+  text-decoration: underline dotted;
+}
+
+.credit a:hover { color: var(--dsw-alias-label-primary); }
+
 @keyframes pulse { from { opacity: .35; } to { opacity: .9; } }
 
 @media (max-width: 860px) {

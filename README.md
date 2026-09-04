@@ -38,3 +38,9 @@ pnpm add "link:D:/DeepSeek Harness/deepseek插件开发/dsh-amphoreus"
 - 不写自定义会话事件；自有数据落 storage-domain 与 `dataDir`。
 - 不夹带《崩坏：星穹铁道》原图；素材经 `assetsRoot` 指向用户本地目录。
 - 工作台源自 liangmianya/dsh-synapse v0.4.1（MIT），见 [NOTICE](NOTICE)。
+
+## 致谢
+
+- 工作台画布、投影与桥接协议源自 [liangmianya/dsh-synapse](https://github.com/liangmianya/dsh-synapse) v0.4.1（MIT），本包为**改造版**，不宣称原创；改动摘要与原始许可见 [NOTICE](NOTICE)、[reference/SYNAPSE-LICENSE.txt](reference/SYNAPSE-LICENSE.txt)。
+- 技能套件 [xi-kari/amphoreus-skill-suite](https://github.com/xi-kari/amphoreus-skill-suite) 由运行时从 `skillRoots` 解析，不随包分发。
+- 本包基于 DeepSeek Harness 构建，非官方产品。
