@@ -30,6 +30,7 @@ test('TC11 assembles exact dependencies, singleton controllers, and slot order',
     'sidebar.footer.action',
     'shell.overlay',
     'conversation.view',
+    'conversation.input.dock',
   ])
   assert.equal(client.includes('children'), false)
 
@@ -48,6 +49,7 @@ test('TC11 assembles exact dependencies, singleton controllers, and slot order',
     "ctx.slots.inject('sidebar.footer.action'",
     "ctx.slots.inject('shell.overlay'",
     "ctx.slots.inject('conversation.view'",
+    "ctx.slots.inject('conversation.input.dock'",
   ].map(marker => {
     const index = client.indexOf(marker)
     assert.notEqual(index, -1, marker)

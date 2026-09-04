@@ -879,7 +879,7 @@
 - 偏离与理由：任务书 matcher 预期 `11` 与三处命中长度冲突，按唯一词累计修正为 `13`。任务书假设新建 blank session 可立即承载 Workbench，但 alpha.4 源码 `ConversationSession.tsx` 明确 blank phase 返回 null，且真实 `{sessionId}`、`{sessionId,workspaceId}` 两次均只出现空白 Hero；最终采用覆盖层内同一 all 画布，完整保留功能且不制造孤立/不可见会话。README 记录该稳定平台事实。
 - 遗留：TE2 泳道「已回应」需 TE4 observer 写 receipt 后回填；真实 pipeline 首站派发、handoff accept/dismiss 在后续 UI 任务联合验收；本次真实 Anaxa dispatch 会话留作 TE4 replay 验证后再归档。
 ## TE4：移交、知会、回执与缺席观察器 — 2026-09-05 06:43
-- commit: PENDING-TASK
+- commit: 49d6e10
 - 动手前核对：实际执行任务书 TE4 与上游 SessionStore `sed -n`；确认 `session/event`、typed `list()/ownEvents()`、assistant interrupted 位置、domain change durability，以及 observer 必须在 `await bridge.start()` 后注册 PASS
 - 验收：
   - 新增 `observer.ts` 与 `tests/observer.test.ts`；聚焦 → `tests 14; pass 14; fail 0; skipped 0`；组合 parser/API → `tests 28; pass 28; fail 0; skipped 0; duration_ms 568.3695`；全量 → `tests 291; pass 290; fail 0; skipped 1` PASS
@@ -895,3 +895,22 @@
 - 人工断言：✓ 不写自定义会话事件；✓ 不解析 user message/工具参数；✓ 不改归属 skill；✓ replay 只读 ownEvents 排除 fork 继承前缀；✓ storage-domain 自然发 state change，无重复 emit。
 - 偏离与理由：任务书只扫描启动时 `ctx.sessions.list()`，真实重启时该表可为空且恢复会话 seed 不重放 `session/event`；真实验收捕获漏扫后增加 `session/created` typed replay，以相同队列去重。任务书只过滤 fence 边界会误读围栏正文，升级完整状态机。任务书旧 binding 读后 put 有竞态，改用 atomic update。
 - 遗留：open handoff 已留给 TE5/TE8 的真实 UI accept/dismiss 验收；E 结束前归档源/子测试会话并保留权威日志。
+## TE5：会话输入区移交坞与共享席位徽记 — 2026-09-05 07:07
+- commit: PENDING-TASK
+- 动手前核对：实际执行任务书 `sed -n '4099,4172p'`；核实 conversation.input.dock 为 list/session，owner InputZone，现任 todo/goal/queue order=`0/10/20`、locale 插值与工作台条件边界 PASS
+- 验收：
+  - 新增 HandoffDock/SeatBadge 双组件、双 CSS module 与 6 组专项测试；聚焦 → `tests 34; pass 34; fail 0; skipped 0; duration_ms 295.5828`；全量 → `tests 297; pass 296; fail 0; skipped 1; duration_ms 2976.2292` PASS
+  - `npm run build` → derive/client/host=`28.87/191.52/199.46 kB`；typecheck、diff check 均 exit `0` PASS
+  - input.dock 唯一注册 id=`amphoreus-handoff`、order=`30`，位于 conversation.view 注册之后且在 workbenchEnabled 条件外；复用唯一 model/seatDeps；TC11 精确 slot 顺序测试同步 PASS
+  - latestOpenHandoff 只认当前 session 的 open handoff 并取最大 seq；handoffEnabled false/无 open 时不渲染；部署判定只读 runtime seat.status，不从视觉素材猜测 PASS
+  - accept/dismiss 共用同步 useRef 锁与 runAction；无 useEffect/prompt/fetch/appendChild 自动动作；payload 用 React 纯文本 pre、aria-controls/expanded；错误保留输入并正确显示 PASS
+  - SeatBadge 显式收 assetsConfigured，复用 heroVisualOf/stickerAssetUrl/fallbackHue；按 src 记录图片失败、未知/无素材退确定首字、null 为问号、face 有角标；light/full size=`28/48` PASS
+  - 两 CSS module raw hex/rgb/hsl/dark selector=`0/0/0/0`；颜色全走 alias，full 56px 列与 alias gradient、窄屏 actions 换行、focus/disabled 状态齐全 PASS
+  - locale zh/en 各新增 7 键且集合相等；可见按钮为查看内容/移交/忽略；工艺词「移交物」在 TSX=`0`，唯一值落 `handoff.payloadTip` tooltip PASS
+  - 真实 Anaxa open handoff → composer 上方出现「移交给 白厄？」及三按钮；查看内容 title=`移交物`、expanded false→true，pre 逐字显示长整改单 PASS
+  - 真实忽略 → dock 消失、observation seq `11263` 变 dismissed、acceptedSessionId 空、handoff-fork=`0`、当前会话未切、stderr=`0` PASS
+  - 新 handoff seq `13896` 后对移交按钮同一 JS task 连点两次 → 白厄席只从 2 增至 3，仅生成 child `session-4d9fde90-2108-4da2-8237-9f9254fc09af`；observation accepted，binding=`amphoreus-phainon/handoff-fork/pending`、handoffFrom session/seq 精确、匹配 fork=`1`、源 binding 仍 Anaxa；新会话输入为空 PASS
+  - 服务 PID `78728`、HTTP `200`、stderr=`0` bytes PASS
+- 人工断言：✓ 未经点击不 fork/不切会话/不发送；✓ 未部署目标没有 accept 按钮；✓ dismiss 不创建 child；✓ accept 不把 payload 作为用户消息；✓ 组件永不接触 ctx。
+- 偏离与理由：任务书 SeatBadge props 缺少 assetsConfigured 却要求素材 gate，增加显式布尔并拆独立 CSS；任务书两写动作只给 accept busy，改为共享同步锁阻止同 tick 双写；任务文件表漏列共享 SeatBadge 支持文件与 assembly 回归。
+- 遗留：child 当前 injection pending 属预期，因为 accept 本身不发送；后续用户首次输入才注入下游卡。TE8 仍需在 iframe 接受路径解决 open-before-reply 生命周期并验证零自动消息；E 结束归档 disposable 父/子会话。

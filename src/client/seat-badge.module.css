@@ -1,0 +1,49 @@
+.badge {
+  position: relative;
+  display: grid;
+  width: var(--amphoreus-seat-badge-size);
+  height: var(--amphoreus-seat-badge-size);
+  flex: none;
+  place-items: center;
+}
+
+.image,
+.fallback {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  border-radius: 50%;
+}
+
+.image {
+  object-fit: contain;
+}
+
+.fallback {
+  color: var(--dsw-alias-label-primary-inverted);
+  font-size: max(11px, calc(var(--amphoreus-seat-badge-size) * .42));
+  font-weight: 700;
+  line-height: 1;
+}
+
+.badge[data-empty] .fallback {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.face {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  display: grid;
+  width: 14px;
+  height: 14px;
+  place-items: center;
+  border: 2px solid var(--dsw-alias-bg-layer-1);
+  border-radius: 50%;
+  background: var(--dsw-alias-brand-primary);
+  color: var(--dsw-alias-label-primary-inverted);
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 1;
+}

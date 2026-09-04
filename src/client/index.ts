@@ -17,6 +17,7 @@ import { HeroBrandMark, SidebarBrandMark, SidebarBrandName } from './brand.tsx'
 import { installGarnish } from './garnish.ts'
 import { createEnterSeatQueue } from './enter-seat-queue.ts'
 import type { HandoffDeps } from './handoff.ts'
+import { HandoffDock } from './handoff-dock.tsx'
 import { en, NS, zh, type AmphoreusKey } from './locales.ts'
 import { SeatNameplate } from './nameplate.tsx'
 import { PortalFooterAction, PortalOverlay, type PortalFooterInjected, type PortalOverlayInjected } from './portal.tsx'
@@ -249,4 +250,11 @@ export function apply(ctx: ClientContext): void {
       }),
     }, WorkbenchView))
   }
+  ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({
+    name: 'conversation.input.dock',
+    id: 'amphoreus-handoff',
+    order: 30,
+    locale: NS,
+    inject: () => ({ model, seatDeps }),
+  }, HandoffDock))
 }
