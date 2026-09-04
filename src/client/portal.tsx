@@ -32,7 +32,10 @@ export interface PortalOverlayInjected {
   readonly setSeat: WorkbenchBridgeDeps['setSeat']
   readonly theme: NonNullable<WorkbenchBridgeDeps['theme']>
   readonly magazine: NonNullable<WorkbenchBridgeDeps['magazine']>
-  readonly openSeat: (heroId: string | null) => Promise<void>
+  readonly openSeat: (
+    heroId: string | null,
+    extra?: { readonly dispatchText?: string },
+  ) => Promise<boolean>
 }
 
 export type PortalOverlayProps =

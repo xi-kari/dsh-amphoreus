@@ -72,6 +72,7 @@ test('index assembles one shared portal before both overlay and Workbench regist
   const workbench = clientSource.indexOf("name: 'conversation.view'")
   assert.ok(store >= 0 && store < footer && footer < overlay && overlay < workbench)
   assert.equal((clientSource.match(/const portal = createPortalStore\(\)/g) ?? []).length, 1)
+  assert.equal((clientSource.match(/const enterSeatQueue = createEnterSeatQueue\(\)/g) ?? []).length, 1)
   assert.equal((clientSource.match(/name: 'sidebar\.footer\.action'/g) ?? []).length, 1)
   assert.equal((clientSource.match(/name: 'shell\.overlay'/g) ?? []).length, 1)
   assert.match(clientSource, /id: 'amphoreus-portal',[\s\S]*order: 0/)
@@ -87,17 +88,24 @@ test('index assembles one shared portal before both overlay and Workbench regist
   assert.match(overlayBlock, /setSeat: seatTheme\.hint/)
   assert.match(overlayBlock, /theme: themeBridge/)
   assert.match(overlayBlock, /magazine: magazineBridge/)
+  assert.doesNotMatch(overlayBlock, /enterSeatQueue/)
+  const workbenchBlock = clientSource.slice(workbench)
+  assert.match(workbenchBlock, /\n\s*enterSeatQueue,/)
 })
 
-test('openSeat closes first, treats all as close-only, then opens latest or starts a prebound session', () => {
+test('openSeat routes all through the mounted tab or keeps the portal frame, then preserves hero routing', () => {
   const start = clientSource.indexOf('const openSeat = async')
   const end = clientSource.indexOf('\n  const bootWorkbench', start)
   assert.ok(start >= 0 && end > start)
   const action = clientSource.slice(start, end)
+  const all = action.indexOf('if (heroId === null) {')
   const close = action.indexOf('portal.close()')
-  const all = action.indexOf('if (heroId === null) return')
   const state = action.indexOf('model.getSnapshot().state')
-  assert.ok(close >= 0 && close < all && all < state)
+  assert.ok(all >= 0 && all < close && close < state)
+  assert.match(action, /readRememberedTab\(localStorage\) === WORKBENCH_VIEW_ID/u)
+  assert.match(action, /enterSeatQueue\.set\(request\)/u)
+  assert.match(action, /return false/u)
+  assert.doesNotMatch(action, /sessionsFace\.create|seedConversationView|randomUUID/u)
   assert.match(action, /heroVisualById\(heroId\)\?\.skill \?\? state\.seats\.find/)
   assert.match(action, /seatViewsFrom\(/)
   assert.match(action, /view\.sessionIds\.length > 0/)
@@ -106,7 +114,7 @@ test('openSeat closes first, treats all as close-only, then opens latest or star
   assert.doesNotMatch(action, /fetch\(|putBinding|deleteBinding/)
 })
 
-test('openSeat behavior closes all, opens the latest existing session, and creates only when empty', async () => {
+test('openSeat reuses a mounted Workbench, leaves chat in the portal canvas, and preserves hero routing', async () => {
   const start = clientSource.indexOf('const openSeat = async')
   const end = clientSource.indexOf('\n  const bootWorkbench', start)
   const source = clientSource.slice(start, end)
@@ -115,45 +123,71 @@ test('openSeat behavior closes all, opens the latest existing session, and creat
     { compilerOptions: { module: ModuleKind.None, target: ScriptTarget.ES2024 } },
   ).outputText
 
-  const fixture = (options: { state?: object; views?: { skillName: string; sessionIds: string[] }[] }) => {
+  const fixture = (options: {
+    state?: object
+    views?: { skillName: string; sessionIds: string[] }[]
+    current?: string
+    remembered?: string
+  }) => {
     const trace: string[] = []
+    const store = {}
     const context = {
       portal: { close: () => trace.push('close') },
       model: { getSnapshot: () => ({ state: options.state }) },
       heroVisualById: (heroId: string) => heroId === 'anaxa' ? { skill: 'amphoreus-anaxa' } : undefined,
       seatViewsFrom: () => options.views ?? [],
       sessionsFace: {
-        list: { getSnapshot: () => ({}) },
+        list: { getSnapshot: () => ({ current: options.current }) },
+        create: async () => { throw new Error('blank session must not be created') },
         open: (id: string) => trace.push(`open:${id}`),
       },
+      enterSeatQueue: { set: (request: object) => trace.push(`queue:${JSON.stringify(request)}`) },
+      readRememberedTab: () => options.remembered ?? null,
+      WORKBENCH_VIEW_ID: 'amphoreus-workbench',
+      localStorage: store,
       ctx: { workspaces: { list: { getSnapshot: () => ({}) } } },
       startPortalSeatSession: async (skill: string) => {
         trace.push(`start:${skill}`)
         return 'session-new'
       },
-      __openSeat: undefined as undefined | ((heroId: string | null) => Promise<void>),
+      __openSeat: undefined as undefined | ((heroId: string | null, extra?: { dispatchText?: string }) => Promise<boolean>),
     }
     vm.runInNewContext(compiled, context)
     return { openSeat: context.__openSeat!, trace }
   }
 
-  const all = fixture({ state: { seats: [] } })
-  await all.openSeat(null)
-  assert.deepEqual(all.trace, ['close'])
+  const all = fixture({ state: { seats: [] }, current: 'session-current', remembered: 'amphoreus-workbench' })
+  assert.equal(await all.openSeat(null, { dispatchText: '  整理一下日志  ' }), true)
+  assert.deepEqual(all.trace, ['close', 'queue:{"workspaceId":"all","dispatchText":"整理一下日志"}'])
+
+  const fromChat = fixture({
+    state: { seats: [] },
+    current: 'session-current',
+    remembered: 'chat',
+  })
+  assert.equal(await fromChat.openSeat(null, { dispatchText: '整理一下日志' }), false)
+  assert.deepEqual(fromChat.trace, [])
+
+  const noCurrent = fixture({
+    state: { seats: [] },
+    remembered: 'chat',
+  })
+  assert.equal(await noCurrent.openSeat(null), false)
+  assert.deepEqual(noCurrent.trace, [])
 
   const existing = fixture({
     state: { seats: [] },
     views: [{ skillName: 'amphoreus-anaxa', sessionIds: ['session-latest', 'session-older'] }],
   })
-  await existing.openSeat('anaxa')
+  assert.equal(await existing.openSeat('anaxa'), true)
   assert.deepEqual(existing.trace, ['close', 'open:session-latest'])
 
   const empty = fixture({ state: { seats: [] }, views: [] })
-  await empty.openSeat('anaxa')
+  assert.equal(await empty.openSeat('anaxa'), true)
   assert.deepEqual(empty.trace, ['close', 'start:amphoreus-anaxa'])
 
   const unavailable = fixture({})
-  await unavailable.openSeat('anaxa')
+  assert.equal(await unavailable.openSeat('anaxa'), true)
   assert.deepEqual(unavailable.trace, ['close'])
 })
 

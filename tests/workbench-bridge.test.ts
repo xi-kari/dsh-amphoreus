@@ -112,23 +112,37 @@ test('shared hook retains full replay, strict source checks, dual current subscr
   )
   for (const call of [
     'pushWorkspaces()',
+    'pushState()',
     'pushCurrent()',
     'pushConfig()',
     'pushMessagesRef.current()',
     'pushLiveRef.current()',
     'pushThemeTokensRef.current()',
     'pushMagazineRef.current()',
+    'flushEnterSeat()',
   ]) assert.ok(ready.includes(call), `map-ready missing ${call}`)
 
   assert.match(bridgeSource, /case 'amphoreus:open-seat'/)
-  assert.match(bridgeSource, /await handler\?\.\(null\)/)
-  assert.match(bridgeSource, /await handler\?\.\(data\.heroId\)/)
+  assert.match(bridgeSource, /const handled = await handler\?\.\(null, extra\)/)
+  assert.match(bridgeSource, /await handler\?\.\(data\.heroId, extra\)/)
+  assert.match(bridgeSource, /dispatchText: data\.dispatchText/u)
+  assert.match(bridgeSource, /handled === false[\s\S]*type: 'amphoreus:enter-seat'[\s\S]*workspaceId: 'all'/u)
   assert.match(bridgeSource, /case 'amphoreus:open-portal'/)
   assert.match(bridgeSource, /case 'amphoreus:close':[\s\S]*handlersRef\.current\.onClose\?\.\(\)/)
   assert.match(bridgeSource, /const disposeSessions = sessions\.list\.subscribe\(push\)/)
   assert.match(bridgeSource, /const disposeModel = model\.subscribe\(push\)/)
   assert.match(bridgeSource, /identity\.id === last\.id && identity\.seatKey === last\.seatKey/)
   assert.match(bridgeSource, /disposeSessions\(\)[\s\S]*disposeModel\(\)/)
+  assert.match(bridgeSource, /snapshot\.phase !== 'ready'/)
+  assert.match(bridgeSource, /model\.subscribe\(pushState\)/)
+  assert.match(bridgeSource, /enterSeatQueue\.subscribe\(flushEnterSeat\)/)
+  assert.match(bridgeSource, /readyRef\.current = true/)
+  assert.match(bridgeSource, /readyRef\.current = false/)
+  const requestCurrent = bridgeSource.slice(
+    bridgeSource.indexOf("case 'amphoreus:request-current'"),
+    bridgeSource.indexOf("case 'amphoreus:request-config'"),
+  )
+  assert.ok(requestCurrent.indexOf('pushState()') < requestCurrent.indexOf('pushCurrent()'))
 })
 
 test('different-target open remembers chat before navigation and Workbench keeps two direct chat openings', () => {
@@ -187,4 +201,10 @@ test('TE3 bridge validates dispatch, routes handoff RPC, and shares seatDeps wit
   assert.ok((clientSource.match(/\n\s+seatDeps,/g) ?? []).length >= 2)
   assert.match(portalSource, /readonly seatDeps: WorkbenchBridgeDeps\['seatDeps'\]/)
   assert.match(portalSource, /useWorkbenchBridge\(frameRef, \{[\s\S]*?seatDeps,/)
+  assert.equal(bridgeSource.match(/case 'amphoreus:dispatch'/gu)?.length, 1)
+  assert.match(clientSource, /const enterSeatQueue = createEnterSeatQueue\(\)/u)
+  assert.match(clientSource, /seatDeps,\s*enterSeatQueue,\s*openPortal,/u)
+  const overlayStart = clientSource.indexOf("ctx.slots.inject('shell.overlay'")
+  const viewStart = clientSource.indexOf("ctx.slots.inject('conversation.view'")
+  assert.doesNotMatch(clientSource.slice(overlayStart, viewStart), /enterSeatQueue/u)
 })

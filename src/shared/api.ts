@@ -151,6 +151,10 @@ export interface AmphoreusState {
     readonly assetsConfigured: boolean
     readonly heroWorkspaceMode: 'seats' | 'off'
     readonly workbench: WorkbenchPublicConfig
+    readonly handoffEnabled: boolean
+    readonly receiptParsing: boolean
+    readonly dispatchHints: boolean
+    readonly pipelinesEnabled: boolean
   }
 }
 

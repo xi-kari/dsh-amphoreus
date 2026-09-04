@@ -85,7 +85,7 @@ const VIEWPORT_MARGIN = 1400
 const state = {
   index: new Map(), indexRevision: 0, indexRequest: 0, eventSource: null, persistenceHydrated: false, bootstrapped: false, mapOpenPending: false, workspace: null, activeId: null, selectedCardId: null, mode: BOOT_MODE === 'portal' ? 'portal' : 'canvas', zoom: 1, currentDsh: null, currentSessionId: null, tabEntered: false, tabEntryKey: null, sidebarCollapsed: false,
   // Seat portal: hero seats from the host (chronicle art, palette, folder).
-  seats: [], sessionsById: new Map(), assetsConfigured: false, seatId: BOOT_MODE === 'portal' ? null : restoredSeatId, cardFlightPending: false, cardTextLimit: WORKBENCH_CONFIG.cardTextLimit, magazineMode: 'light', amph: null, dispatchLaneCollapsed: false,
+  seats: [], sessionsById: new Map(), assetsConfigured: false, seatId: BOOT_MODE === 'portal' ? null : restoredSeatId, cardFlightPending: false, cardTextLimit: WORKBENCH_CONFIG.cardTextLimit, magazineMode: 'light', amph: null, dispatch: { text: '', suggestions: [], pending: false, lastError: '' }, dispatchLaneCollapsed: false,
   unprojectable: new Map(),
   historyBySession: new Map(), historyRevisionBySession: new Map(), historyCompleteBySession: new Map(), pendingReplies: new Map(), pendingRpc: new Map(), liveReplies: new Map(),
   draft: null, error: '', branchAnchors: new Map(), cardPositions: new Map(), legacyPositionKeys: new Set(), collapsedCardIds: new Set(), quickPhrases: [...DEFAULT_QUICK_PHRASES], quickPhraseEditorOpen: false,
@@ -382,7 +382,7 @@ function settleRpc(requestId, value, error) {
 function setError(error = '') { state.error = error instanceof Error ? error.message : error; render() }
 
 function canReplaceView() {
-  return state.draft === null && !state.dragging && !state.canvasGesture && Date.now() >= state.canvasRefreshAfter && !document.activeElement?.matches('textarea')
+  return state.draft === null && !state.dragging && !state.canvasGesture && Date.now() >= state.canvasRefreshAfter && !document.activeElement?.matches('textarea, input')
 }
 
 function deferCanvasRefresh(delay = 700) {
@@ -1398,6 +1398,82 @@ function syncCanvasViewport() {
   }
 }
 
+// @mirror-begin suggestSeats
+function suggestSeats(text, dispatch, cards, limit = 3) {
+  const hay = text.trim().toLowerCase()
+  if (hay === '') return []
+  const byName = new Map(cards.map(card => [card.name, card]))
+  const best = new Map()
+
+  dispatch.forEach((row, index) => {
+    const card = byName.get(row.skill)
+    const names = card === undefined
+      ? row.roleText.split('／').map(name => name.trim())
+      : [card.displayName, ...card.aliases]
+    const matchedName = names.find(name => {
+      const normalized = name.toLowerCase()
+      return normalized.length >= 2 && hay.includes(normalized)
+    })
+    const matchedNeeds = row.needs.filter(need => {
+      const normalized = need.toLowerCase()
+      return normalized !== '' && hay.includes(normalized)
+    })
+    const rowScore = matchedNeeds.reduce((score, need) => score + need.toLowerCase().length, 0)
+      + (matchedName === undefined ? 0 : 100)
+    const faceMatch = matchedName !== undefined
+      && row.face?.toLowerCase() === matchedName.toLowerCase()
+    if (rowScore === 0) return
+
+    const previous = best.get(row.skill)
+    const hitKeys = new Set(previous?.hitKeys ?? [])
+    const hits = [...(previous?.hits ?? [])]
+    let score = previous?.score ?? 0
+    for (const need of matchedNeeds) {
+      const key = need.toLowerCase()
+      if (hitKeys.has(key)) continue
+      hitKeys.add(key)
+      hits.push(need)
+      score += key.length
+    }
+    let named = previous?.named ?? false
+    if (matchedName !== undefined) {
+      const key = matchedName.toLowerCase()
+      if (!hitKeys.has(key)) {
+        hitKeys.add(key)
+        hits.push(matchedName)
+      }
+      if (!named) {
+        named = true
+        score += 100
+      }
+    }
+
+    const rowWins = previous === undefined
+      || rowScore > previous.bestRowScore
+      || (rowScore === previous.bestRowScore && faceMatch && !previous.bestFaceMatch)
+    best.set(row.skill, {
+      skill: row.skill,
+      roleText: rowWins ? row.roleText : previous.roleText,
+      score,
+      hits,
+      ...(rowWins
+        ? row.face === undefined ? {} : { face: row.face }
+        : previous.face === undefined ? {} : { face: previous.face }),
+      index: rowWins ? index : previous.index,
+      bestRowScore: rowWins ? rowScore : previous.bestRowScore,
+      bestFaceMatch: rowWins ? faceMatch : previous.bestFaceMatch,
+      hitKeys,
+      named,
+    })
+  })
+
+  return [...best.values()]
+    .sort((left, right) => right.score - left.score || left.index - right.index)
+    .slice(0, Math.max(0, limit))
+    .map(({ index: _index, bestRowScore: _bestRowScore, bestFaceMatch: _bestFaceMatch, hitKeys: _hitKeys, named: _named, ...candidate }) => candidate)
+}
+// @mirror-end suggestSeats
+
 function dispatchRecords() {
   return (state.amph?.observations ?? [])
     .filter(observation => observation?.kind === 'dispatch' && typeof observation.sessionId === 'string')
@@ -1439,14 +1515,108 @@ function deployedSkill(skillName) {
   return state.seats.find(seat => seat.skillName === skillName)?.deployed === true
 }
 
-function stickerOrInitial(skillName) {
+function stickerOrInitial(skillName, variant = 'stub') {
   const seat = state.seats.find(item => item.skillName === skillName)
   if (typeof seat?.stickerUrl === 'string' && seat.stickerUrl !== '') {
+    if (variant === 'chip') return `<img class="seat-chip-sticker" src="${escapeHtml(seat.stickerUrl)}" alt="">`
     return `<img class="dispatch-stub-mark" src="${escapeHtml(seat.stickerUrl)}" alt="">`
   }
   const name = String(seat?.displayName ?? skillName ?? '席').trim()
   const initial = Array.from(name)[0] ?? '席'
+  if (variant === 'chip') return `<i class="seat-chip-initial" style="--hue:${seat?.hue ?? hashHue(String(skillName ?? 'seat'))}">${escapeHtml(initial)}</i>`
   return `<span class="dispatch-stub-mark dispatch-stub-mark-generic" style="--seat-hue:${seat?.hue ?? hashHue(String(skillName ?? 'seat'))}" aria-hidden="true">${escapeHtml(initial)}</span>`
+}
+
+function displayNameOf(skillName) {
+  return state.amph?.cards?.find(card => card.name === skillName)?.displayName
+    ?? state.seats.find(seat => seat.skillName === skillName)?.displayName
+    ?? skillName
+}
+
+function seatDirOf(skillName) {
+  const dir = state.seats.find(seat => seat.skillName === skillName)?.dir
+  return typeof dir === 'string' && dir !== '' ? dir : undefined
+}
+
+function allDeployedSeats() {
+  return state.seats
+    .filter(seat => seat.deployed === true)
+    .map(seat => ({
+      skill: seat.skillName,
+      roleText: (seat.duties ?? []).join('、'),
+      hits: [],
+    }))
+}
+
+function firstStationDeployed(pipeline) {
+  const first = pipeline.stations.find(station => station.skill)
+  return first !== undefined && deployedSkill(first.skill)
+}
+
+function seatChip(candidate, action) {
+  const deployed = deployedSkill(candidate.skill)
+  const disabled = !deployed || state.dispatch.pending
+  const face = typeof candidate.face === 'string' && candidate.face !== ''
+    ? ` data-face="${escapeHtml(candidate.face)}"`
+    : ''
+  const hits = candidate.hits.length === 0 ? '' : `<small>${escapeHtml(candidate.hits.join('·'))}</small>`
+  return `<button type="button" class="seat-chip${deployed ? '' : ' undeployed'}" data-action="${action}" data-skill="${escapeHtml(candidate.skill)}"${face}${disabled ? ' disabled' : ''} title="${escapeHtml(deployed ? candidate.roleText : '未部署')}">${stickerOrInitial(candidate.skill, 'chip')}<span>${escapeHtml(displayNameOf(candidate.skill))}</span>${hits}</button>`
+}
+
+function stationBadge(station) {
+  const hasSkill = typeof station.skill === 'string' && station.skill !== ''
+  const deployed = hasSkill && deployedSkill(station.skill)
+  return `<span class="station${hasSkill ? '' : ' unresolved'}${deployed ? '' : ' undeployed'}" title="${escapeHtml(station.text)}${deployed ? '' : '（未部署）'}">${escapeHtml(station.text)}</span>`
+}
+
+function dispatchSuggestHtml() {
+  const hintsEnabled = state.amph?.features?.dispatchHints === true
+  const hints = hintsEnabled
+    ? `<span class="dispatch-suggest-label" title="仅按分派表关键词做词面匹配，不做意图推断">建议承办</span>${state.dispatch.suggestions.length > 0 ? state.dispatch.suggestions.map(candidate => seatChip(candidate, 'dispatch-pick')).join('') : '<span class="dispatch-none">无词面命中，请直接选席</span>'}`
+    : ''
+  return `${hints}<details class="dispatch-all"><summary>全部席位</summary>${allDeployedSeats().map(candidate => seatChip(candidate, 'dispatch-pick')).join('')}</details>`
+}
+
+function renderDispatchPanel() {
+  if (state.seatId !== 'all' || state.mode !== 'canvas') return ''
+  const pipelines = state.amph?.effectiveConfig?.pipelinesEnabled === true
+    ? state.amph?.pipelines ?? []
+    : []
+  return `<section class="dispatch-panel" aria-label="派发">
+    <form class="dispatch-form" data-dispatch-form>
+      <label class="dispatch-kicker">派发</label>
+      <textarea maxlength="4000" rows="2" placeholder="一句话说明任务，选择承办席后发出…" data-dispatch-input${state.dispatch.pending ? ' disabled' : ''}>${escapeHtml(state.dispatch.text)}</textarea>
+    </form>
+    <div class="dispatch-suggest">${dispatchSuggestHtml()}</div>
+    <div class="dispatch-lines">${pipelines.map(pipeline => `<div class="dispatch-line"><strong>${escapeHtml(pipeline.name)}</strong>${pipeline.stations.map(stationBadge).join('<i class="arrow" aria-hidden="true">→</i>')}<button type="button" class="dispatch-line-go" data-action="dispatch-pipeline" data-pipeline="${escapeHtml(pipeline.name)}" ${firstStationDeployed(pipeline) && !state.dispatch.pending ? '' : 'disabled title="第一站未部署"'}>按线派发</button></div>`).join('')}</div>
+  </section>`
+}
+
+function updateDispatchSuggestions(text) {
+  state.dispatch.text = text
+  state.dispatch.suggestions = suggestSeats(
+    text,
+    state.amph?.dispatch ?? [],
+    state.amph?.cards ?? [],
+  )
+}
+
+function patchDispatchSuggestions() {
+  const suggest = app.querySelector('.dispatch-suggest')
+  if (suggest instanceof HTMLElement) suggest.innerHTML = dispatchSuggestHtml()
+}
+
+let dispatchSuggestionTimer = 0
+
+function scheduleDispatchSuggestions(text) {
+  state.dispatch.text = text
+  if (dispatchSuggestionTimer !== 0) window.clearTimeout(dispatchSuggestionTimer)
+  dispatchSuggestionTimer = window.setTimeout(() => {
+    dispatchSuggestionTimer = 0
+    if (state.dispatch.text !== text) return
+    updateDispatchSuggestions(text)
+    patchDispatchSuggestions()
+  }, 120)
 }
 
 function renderStandby(observation) {
@@ -1785,6 +1955,10 @@ function renderPortal() {
       <span class="portal-all-copy"><strong>全体会议</strong><span>未归席的会话与总览画布</span></span>
       <span class="portal-count">${allCount > 0 ? `${allCount} 段会话` : '尚无会话'}</span>
     </button>
+    <form class="portal-dispatch" data-portal-dispatch>
+      <input maxlength="200" placeholder="直接派发一句任务…" aria-label="直接派发一句任务">
+      <button type="submit">去派发</button>
+    </form>
     <div class="portal-grid">${seatCards || '<p class="tree-empty">席位尚未就绪</p>'}</div>
   </section>`
 }
@@ -1852,7 +2026,7 @@ function render() {
   const seat = seatForCurrentView()
   const canvasControls = state.mode === 'canvas' && (threads.length > 0 || state.draft?.kind === 'new') ? `<div class="canvas-controls"><button data-action="layout" title="整理节点" aria-label="整理节点"><svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1"/><rect x="9" y="2.5" width="4.5" height="4.5" rx="1"/><rect x="2.5" y="9" width="4.5" height="4.5" rx="1"/><rect x="9" y="9" width="4.5" height="4.5" rx="1"/></svg>整理</button><button data-action="focus-active" title="定位到当前会话" aria-label="定位到当前会话"><svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="8" cy="8" r="3.2"/><path d="M8 1.5v2.6M8 11.9v2.6M1.5 8h2.6M11.9 8h2.6"/></svg>定位</button><button data-action="zoom-out" aria-label="缩小" title="缩小"><svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M3.5 8h9"/></svg></button><span>${Math.round(state.zoom * 100)}%</span><button data-action="zoom-in" aria-label="放大" title="放大"><svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M8 3.5v9M3.5 8h9"/></svg></button></div>` : ''
   const detailAvailable = currentThread() !== null
-  const canvasTabs = `<nav class="canvas-tabs" aria-label="会话地图视图"><button class="${state.mode === 'canvas' ? 'active' : ''}" data-action="show-canvas">地图</button><button class="${state.mode === 'thread' ? 'active' : ''}" data-action="show-thread" data-thread="${state.activeId ?? ''}" ${detailAvailable ? '' : 'disabled'}>详情</button></nav>`
+  const canvasTabs = `<nav class="canvas-tabs" aria-label="会话地图视图"><button class="${state.mode === 'canvas' ? 'active' : ''}" data-action="show-canvas">地图</button><button class="${state.mode === 'thread' ? 'active' : ''}" data-action="show-thread" data-thread="${state.activeId ?? ''}" ${detailAvailable ? '' : 'disabled'}>详情</button><button class="canvas-tab-all ${state.seatId === 'all' ? 'active' : ''}" type="button" data-action="enter-seat" data-workspace="all" title="总空间：总览与派发">全体会议</button></nav>`
   const seatBrand = seat !== undefined
     ? `<div class="brand seat-brand" aria-label="${escapeHtml(seat.displayName ?? seat.heroId)}" style="--seat-accent:${escapeHtml(seat.accent ?? '#8a681c')}">${seat.stickerUrl ? `<img class="brand-sticker" src="${escapeHtml(seat.stickerUrl)}" alt="">` : '<span class="portal-all-mark" aria-hidden="true">✦</span>'}<strong>${escapeHtml(seat.displayName ?? seat.heroId)}</strong></div>`
     : `<div class="brand" aria-label="全体会议"><span class="portal-all-mark" aria-hidden="true">✦</span><strong>${escapeHtml(seatTitleOf(state.seatId ?? 'all'))}</strong></div>`
@@ -1872,7 +2046,7 @@ function render() {
   const unprojectableList = orphanUnprojectable.length === 0 ? '' :
     `<div class="sidebar-heading"><span>不可投影</span></div><ul class="unprojectable-list">${orphanUnprojectable.map(item => `<li title="${escapeHtml(item.reason)}"><span>${escapeHtml(item.title ?? item.sessionId)}</span><i>${escapeHtml(item.reason)}</i></li>`).join('')}</ul>`
   const mainStageStyle = `--seat-stage-art:${seat?.cardUrl ? `url("${seat.cardUrl}")` : 'none'};--amphoreus-motif-url:${motifUrlForSeat(seat, document.documentElement.dataset.theme === 'dark')};--amphoreus-seat-accent:${seat?.accent ?? 'var(--dsw-alias-brand-primary)'};--amphoreus-seat-accent2:${seat?.accent2 ?? 'var(--dsw-alias-brand-primary)'}`
-  app.innerHTML = `<main class="synapse-shell ${state.sidebarCollapsed ? 'sidebar-collapsed' : ''} magazine-${state.magazineMode}"><aside class="sidebar"><div class="sidebar-brand-row">${seatBrand}<button class="sidebar-toggle" type="button" data-action="toggle-sidebar" aria-label="${state.sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}" title="${state.sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.75" y="1.75" width="12.5" height="12.5" rx="2.25"/><path d="M6 2v12"/></svg></button></div><button class="back-portal" type="button" data-action="${portalAction}"><svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5 5.5 8 10 12.5"/></svg><span>全部角色</span></button>${seatCardSlot}<button class="new-workspace" type="button" data-action="create-session" ${state.draft !== null ? 'disabled' : ''}><svg class="new-session-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.25"/><path d="M8 4.75v6.5M4.75 8h6.5"/></svg><span>新会话</span></button><div class="sidebar-heading"><span>会话</span></div><nav class="thread-tree">${renderThreadTree(threads, seat)}</nav>${unprojectableList}</aside><header class="topbar">${canvasControls}</header><section class="main-stage" style="${escapeHtml(mainStageStyle)}">${state.error ? `<div class="status-message" role="alert"><span>${escapeHtml(state.error)}</span><button data-action="dismiss-error" aria-label="关闭" title="关闭">×</button></div>` : ''}${canvasTabs}${view}${selectionFollowupButton()}</section></main>`
+  app.innerHTML = `<main class="synapse-shell ${state.sidebarCollapsed ? 'sidebar-collapsed' : ''} magazine-${state.magazineMode}"><aside class="sidebar"><div class="sidebar-brand-row">${seatBrand}<button class="sidebar-toggle" type="button" data-action="toggle-sidebar" aria-label="${state.sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}" title="${state.sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.75" y="1.75" width="12.5" height="12.5" rx="2.25"/><path d="M6 2v12"/></svg></button></div><button class="back-portal" type="button" data-action="${portalAction}"><svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5 5.5 8 10 12.5"/></svg><span>全部角色</span></button>${seatCardSlot}<button class="new-workspace" type="button" data-action="create-session" ${state.draft !== null ? 'disabled' : ''}><svg class="new-session-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.25"/><path d="M8 4.75v6.5M4.75 8h6.5"/></svg><span>新会话</span></button><div class="sidebar-heading"><span>会话</span></div><nav class="thread-tree">${renderThreadTree(threads, seat)}</nav>${unprojectableList}</aside><header class="topbar">${canvasControls}</header><section class="main-stage" style="${escapeHtml(mainStageStyle)}">${state.error ? `<div class="status-message" role="alert"><span>${escapeHtml(state.error)}</span><button data-action="dismiss-error" aria-label="关闭" title="关闭">×</button></div>` : ''}${canvasTabs}${renderDispatchPanel()}${view}${selectionFollowupButton()}</section></main>`
   installDragging()
   cacheCardConnectors()
   installDispatchLaneEdges()
@@ -2263,6 +2437,63 @@ app.addEventListener('click', async event => {
     if (button.dataset.action === 'close-portal') { post('amphoreus:close'); return }
     if (button.dataset.action === 'open-portal') { post('amphoreus:open-portal'); return }
     if (button.dataset.action === 'show-portal') { showPortal(); return }
+    if (button.dataset.action === 'dispatch-pick') {
+      const text = state.dispatch.text.trim()
+      const skillName = button.dataset.skill
+      if (text === '') return setError('先写一句任务')
+      if (typeof skillName !== 'string' || !deployedSkill(skillName)) return setError('该席尚未部署')
+      state.dispatch.pending = true
+      state.dispatch.lastError = ''
+      render()
+      try {
+        await dshRpc('amphoreus:dispatch', {
+          skillName,
+          text,
+          cwd: seatDirOf(skillName),
+          face: button.dataset.face,
+          from: 'panel',
+        })
+        state.dispatch = { text: '', suggestions: [], pending: false, lastError: '' }
+        render()
+        window.setTimeout(() => { void refreshIndex() }, 150)
+      } catch (error) {
+        state.dispatch.pending = false
+        state.dispatch.lastError = error instanceof Error ? error.message : String(error)
+        throw error
+      }
+      return
+    }
+    if (button.dataset.action === 'dispatch-pipeline') {
+      const text = state.dispatch.text.trim()
+      if (text === '') return setError('先写一句任务')
+      const pipeline = (state.amph?.pipelines ?? []).find(item => item.name === button.dataset.pipeline)
+      const first = pipeline?.stations.find(station => station.skill)
+      if (pipeline === undefined || first?.skill === undefined || !deployedSkill(first.skill)) {
+        return setError('第一站未部署，无法按线派发')
+      }
+      state.dispatch.pending = true
+      state.dispatch.lastError = ''
+      render()
+      try {
+        await dshRpc('amphoreus:dispatch', {
+          skillName: first.skill,
+          text,
+          cwd: seatDirOf(first.skill),
+          face: first.face,
+          from: 'pipeline',
+          pipeline: pipeline.name,
+          station: pipeline.stations.indexOf(first),
+        })
+        state.dispatch = { text: '', suggestions: [], pending: false, lastError: '' }
+        render()
+        window.setTimeout(() => { void refreshIndex() }, 150)
+      } catch (error) {
+        state.dispatch.pending = false
+        state.dispatch.lastError = error instanceof Error ? error.message : String(error)
+        throw error
+      }
+      return
+    }
     if (button.dataset.action === 'toggle-dispatch-lane') {
       state.dispatchLaneCollapsed = !state.dispatchLaneCollapsed
       render()
@@ -2363,10 +2594,22 @@ app.addEventListener('change', event => {
     updateQuickPhrase(Number(quickPhrase.dataset.quickPhraseIndex), quickPhrase.value)
   }
 })
-app.addEventListener('input', event => { const input = event.target; if (input instanceof HTMLTextAreaElement && input.closest('[data-draft]') && state.draft !== null) state.draft.text = input.value })
+app.addEventListener('input', event => {
+  const input = event.target
+  if (input instanceof HTMLTextAreaElement && input.closest('[data-draft]') && state.draft !== null) state.draft.text = input.value
+  if (input instanceof HTMLTextAreaElement && input.matches('[data-dispatch-input]')) scheduleDispatchSuggestions(input.value)
+})
 app.addEventListener('submit', event => {
   const form = event.target
   if (!(form instanceof HTMLFormElement)) return
+  if (form.matches('[data-portal-dispatch]')) {
+    event.preventDefault()
+    const input = form.querySelector('input')
+    const text = input instanceof HTMLInputElement ? input.value.trim() : ''
+    if (text === '') return setError('先写一句任务')
+    post('amphoreus:open-seat', { heroId: null, dispatchText: text })
+    return
+  }
   if (form.matches('[data-draft]')) { event.preventDefault(); void submitDraft(); return }
   const thread = state.workspace?.threads.find(item => item.id === form.dataset.compose)
   const input = form.querySelector('textarea')
@@ -2394,6 +2637,32 @@ window.addEventListener('message', event => {
     // seat before the parent bridge sends this handshake.
     if (state.bootstrapped) completeMapOpen()
     else state.mapOpenPending = true
+  }
+  if (data.type === 'amphoreus:state') {
+    state.amph = {
+      revision: data.revision,
+      features: data.features ?? {},
+      dispatch: data.dispatch ?? [],
+      pipelines: data.pipelines ?? [],
+      cards: data.cards ?? [],
+      seats: data.seats ?? [],
+      bindings: data.bindings ?? [],
+      observations: data.observations ?? [],
+      memory: data.memory ?? [],
+      effectiveConfig: data.effectiveConfig ?? {},
+      firewallWords: data.firewallWords ?? [],
+    }
+    updateDispatchSuggestions(state.dispatch.text)
+    patchDispatchSuggestions()
+    scheduleViewRefresh()
+  }
+  if (data.type === 'amphoreus:enter-seat' && (BOOT_MODE === 'tab' || BOOT_MODE === 'portal')) {
+    if (typeof data.dispatchText === 'string') updateDispatchSuggestions(data.dispatchText)
+    const workspaceId = data.workspaceId === 'all'
+      || typeof data.workspaceId === 'string' && data.workspaceId.startsWith('seat:')
+      ? data.workspaceId
+      : 'all'
+    void enterSeat(workspaceId).catch(setError)
   }
   if (data.type === 'amphoreus:theme') {
     document.documentElement.dataset.theme = data.dark === true ? 'dark' : 'light'
@@ -2497,7 +2766,7 @@ window.addEventListener('message', event => {
       }
     }
   }
-  if (data.type === 'amphoreus:forked-session' || data.type === 'amphoreus:created-session' || data.type === 'amphoreus:message-sent') settleRpc(data.requestId, data.session ?? data)
+  if (data.type === 'amphoreus:forked-session' || data.type === 'amphoreus:created-session' || data.type === 'amphoreus:message-sent' || data.type === 'amphoreus:dispatched') settleRpc(data.requestId, data.session ?? data)
   if (data.type === 'amphoreus:bridge-error') { settleRpc(data.requestId, undefined, new Error(data.message)); if (data.requestId === undefined) setError(data.message) }
 })
 

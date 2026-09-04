@@ -98,10 +98,10 @@ test('main stage escapes the combined inline style and theme switching preserves
   assert.equal(appSource.slice(portalStart, portalEnd).includes('--amphoreus-motif-url'), false)
 })
 
-test('motif layer is below all four direct stage surfaces and existing card art remains', () => {
+test('motif layer is below every direct stage surface and existing card art remains', () => {
   assert.equal((cssSource.match(/\.main-stage::before\s*\{/gu) ?? []).length, 1)
   assert.match(cssSource, /\.main-stage::before \{[^}]*z-index: 0;[^}]*background: var\(--amphoreus-motif-url, none\) 0 0 \/ 64px 64px repeat;[^}]*opacity: \.55;[^}]*mask-image:/u)
-  assert.match(cssSource, /\.main-stage > \.canvas-tabs, \.main-stage > \.detail-view, \.main-stage > \.empty-canvas, \.main-stage > \.canvas-view \{ position: relative; z-index: 1; \}/u)
+  assert.match(cssSource, /\.main-stage > \.canvas-tabs, \.main-stage > \.dispatch-panel, \.main-stage > \.detail-view, \.main-stage > \.empty-canvas, \.main-stage > \.canvas-view \{ position: relative; z-index: 1; \}/u)
   assert.equal((cssSource.match(/\.main-stage::after\s*\{/gu) ?? []).length, 1)
   assert.match(cssSource, /\.main-stage::after \{[^}]*background: var\(--seat-stage-art, none\) center \/ contain no-repeat;[^}]*transform: rotate\(6deg\); \}/u)
 })

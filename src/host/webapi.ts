@@ -421,6 +421,10 @@ export class AmphoreusWebApi {
         assetsConfigured: this.#config.assetsRoot.trim() !== '',
         heroWorkspaceMode: this.#config.heroWorkspaceMode,
         workbench: publicWorkbench(this.#config),
+        handoffEnabled: this.#config.handoff.enabled && (snapshot?.features.handoffButtons ?? false),
+        receiptParsing: this.#config.receiptParsing && (snapshot?.features.receiptDetection ?? false),
+        dispatchHints: snapshot?.features.dispatchHints ?? false,
+        pipelinesEnabled: snapshot?.features.pipelines ?? false,
       },
     }
   }

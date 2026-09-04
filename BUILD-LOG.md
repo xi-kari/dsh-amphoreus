@@ -846,7 +846,7 @@
 - 偏离与理由：依赖环使可构建顺序采用 TE2→TE3→TE1；本任务先落宿主 API 与 lane 消费端，`state.amph` 实时桥、真实派发与 receipt 三态分别由 TE1/TE3/TE4 后置联验。任务书只写非负 seq，但 E.0 明定 dispatch 固定 `0`，输入 schema 收紧为 literal 0；任务书漏列 locales、bindings/body-limit 回归，均随领域扩展同步。任务书 connectorPath 端点描述与现实现不符，抽共享点曲线保持两类调用正确。
 - 遗留：真实浏览器 stub/edge/pipeline/三态在 TE1+TE3+TE4 联通后回填；未写入 dummy observation，避免无 DELETE 路由时污染真实 store。
 ## TE3：宿主页派发与移交共享流程 — 2026-09-05 05:23
-- commit: PENDING-TASK
+- commit: 08dfbf7
 - 动手前核对：实际执行 `sed -n '3924,3998p'` 与 `grep -n 'function decodeTail' -A 6`；确认 observation key 会 decodeURIComponent、TC4 PUT→create 补偿边界、TC2 fork-inherit 排队顺序与官方 create/fork resolve 后可寻址契约 PASS
 - 验收：
   - 新增 `handoff.ts` 与 15 组流程测试；聚焦 → `tests 41; pass 41; fail 0; skipped 0; duration_ms 415.4498`；全量 → `tests 267; pass 266; fail 0; skipped 1; duration_ms 2480.0099` PASS
@@ -859,3 +859,22 @@
 - 人工断言：✓ dispatch 只在用户明确点击后发送首条任务；✓ accept 不发送移交内容；✓ fork-inherit 后置 handoff-fork 在同一 storage write chain 最终覆盖；✓ face 贯通双面席；✓ 三流程不被描述成跨系统原子事务。
 - 偏离与理由：任务书文件表漏列 Portal overlay 的共享 deps 注入，按强类型真实调用面补入。任务书 DispatchInput 漏 face，会使长夜月派发退回三月七，故在共享层增加可选 face 并留给 TE1/TE7 透传。构建器统一双引号，原单引号 grep 字面为 0；采用 quote-agnostic 实测 2，而不向 bundle 塞伪字符串。
 - 遗留：真实 dispatch/accept/dismiss 浏览器消息由 TE1/TE4/TE5 界面触发后联验；已明确 observation/prompt/open 与 fork/patch/open 各失败点可能留下的部分完成状态。
+## TE1：状态桥、全体会议入口与派发面板 — 2026-09-05 06:16
+- commit: PENDING-TASK
+- 动手前核对：实际重读 E.0/TE1、`FeatureSwitches` 八键、portal/bridge/Tab contracts；依赖环按 TE2→TE3→TE1 落地，TE3 dispatch case 只核对且精确 `1` 处 PASS
+- 验收：
+  - 新增 bridge-state/enter-seat-queue/dispatch-match 与面板测试；聚焦 → `tests 23; pass 23; fail 0; skipped 0; duration_ms 421.4346`，最终门户/桥/面板 → `tests 16; pass 16; fail 0; skipped 0; duration_ms 301.4442` PASS
+  - 全量 → `tests 277; pass 276; fail 0; skipped 1; duration_ms 2890.8099`；真实套件 → `tests 1; pass 1; fail 0; skipped 0; duration_ms 222.3281`；最终 build derive/client/host=`28.87/180.47/192.32 kB`，typecheck/node check/diff check 均 exit `0` PASS
+  - state bridge 完整推 revision/features/dispatch/pipelines/cards/seats/bindings/observations/memory/effectiveConfig/firewallWords；suite 缺失时八 feature 全 false；四个 effectiveConfig 布尔 L0 实测均 true PASS
+  - map-ready 顺序固定为 workspaces→state→current→config→messages/live/theme/magazine→queue；queue 单实例、last-write-wins、take 后清空且只注入 Tab；request-current 同步 state/current PASS
+  - matcher TS 与 iframe mirror 同源：代码+逻辑首项那刻夏；跨三月七/长夜月两行的唯一命中 `日志(2)+changelog(9)+回滚(2)=13`，名字 bonus 每 skill 仅一次，双面 face 精确透传 PASS
+  - all 画布仅在 canvas 显示派发面板；本地 120ms 建议、全部席、两条 runtime pipeline、面板/按线派发与 portal 200 字表单均接通；只建第一站，其余站待命 PASS
+  - 聚焦 textarea/input 时 state 更新不换 DOM；建议局部更新，去重 timer 在可替换后用最新 state 完整 render；value/selection 与非建议状态均由测试覆盖 PASS
+  - 浏览器 Workbench→全体会议：panel/lane/textarea/pipelines/all-active=`1/1/1/2/1`；「帮我评审这段代码的逻辑」直接建议=`那刻夏代码·逻辑`；「随便聊聊」直接建议=`0`、出现无命中和全部席位 PASS
+  - 真实点那刻夏 → `session-5321a3c7-a214-4c9b-8e68-4ab9b8ceaf43`，2 秒内 stub/edge=`1/1`、状态=`进行中`；observation=`dispatch/seq0/panel/accepted` 且 rawLine/payload 逐字一致，binding=`amphoreus-anaxa/dispatch/done`；日志证实 skill-invocation seq `6` 先于 user/message seq `8` PASS
+  - 当前 Workbench 的 Portal「去派发」→ overlay 关闭、同一会话/画布 all、文本「整理一下日志」生成三月七建议且 session index 保持 `38` PASS
+  - 无当前或 Chat 路径 → alpha.4 blank session 会隐藏 header/view，真实复现两次后改为不造空白会话、不关闭 overlay，由同一 portal iframe 原地进入 all；最终 Playwright fresh context 中 dialog 保持、派发面板/泳道/三月七建议出现、底层 Chat/空白 hero 不变 PASS
+  - 服务最终 PID `70252`、HTTP `200`、四配置 true、stderr=`0` bytes；两段失败复现 blank 会话均经官方 archive RPC `200/ok=true` 隐藏且 session 日志保留 PASS
+- 人工断言：✓ dispatch 仅明确点击后发送；✓ 面板不调模型做意图推断；✓ pipeline 只派第一站；✓ portal overlay 与 Tab 复用同一 state/dispatch bridge；✓ 输入焦点、原 Chat draft 与当前会话均不被门户 fallback 破坏。
+- 偏离与理由：任务书 matcher 预期 `11` 与三处命中长度冲突，按唯一词累计修正为 `13`。任务书假设新建 blank session 可立即承载 Workbench，但 alpha.4 源码 `ConversationSession.tsx` 明确 blank phase 返回 null，且真实 `{sessionId}`、`{sessionId,workspaceId}` 两次均只出现空白 Hero；最终采用覆盖层内同一 all 画布，完整保留功能且不制造孤立/不可见会话。README 记录该稳定平台事实。
+- 遗留：TE2 泳道「已回应」需 TE4 observer 写 receipt 后回填；真实 pipeline 首站派发、handoff accept/dismiss 在后续 UI 任务联合验收；本次真实 Anaxa dispatch 会话留作 TE4 replay 验证后再归档。

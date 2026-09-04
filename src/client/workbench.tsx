@@ -10,10 +10,13 @@ import { useCallback, useEffect, useRef, type RefObject } from 'react'
 import type { AmphoreusState, MagazineModeMessage, ThemeTokensMessage } from '../shared/api.ts'
 import { heroVisualOf } from '../shared/heroes.ts'
 import { promptWithDeferredActivation } from './activation-bridge.ts'
+import { buildStateMessage } from './bridge-state.ts'
 import { feedFromChat, HARD_TEXT_CAP, liveTextOf } from './conversation-feed.ts'
+import type { EnterSeatQueue } from './enter-seat-queue.ts'
 import { acceptHandoff, dismissHandoff, dispatchTask, type DispatchInput, type HandoffDeps } from './handoff.ts'
 import { beginScrollRequest, safeOptionalInteger, scrollToTurn } from './scroll-to-turn.ts'
 import { bindingIndex, currentSeatOf } from './seat-model.ts'
+import type { AmphoreusClientSnapshot } from './state.ts'
 import { rememberTab, WORKBENCH_VIEW_ID } from './tabmemory.ts'
 import type { BridgedTokens } from './theme.ts'
 import css from './workbench.module.css'
@@ -59,12 +62,13 @@ export interface WorkbenchViewInjected {
   readonly workspaces: ObservableSnapshot<WorkspacesPayload>
   readonly conversationFeed: (sessionId: string) => ObservableSnapshot<ChatSnapshot | undefined> | undefined
   readonly sessionFace: (sessionId: string) => SessionFeedFace | undefined
-  readonly model: ObservableSnapshot<{ state?: AmphoreusState }>
+  readonly model: ObservableSnapshot<AmphoreusClientSnapshot>
   readonly theme: ThemeBridge
   readonly setSeat: (heroId: string | null) => void
   readonly magazine: MagazineBridge
   readonly startSeatSession: (skillName: string) => Promise<string>
   readonly seatDeps: HandoffDeps
+  readonly enterSeatQueue: EnterSeatQueue
   readonly openPortal?: () => void
 }
 
@@ -135,14 +139,16 @@ interface BridgeMessage {
   from?: DispatchInput['from']
   pipeline?: string
   station?: number
+  dispatchText?: string
 }
 
 export interface WorkbenchBridgeDeps {
   readonly sessions: SessionsFace
-  readonly model: ObservableSnapshot<{ state?: AmphoreusState }>
+  readonly model: ObservableSnapshot<AmphoreusClientSnapshot>
   readonly workspaces: ObservableSnapshot<WorkspacesPayload>
   readonly startSeatSession: (skillName: string) => Promise<string>
   readonly seatDeps: HandoffDeps
+  readonly enterSeatQueue?: EnterSeatQueue
   readonly setSeat: (heroId: string | null) => void
   readonly conversationFeed?: (sessionId: string) => ObservableSnapshot<ChatSnapshot | undefined> | undefined
   readonly sessionFace?: (sessionId: string) => SessionFeedFace | undefined
@@ -152,7 +158,10 @@ export interface WorkbenchBridgeDeps {
 }
 
 export interface WorkbenchBridgeHandlers {
-  readonly onOpenSeat?: (heroId: string | null) => void | Promise<void>
+  readonly onOpenSeat?: (
+    heroId: string | null,
+    extra?: { readonly dispatchText?: string },
+  ) => boolean | Promise<boolean>
   readonly onOpenPortal?: () => void
   readonly onClose?: () => void
   readonly onOpened?: () => void
@@ -174,6 +183,7 @@ export function useWorkbenchBridge(
     workspaces,
     startSeatSession,
     seatDeps,
+    enterSeatQueue,
     setSeat,
     conversationFeed,
     sessionFace,
@@ -186,6 +196,7 @@ export function useWorkbenchBridge(
   const pushLiveRef = useRef<() => void>(() => {})
   const pushThemeTokensRef = useRef<() => void>(() => {})
   const pushMagazineRef = useRef<() => void>(() => {})
+  const readyRef = useRef(false)
   const deferredActivationsRef = useRef(new Set<string>())
   const handlersRef = useRef(handlers)
   const openChatRef = useRef(openChat)
@@ -202,6 +213,11 @@ export function useWorkbenchBridge(
   const pushWorkspaces = useCallback((): void => {
     reply({ type: 'amphoreus:workspaces', ...workspaces.getSnapshot() })
   }, [reply, workspaces])
+  const pushState = useCallback((): void => {
+    const snapshot = model.getSnapshot()
+    if (snapshot.phase !== 'ready' || snapshot.state === undefined) return
+    reply(buildStateMessage(snapshot.state))
+  }, [model, reply])
   const pushCurrent = useCallback((): void => {
     reply(buildCurrentSessionMessage(sessions.list.getSnapshot(), model.getSnapshot().state))
   }, [model, reply, sessions])
@@ -211,9 +227,22 @@ export function useWorkbenchBridge(
       cardTextLimit: model.getSnapshot().state?.effectiveConfig.workbench.cardTextLimit ?? 8000,
     })
   }, [model, reply])
+  const flushEnterSeat = useCallback((): void => {
+    if (!readyRef.current || enterSeatQueue === undefined) return
+    const request = enterSeatQueue.take()
+    if (request === undefined) return
+    reply({ type: 'amphoreus:enter-seat', ...request })
+  }, [enterSeatQueue, reply])
 
   useEffect(() => workspaces.subscribe(pushWorkspaces), [workspaces, pushWorkspaces])
   useEffect(() => model.subscribe(pushConfig), [model, pushConfig])
+  useEffect(() => model.subscribe(pushState), [model, pushState])
+  useEffect(() => {
+    if (enterSeatQueue === undefined) return
+    const dispose = enterSeatQueue.subscribe(flushEnterSeat)
+    flushEnterSeat()
+    return dispose
+  }, [enterSeatQueue, flushEnterSeat])
 
   useEffect(() => {
     if (magazine === undefined) {
@@ -400,13 +429,16 @@ export function useWorkbenchBridge(
         try {
           switch (data.type) {
             case 'amphoreus:map-ready':
+              readyRef.current = true
               pushWorkspaces()
+              pushState()
               pushCurrent()
               pushConfig()
               pushMessagesRef.current()
               pushLiveRef.current()
               pushThemeTokensRef.current()
               pushMagazineRef.current()
+              flushEnterSeat()
               return
             case 'amphoreus:map-opened':
               return
@@ -415,14 +447,24 @@ export function useWorkbenchBridge(
               return
             case 'amphoreus:open-seat': {
               const handler = handlersRef.current.onOpenSeat
-              if (data.heroId === null) await handler?.(null)
-              else if (typeof data.heroId === 'string' && data.heroId !== '') await handler?.(data.heroId)
+              const extra = typeof data.dispatchText === 'string'
+                ? { dispatchText: data.dispatchText }
+                : undefined
+              if (data.heroId === null) {
+                const handled = await handler?.(null, extra)
+                if (handled === false) {
+                  reply({ type: 'amphoreus:enter-seat', workspaceId: 'all', ...extra })
+                }
+              } else if (typeof data.heroId === 'string' && data.heroId !== '') {
+                await handler?.(data.heroId, extra)
+              }
               return
             }
             case 'amphoreus:open-portal':
               handlersRef.current.onOpenPortal?.()
               return
             case 'amphoreus:request-current':
+              pushState()
               pushCurrent()
               return
             case 'amphoreus:request-config':
@@ -565,7 +607,7 @@ export function useWorkbenchBridge(
     }
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
-  }, [conversationFeed, frameRef, model, pushConfig, pushCurrent, pushWorkspaces, reply, seatDeps, sessionFace, sessions, setSeat, startSeatSession, summaryOf])
+  }, [conversationFeed, flushEnterSeat, frameRef, model, pushConfig, pushCurrent, pushState, pushWorkspaces, reply, seatDeps, sessionFace, sessions, setSeat, startSeatSession, summaryOf])
 
   useEffect(() => {
     let last: CurrentSessionIdentity | undefined
@@ -585,6 +627,7 @@ export function useWorkbenchBridge(
   }, [model, pushCurrent, sessions])
 
   const onFrameLoad = useCallback((): void => {
+    readyRef.current = false
     reply({ type: 'amphoreus:map-opened' })
     pushThemeTokensRef.current()
   }, [reply])
@@ -604,6 +647,7 @@ export function WorkbenchView({
   magazine,
   startSeatSession,
   seatDeps,
+  enterSeatQueue,
   openPortal,
   openView,
   completeViewRequest,
@@ -635,6 +679,7 @@ export function WorkbenchView({
     workspaces,
     startSeatSession,
     seatDeps,
+    enterSeatQueue,
     setSeat,
     conversationFeed,
     sessionFace,

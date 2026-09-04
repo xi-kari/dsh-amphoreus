@@ -15,6 +15,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { HeroBrandMark, SidebarBrandMark, SidebarBrandName } from './brand.tsx'
 import { installGarnish } from './garnish.ts'
+import { createEnterSeatQueue } from './enter-seat-queue.ts'
 import type { HandoffDeps } from './handoff.ts'
 import { en, NS, zh, type AmphoreusKey } from './locales.ts'
 import { SeatNameplate } from './nameplate.tsx'
@@ -25,7 +26,7 @@ import { SeatBrowser, type SeatBrowserInjected } from './seat-browser.tsx'
 import { seatViewsFrom } from './seat-model.ts'
 import { AmphoreusSettings } from './settings.tsx'
 import { AmphoreusClientModel } from './state.ts'
-import { seedConversationView } from './tabmemory.ts'
+import { readRememberedTab, seedConversationView, WORKBENCH_VIEW_ID } from './tabmemory.ts'
 import { createSeatLayer, readDswTokens, registerGlobalTheme, registerSeatTheme } from './theme.ts'
 import { WorkbenchView, type SessionsFace, type WorkbenchViewInjected } from './workbench.tsx'
 import { createWorkspacesSource } from './workspaces-source.ts'
@@ -64,6 +65,7 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => () => seatTheme.dispose(), 'amphoreus: seat wallpaper')
   const portal = createPortalStore()
   const openPortal = portal.open
+  const enterSeatQueue = createEnterSeatQueue()
   const workspaces = createWorkspacesSource(
     ctx.sessions.list as unknown as Parameters<typeof createWorkspacesSource>[0],
     model,
@@ -75,13 +77,31 @@ export function apply(ctx: ClientContext): void {
   }
   const sessionsFace = ctx.sessions as unknown as SessionsFace
   const startPortalSeatSession = (skillName: string): Promise<string> => startSeatSession(seatDeps, skillName)
-  const openSeat = async (heroId: string | null): Promise<void> => {
+  const openSeat = async (
+    heroId: string | null,
+    extra?: { readonly dispatchText?: string },
+  ): Promise<boolean> => {
+    if (heroId === null) {
+      const dispatchText = extra?.dispatchText?.trim()
+      const request = {
+        workspaceId: 'all' as const,
+        ...(dispatchText ? { dispatchText } : {}),
+      }
+      const current = sessionsFace.list.getSnapshot().current
+      if (current !== undefined && readRememberedTab(localStorage) === WORKBENCH_VIEW_ID) {
+        portal.close()
+        enterSeatQueue.set(request)
+        return true
+      }
+      // alpha.4 intentionally hides every View for a blank Session. Keep the
+      // already-mounted portal iframe as the total-space canvas host instead.
+      return false
+    }
     portal.close()
-    if (heroId === null) return
     const state = model.getSnapshot().state
-    if (state === undefined) return
+    if (state === undefined) return true
     const skill = heroVisualById(heroId)?.skill ?? state.seats.find(seat => seat.heroId === heroId)?.skillName
-    if (skill === undefined) return
+    if (skill === undefined) return true
     const view = seatViewsFrom(
       model.getSnapshot(),
       sessionsFace.list.getSnapshot() as unknown as Parameters<typeof seatViewsFrom>[1],
@@ -89,6 +109,7 @@ export function apply(ctx: ClientContext): void {
     ).find(candidate => candidate.skillName === skill)
     if (view !== undefined && view.sessionIds.length > 0) sessionsFace.open(view.sessionIds[0]!)
     else await startPortalSeatSession(skill)
+    return true
   }
   const bootWorkbench = window.__AMPHOREUS_BOOT__?.workbench
   const workbenchEnabled = bootWorkbench?.enabled ?? true
@@ -223,6 +244,7 @@ export function apply(ctx: ClientContext): void {
         magazine: magazineBridge,
         startSeatSession: skillName => startSeatSession(seatDeps, skillName, { open: false }),
         seatDeps,
+        enterSeatQueue,
         openPortal,
       }),
     }, WorkbenchView))

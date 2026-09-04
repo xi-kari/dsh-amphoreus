@@ -14,6 +14,7 @@ import {
   type AmphoreusStores,
 } from '../src/host/store.ts'
 import { AmphoreusWebApi } from '../src/host/webapi.ts'
+import { fixtureSnapshot } from './fixture-suite.ts'
 
 const NONCE = 'magazine-mode-test'
 
@@ -53,10 +54,11 @@ test('prefs PUT sets, preserves, serializes concurrent fields, and deletes the m
     },
     close: async () => {},
   } as unknown as AmphoreusStores
+  let suite = undefined as ReturnType<typeof fixtureSnapshot> | undefined
   const api = new AmphoreusWebApi({} as Context, {
     config: fixtureConfig(),
     stores,
-    resolver: { current: () => undefined } as unknown as SuiteResolver,
+    resolver: { current: () => suite } as unknown as SuiteResolver,
     nonce: NONCE,
   })
   const server = createServer((request, response) => { void api.handle(request, response) })
@@ -74,6 +76,33 @@ test('prefs PUT sets, preserves, serializes concurrent fields, and deletes the m
   try {
     assert.equal(api.state().effectiveConfig.magazineMode, 'light')
     assert.equal(api.state().effectiveConfig.magazineModeSource, 'config')
+    assert.deepEqual({
+      handoffEnabled: api.state().effectiveConfig.handoffEnabled,
+      receiptParsing: api.state().effectiveConfig.receiptParsing,
+      dispatchHints: api.state().effectiveConfig.dispatchHints,
+      pipelinesEnabled: api.state().effectiveConfig.pipelinesEnabled,
+    }, {
+      handoffEnabled: false,
+      receiptParsing: false,
+      dispatchHints: false,
+      pipelinesEnabled: false,
+    })
+    const parsed = fixtureSnapshot()
+    suite = {
+      ...parsed,
+      features: { ...parsed.features, pipelines: true },
+    }
+    assert.deepEqual({
+      handoffEnabled: api.state().effectiveConfig.handoffEnabled,
+      receiptParsing: api.state().effectiveConfig.receiptParsing,
+      dispatchHints: api.state().effectiveConfig.dispatchHints,
+      pipelinesEnabled: api.state().effectiveConfig.pipelinesEnabled,
+    }, {
+      handoffEnabled: true,
+      receiptParsing: true,
+      dispatchHints: true,
+      pipelinesEnabled: true,
+    })
 
     const full = await put({ magazineMode: 'full' })
     assert.equal(full.status, 200)
