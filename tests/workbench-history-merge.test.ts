@@ -41,6 +41,8 @@ function workbenchProbe(): WorkbenchProbe {
   const context = {
     console,
     history: {},
+    URL,
+    location: { href: 'http://localhost/amphoreus/workbench/' },
     localStorage: {
       getItem: (key: string) => storage.get(key) ?? null,
       setItem: (key: string, value: string) => storage.set(key, value),

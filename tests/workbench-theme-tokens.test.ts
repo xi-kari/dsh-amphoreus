@@ -17,6 +17,8 @@ function probe() {
   const context = {
     console,
     history: {},
+    URL,
+    location: { href: 'http://localhost/amphoreus/workbench/' },
     localStorage: { getItem: () => null, setItem: () => {} },
     document: { documentElement: root, querySelector: () => null },
     window: { parent, location: { origin: 'http://localhost' } },

@@ -490,7 +490,7 @@
 - 偏离与理由：D 章已先产出 `cover-169.webp`，正常路径按最终事实优先派生图并用 `lastDerive.at` query cache-bust，日历作为二级 decode fallback；因此任务书旧浏览器预期“直接看到8月日历”更新为派生封面。为封闭真实首帧竞态，对 D `createSeatLayer` 增加显式所有权语义，并同步更新必要的既有 D 测试。
 - 遗留：主环境未破坏 derived/calendar 文件来强制全失败；calendar fallback、全失败一次 warn、token-only 与 dispose 均由可控 DOM/Image integration fixture 实际执行。
 ## TC8：workspaces 身份载荷与共享 Workbench bridge — 2026-09-05 03:49
-- commit: PENDING-TASK
+- commit: 247b098
 - 动手前核对：任务书 `2254-2291`；当前 WorkspacesSeat 已含 D 的 volume/motif/cover 字段；fallbackHue 与 TC3 bindingIndex/currentSeatOf 可复用；SessionSummary 有 cwd；旧 bridge 的 workspaces/config/messages/live/theme/magazine/RPC/scroll 全锚点逐一定位 PASS
 - 验收：
   - 聚焦 10 文件 → `tests 47; pass 47; fail 0; skipped 0; duration_ms 485.7121`；全量 → `tests 225; pass 224; fail 0; skipped 1; duration_ms 2266.4314` PASS
@@ -503,6 +503,25 @@
 - 人工断言：✓ hook 完整迁移原桥所有副作用；✓ origin/contentWindow/source 三重门保留；✓ current 主动推同时订阅 sessions+model 并按 id+seatKey 去重；✓ unknown seat/skill 不被过滤且 heroId null/hue 确定；✓ 跨会话 open 先 remember chat 再 navigation；✓ TC4 Workbench open:false 不回归。
 - 偏离与理由：任务书的简化 hook deps 无法承载既有 feed/theme/magazine，故将其作为显式可选依赖，Tab 传全、未来 Portal 传最小；返回面额外含 `onFrameLoad` 以单源保留 map-opened+theme 握手。Portal store 归 TC10，TC8 使用 optional `openPortal` 且不注入假 noop。
 - 遗留：open-seat/open-portal 的最终 UI 消费分别由 TC9/TC10 接通；当前 handler 路由已由测试执行，未伪称门户已完成。
+## TC9：iframe 承办席身份、门户模式与目录分组 — 2026-09-05 04:16
+- commit: PENDING-TASK
+- 动手前核对：任务书 `2295-2371`；app 固定 `#3478f6=3`、旧 last-seat=`1`、thread-color important=`0`、bindingBySession=`0`；D targeted 基线 `29/29`；current-session 两项赋值与 connector/magazine/folio 锚点均按现文件重定位 PASS
+- 验收：
+  - focused → `tests 6; pass 6; fail 0`；D/TC8/TC9 targeted → `tests 44; pass 44; fail 0; skipped 0; duration_ms 480.4718`；全量 → `tests 231; pass 230; fail 0; skipped 1; duration_ms 2405.6168` PASS
+  - `node --check`、typecheck、build、diff 全 exit `0`；build derive/client/host=`28.87/163.47/188.25 kB` PASS
+  - 静态 → app blue=`0`、CSS blue fallback=`25`、old/new seat key=`0/2`、close/open-seat/open-portal/seat-changed=`2/1/1/3`、badge app/css=`1/2`、cwd label=`1`、bindingBySession=`0`、thread important=`0`、dark selector=`1`、canvas-controls=`4` PASS
+  - 实机 Tab 自动进当前那刻夏席 → canvas=`true`、portal=`false`、active current=`true`；card data-seat=`amphoreus-anaxa`、thread-color=`#23664d`、badge=`那刻夏`/title skill、sticker=`true`、folio=`01/01`、box-shadow 含 `rgb(35,102,77) 3px ... inset` PASS
+  - localStorage 分层 → iframe=`dsh-amphoreus:workbench-last-seat=seat:anaxa`，宿主页=`dsh-amphoreus:last-seat=anaxa`，互不覆盖 PASS
+  - light→full→config/light 原位切换 → PUT=`200/200`；textarea DOM `sameNode=true`、value=`TC9-FOCUS-STABLE`、selection=`16`、focused=`true` 全程不变；full shell=`1`、data-folios=`01`，恢复 light shell=`1` PASS
+  - Tab「全部角色」→ 父页收到唯一 `amphoreus:open-portal`；原 iframe 保持 mode=`canvas`、seat=`seat:anaxa`、portal=`0`、canvas=`1`、草稿 sameNode/value 完整 PASS
+  - portal 同源 iframe → 已存 `seat:anaxa` 时仍 `BOOT_MODE=portal/mode=portal/seatId=null`、portal=`true`、canvas=`false`、内嵌 close=`true`；握手只发 seat-changed null；点那刻夏/全体会议分别发 open-seat `anaxa/null`；关闭按钮与 Esc 各发一条 close PASS
+  - late binding → `TA6-S3` 初始 seatId=`all`、entry key空 skill；manual binding 到达后变 `seat:anaxa` 且 active=true；DELETE 后回 `all`，最终 TA6 binding=`0` PASS
+  - 多 cwd → 临时把 TA6 绑定那刻夏后 label 精确 `[anaxa,1]`，title 为完整 seat dir 与 `D:\DeepSeek Harness\1`；DELETE 已回滚。单 cwd 结构测试 label=`0` PASS
+  - 未知卡隔离 iframe 载荷 → `amphoreus-future-card` 在 all 画布生成真实 card，thread-color=`hsl(164 45% 52%)`、badge=`未来席`、generic=`true`、sticker=`false`、face=`未来面`，未改真实 suite PASS
+  - 终态 → prefs magazine=`light/config`、临时 TA6 binding=`0`、服务 PID `60676`、stderr=`0` bytes PASS
+- 人工断言：✓ late-binding key 含 session/skill/hero；✓ currentSessionId 与 camera marker 均在提前 return 前处理；✓ 未复制英雄色表；✓ binding source 只留数据不进可见正文；✓ draft 无 folio/badge；✓ full magazine、总页数与 graph 算法未改；✓ portal 打开不泄漏上次 Tab seat hint。
+- 偏离与理由：任务书明写代码只会产生一处 close，却又要求 `app.js≥2`；新增真正可用、仅嵌入 portal 显示的 iframe close 与 Esc 两条路径，避开顶层无父窗口按钮。任务书 one-shot `tabEntered` 会吞 TC8 late binding，保留该字段并以 session+seat key 作为真正去重。独立审查发现并修复 portal 恢复旧 seat 与 camera marker 泄漏两项。
+- 遗留：主 suite 没有第14张未知视觉卡，故用同源真实 iframe+隔离 host payload 执行 DOM 分支；未污染实际 skills/profile/store。
 ## TD7：杂志档位 prefs 覆盖与 iframe 桥 — 2026-09-05 00:01
 - commit: 6f6bafa
 - 验收：

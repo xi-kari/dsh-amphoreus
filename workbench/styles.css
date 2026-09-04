@@ -129,6 +129,15 @@ button.primary:hover { border-color: var(--dsw-alias-button-primary-hover, #000)
 .thread-meta .card-process-count::before { content: none; }
 .thread-meta .card-error-status { color: var(--dsw-alias-state-error-primary, #b42318); font-weight: 650; }
 .thread-meta .card-unprojectable { color: var(--dsw-alias-state-warn-label, #b45309); font-weight: 650; }
+.thread-card { border-color: color-mix(in srgb, var(--thread-color) 45%, var(--dsw-alias-border-l2, #d8e0e8)); box-shadow: inset 3px 0 0 var(--thread-color), 0 3px 11px rgba(33,48,67,.08); }
+.thread-card:hover { box-shadow: inset 3px 0 0 var(--thread-color), 0 8px 20px rgba(33,48,67,.13); }
+.thread-card.selected { box-shadow: inset 3px 0 0 var(--thread-color), 0 0 0 2px color-mix(in srgb, var(--thread-color) 35%, transparent), 0 8px 20px rgba(33,48,67,.13); }
+.card-seat-badge { display: inline-flex; align-items: center; gap: 4px; flex: none; max-width: 40%; height: 18px; padding: 0 6px 0 2px; border-radius: 9px; background: color-mix(in srgb, var(--thread-color) 14%, transparent); color: inherit; font-size: 10px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card-seat-badge b { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.card-seat-mark { width: 14px; height: 14px; object-fit: contain; flex: none; }
+.card-seat-mark-generic { border-radius: 50%; background: hsl(var(--seat-hue) 45% 52%); }
+.thread-meta .card-seat-face { color: var(--thread-color); }
+.canvas-group-label { margin-top: 6px; }
 .thread-answer { min-width: 0; min-height: 0; margin: 10px 14px; overflow-x: hidden; overflow-y: auto; color: var(--dsw-alias-label-tertiary, #526174); font-size: 12px; line-height: 1.58; overflow-wrap: anywhere; overscroll-behavior: contain; scrollbar-color: var(--dsw-alias-scrollbar-bg-l1, #9ca3af) transparent; scrollbar-width: thin; }
 .thread-answer::-webkit-scrollbar { width: 6px; height: 0; }
 .thread-answer::-webkit-scrollbar-track { background: transparent; }
@@ -316,6 +325,8 @@ button.primary:hover { border-color: var(--dsw-alias-button-primary-hover, #000)
     radial-gradient(940px 620px at 88% 10%, rgba(205,184,236,.24), transparent 60%),
     radial-gradient(1000px 560px at 6% 104%, rgba(116,200,242,.12), transparent 60%),
     linear-gradient(180deg, var(--dsw-alias-bg-base, #f7f5fa), var(--dsw-alias-bg-layer-2, #f4f2f8) 42%, var(--dsw-alias-bg-layer-2, #edeaf3)); }
+.portal-close { position: fixed; z-index: 100; top: 12px; right: 52px; display: grid; width: 32px; height: 32px; min-height: 32px; place-items: center; border: 1px solid var(--dsw-alias-border-l2, #d8e0e8); border-radius: 50%; background: var(--dsw-alias-button-floating-fill, #fff); padding: 0; color: var(--dsw-alias-label-primary, #1f2937); font-size: 18px; line-height: 1; }
+.portal-close:hover { background: var(--dsw-alias-button-floating-hover, #f3f4f6); }
 .portal { max-width: 1240px; margin: 0 auto; padding: 40px 28px 64px; }
 .portal-head { text-align: center; margin-bottom: 26px; }
 .portal-kicker { margin: 0; color: var(--dsw-alias-brand-primary, #826722); font-size: 11px; letter-spacing: .42em; text-indent: .42em; text-transform: uppercase; font-family: var(--amphoreus-font-display); }

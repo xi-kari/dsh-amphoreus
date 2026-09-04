@@ -19,7 +19,7 @@ function normalizeQuickPhrases(value) {
   return phrases
 }
 function storedSeat(value) {
-  try { return value === undefined ? localStorage.getItem('dsh-amphoreus:last-seat') : (localStorage.setItem('dsh-amphoreus:last-seat', value), value) } catch { return null }
+  try { return value === undefined ? localStorage.getItem('dsh-amphoreus:workbench-last-seat') : (localStorage.setItem('dsh-amphoreus:workbench-last-seat', value), value) } catch { return null }
 }
 const restoredSeatId = (() => {
   const value = storedSeat()
@@ -28,6 +28,7 @@ const restoredSeatId = (() => {
 })()
 const BOOT = (typeof globalThis.__AMPHOREUS_BOOT__ === 'object' && globalThis.__AMPHOREUS_BOOT__ !== null) ? globalThis.__AMPHOREUS_BOOT__ : {}
 const WORKBENCH_CONFIG = BOOT.workbench ?? { enabled: true, host: 'iframe', defaultView: 'chat', cardTextLimit: 8000, autoProjection: true }
+const BOOT_MODE = new URL(location.href).searchParams.get('mode') === 'portal' ? 'portal' : 'tab'
 const CARD_WIDTH = 310
 const CARD_HEIGHT = 276
 const CARD_GAP_Y = 42
@@ -82,9 +83,9 @@ function applyThemeTokensMessage(data) {
 // so panning never flashes empty space.
 const VIEWPORT_MARGIN = 1400
 const state = {
-  index: new Map(), indexRevision: 0, indexRequest: 0, eventSource: null, persistenceHydrated: false, bootstrapped: false, mapOpenPending: false, workspace: null, activeId: null, selectedCardId: null, mode: restoredSeatId === null ? 'portal' : 'canvas', zoom: 1, currentDsh: null, currentSessionId: null, sidebarCollapsed: false,
+  index: new Map(), indexRevision: 0, indexRequest: 0, eventSource: null, persistenceHydrated: false, bootstrapped: false, mapOpenPending: false, workspace: null, activeId: null, selectedCardId: null, mode: BOOT_MODE === 'portal' ? 'portal' : 'canvas', zoom: 1, currentDsh: null, currentSessionId: null, tabEntered: false, tabEntryKey: null, sidebarCollapsed: false,
   // Seat portal: hero seats from the host (chronicle art, palette, folder).
-  seats: [], sessionsById: new Map(), assetsConfigured: false, seatId: restoredSeatId, cardFlightPending: false, cardTextLimit: WORKBENCH_CONFIG.cardTextLimit, magazineMode: 'light',
+  seats: [], sessionsById: new Map(), assetsConfigured: false, seatId: BOOT_MODE === 'portal' ? null : restoredSeatId, cardFlightPending: false, cardTextLimit: WORKBENCH_CONFIG.cardTextLimit, magazineMode: 'light',
   unprojectable: new Map(),
   historyBySession: new Map(), historyRevisionBySession: new Map(), historyCompleteBySession: new Map(), pendingReplies: new Map(), pendingRpc: new Map(), liveReplies: new Map(),
   draft: null, error: '', branchAnchors: new Map(), cardPositions: new Map(), legacyPositionKeys: new Set(), collapsedCardIds: new Set(), quickPhrases: [...DEFAULT_QUICK_PHRASES], quickPhraseEditorOpen: false,
@@ -417,6 +418,13 @@ function currentDshThread(threads = state.workspace?.threads ?? []) {
   return typeof id === 'string' ? threads.find(thread => thread.dshSessionId === id) : undefined
 }
 
+function tabEntryOf(data) {
+  const sessionId = typeof data.session?.id === 'string' ? data.session.id : ''
+  const skillName = typeof data.seat?.skillName === 'string' ? data.seat.skillName : ''
+  const heroId = typeof data.seat?.heroId === 'string' && data.seat.heroId !== '' ? data.seat.heroId : ''
+  return { key: `${sessionId}\u0000${skillName}\u0000${heroId}`, target: heroId === '' ? 'all' : `seat:${heroId}` }
+}
+
 function normalizeDir(value) {
   return typeof value === 'string' && value !== '' ? value.toLowerCase().replaceAll('/', '\\').replace(/\\+$/, '') : null
 }
@@ -466,6 +474,8 @@ function rebuildWorkspace() {
         cards: indexed?.cards ?? [],
         skillName: session.skillName,
         face: session.face,
+        source: session.source ?? null,
+        cwd: session.cwd ?? null,
         running: session.running,
       }
     })
@@ -1203,7 +1213,22 @@ function canvasConnectors(cards) {
   return links.join('')
 }
 
+function hashHue(skill) {
+  let hue = 0
+  for (const character of skill) hue = (hue * 31 + (character.codePointAt(0) ?? 0)) >>> 0
+  return hue % 360
+}
+
+function seatOfCard(card) {
+  const thread = state.workspace?.threads.find(item => item.id === card.dshThreadId)
+  const skillName = thread?.skillName ?? null
+  const seat = skillName === null ? undefined : state.seats.find(item => item.skillName === skillName)
+  const accent = seat?.accent ?? (skillName === null ? '#8a681c' : `hsl(${seat?.hue ?? hashHue(skillName)} 45% 52%)`)
+  return { skillName, seat, accent, face: thread?.face ?? null, source: thread?.source ?? null }
+}
+
 function conversationCard(card, graph) {
+  const seatInfo = seatOfCard(card)
   const cardThread = state.workspace?.threads.find(item => item.id === card.dshThreadId)
   const unprojectable = cardThread?.dshSessionId ? state.unprojectable.get(cardThread.dshSessionId) : undefined
   const unprojectableBadge = unprojectable ? `<span class="card-unprojectable" title="${escapeHtml(unprojectable.reason)}">不可投影</span>` : ''
@@ -1217,11 +1242,12 @@ function conversationCard(card, graph) {
   const foldLabel = collapsed ? '展开后续对话' : '折叠后续对话'
   const foldButton = childCount === 0 || card.canContinue === true ? '' : `<button class="graph-fold-button${collapsed ? ' collapsed' : ''}" data-action="toggle-card-children" data-card="${escapeHtml(card.id)}" aria-expanded="${collapsed ? 'false' : 'true'}" aria-label="${foldLabel}" title="${foldLabel}"><svg aria-hidden="true" viewBox="0 0 16 16"><path d="M3.5 8h9"/>${collapsed ? '<path d="M8 3.5v9"/>' : ''}</svg></button>`
   const branchButton = childCount === 0 || card.canContinue === true || !Number.isInteger(card.answer?.sourceSeq) ? '' : `<button class="graph-branch-button" data-action="open-branch" data-thread="${card.dshThreadId}" data-card="${escapeHtml(card.id)}" data-seq="${card.answer.sourceSeq}" aria-label="在新对话中分支" title="在新对话中分支"><svg aria-hidden="true" viewBox="0 0 16 16"><path fill-rule="evenodd" clip-rule="evenodd" d="M13.0762 1.37207C14.0846 1.37228 14.9021 2.19077 14.9023 3.19922C14.9022 4.20772 14.0847 5.02518 13.0762 5.02539C12.2967 5.02539 11.6325 4.53691 11.3701 3.84961H4.35547C4.79397 4.26458 5.15861 4.7644 5.41699 5.33496L7.10645 9.06738C7.88526 10.7875 9.55104 11.9228 11.4189 12.0371C11.7085 11.4109 12.3411 10.9756 13.0762 10.9756C14.0843 10.9759 14.9023 11.7936 14.9023 12.8018C14.9023 13.81 14.0843 14.6277 13.0762 14.6279C12.2534 14.6279 11.5574 14.0832 11.3291 13.335C8.9868 13.1879 6.89981 11.7612 5.92285 9.60352L4.23242 5.87109C3.67503 4.64033 2.44878 3.84961 1.09766 3.84961V2.54883C1.10665 2.54883 1.11601 2.54975 1.125 2.5498L11.3701 2.54883C11.6326 1.86151 12.2969 1.37207 13.0762 1.37207ZM13.0762 12.2764C12.7858 12.2764 12.5508 12.5114 12.5508 12.8018C12.5508 13.0921 12.7858 13.3281 13.0762 13.3281C13.3664 13.3279 13.6025 13.092 13.6025 12.8018C13.6025 12.5115 13.3664 12.2766 13.0762 12.2764ZM13.0762 2.67285C12.7855 2.67285 12.55 2.90861 12.5498 3.19922C12.5499 3.48987 12.7855 3.72559 13.0762 3.72559C13.3667 3.72538 13.6024 3.48975 13.6025 3.19922C13.6023 2.90874 13.3666 2.67306 13.0762 2.67285Z" fill="currentColor"/></svg></button>`
-  return `<article class="thread-card ${selected} ${card.placeholder ? 'placeholder' : ''}" data-card-id="${escapeHtml(card.id)}" data-position-key="${escapeHtml(card.positionKey)}" data-thread="${card.dshThreadId}" data-folio="${String(card.turnIndex + 1).padStart(2, '0')}" data-folios="${String(state.canvasTurnTotals.get(card.dshThreadId) ?? 1).padStart(2, '0')}" style="left:${card.position.x}px;top:${card.position.y}px;--thread-color:#3478f6">
+  const badge = seatInfo.skillName === null ? '' : `<span class="card-seat-badge" title="${escapeHtml(seatInfo.skillName)}">${seatInfo.seat?.stickerUrl ? `<img class="card-seat-mark" src="${escapeHtml(seatInfo.seat.stickerUrl)}" alt="">` : `<i class="card-seat-mark card-seat-mark-generic" style="--seat-hue:${seatInfo.seat?.hue ?? hashHue(seatInfo.skillName)}" aria-hidden="true"></i>`}<b>${escapeHtml(seatInfo.seat?.displayName ?? seatInfo.skillName)}</b></span>`
+  return `<article class="thread-card ${selected} ${card.placeholder ? 'placeholder' : ''}" data-card-id="${escapeHtml(card.id)}" data-position-key="${escapeHtml(card.positionKey)}" data-thread="${card.dshThreadId}" data-seat="${escapeHtml(seatInfo.skillName ?? '')}" data-folio="${String(card.turnIndex + 1).padStart(2, '0')}" data-folios="${String(state.canvasTurnTotals.get(card.dshThreadId) ?? 1).padStart(2, '0')}" style="left:${card.position.x}px;top:${card.position.y}px;--thread-color:${escapeHtml(seatInfo.accent)}">
     <button class="node-handle" data-drag-card="${card.id}" aria-label="拖动 ${escapeHtml(card.question)}" title="拖动卡片"></button>
     ${continueButton}${foldButton}${branchButton}
-    <div class="thread-card-head"><span class="topic-dot"></span><button class="thread-title" data-action="show-thread" data-thread="${card.dshThreadId}" data-card="${escapeHtml(card.id)}" title="查看完整会话：${escapeHtml(card.question)}">${escapeHtml(card.question)}</button></div>
-    <div class="thread-meta"><span>${source}</span><span>第 ${card.turnIndex + 1} 轮</span>${card.error === null ? '' : '<span class="card-error-status">失败</span>'}${unprojectableBadge}${card.processCount > 0 ? `<span class="card-process-count">工具 ${card.processCount}</span>` : ''}</div>
+    <div class="thread-card-head"><span class="topic-dot"></span>${badge}<button class="thread-title" data-action="show-thread" data-thread="${card.dshThreadId}" data-card="${escapeHtml(card.id)}" title="查看完整会话：${escapeHtml(card.question)}">${escapeHtml(card.question)}</button></div>
+    <div class="thread-meta"><span>${source}</span>${seatInfo.face ? `<span class="card-seat-face">${escapeHtml(seatInfo.face)}</span>` : ''}<span>第 ${card.turnIndex + 1} 轮</span>${card.error === null ? '' : '<span class="card-error-status">失败</span>'}${unprojectableBadge}${card.processCount > 0 ? `<span class="card-process-count">工具 ${card.processCount}</span>` : ''}</div>
     <div class="thread-answer">${card.placeholder ? '<p class="thread-answer-empty">选中此会话后加载正文</p>' : card.answer === null ? (card.error === null ? '<p class="thread-answer-empty">等待助手回复</p>' : '') : card.answer.pending && card.answer.text === '' ? '<p class="thread-answer-pending">正在回复</p>' : `${renderMarkdown(clampCardText(card.answer.text))}${card.answer.pending ? '<p class="thread-answer-pending">正在回复</p>' : ''}`}${card.error === null ? '' : `<p class="thread-answer-error" title="${escapeHtml(card.error.text)}">本轮失败：${escapeHtml(card.error.text)}</p>`}</div>
     <footer><button data-action="show-thread" data-thread="${card.dshThreadId}" data-card="${escapeHtml(card.id)}" title="查看完整会话" aria-label="查看完整会话"><svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="M2 8.5 8 2.5l6 6V13.5a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5Z"/><path d="M6.2 14v-3.6a1.8 1.8 0 0 1 3.6 0V14" /></svg>详情</button><button data-action="open-dsh" data-thread="${card.dshThreadId}" data-seq="${Number.isInteger(card.sourceSeq) ? card.sourceSeq : ''}" data-turn="${Number.isInteger(card.turn) ? card.turn : ''}" title="在 DSH 中打开" aria-label="在 DSH 中打开"><svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3.5H4.5A1.5 1.5 0 0 0 3 5v6.5A1.5 1.5 0 0 0 4.5 13H11a1.5 1.5 0 0 0 1.5-1.5V9"/><path d="M9.5 3.5h3v3M12.4 3.6 7.5 8.5"/></svg>DSH</button><button data-action="archive-thread" data-thread="${card.dshThreadId}" title="归档此会话" aria-label="归档此会话"><svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 5h11M5.5 7v5.5a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1V7"/><path d="M4 5 5 2.8a.7.7 0 0 1 .6-.4h4.8a.7.7 0 0 1 .6.4L12 5M6 9.5h4"/></svg>归档</button></footer>
   </article>`
@@ -1298,14 +1324,16 @@ function draftPlacement(cards) {
 
 function draftCard(cards) {
   const draft = state.draft
-  if (draft?.kind === 'new') return `<article class="thread-card draft-card first-session-card" data-card-id="draft" style="left:86px;top:82px;--thread-color:#3478f6">
+  const currentHeroId = state.seatId?.startsWith('seat:') ? state.seatId.slice(5) : undefined
+  const accent = state.seats.find(seat => seat.heroId === currentHeroId)?.accent ?? '#8a681c'
+  if (draft?.kind === 'new') return `<article class="thread-card draft-card first-session-card" data-card-id="draft" style="left:86px;top:82px;--thread-color:${escapeHtml(accent)}">
     <div class="thread-card-head"><span class="topic-dot"></span><strong>新会话</strong></div>
     <form class="draft-branch-form" data-draft><textarea maxlength="4000" placeholder="输入第一条消息" ${draft.sending ? 'disabled' : ''}>${escapeHtml(draft.text)}</textarea>${draftActions(draft)}</form>
   </article>`
   const placement = draftPlacement(cards)
   if (draft === null || placement === null) return ''
   const continuing = draft.kind === 'continue'
-  return `<article class="thread-card draft-card" data-card-id="draft" style="left:${placement.position.x}px;top:${placement.position.y}px;--thread-color:#3478f6">
+  return `<article class="thread-card draft-card" data-card-id="draft" style="left:${placement.position.x}px;top:${placement.position.y}px;--thread-color:${escapeHtml(accent)}">
     <div class="thread-card-head"><span class="topic-dot"></span><strong>${continuing ? '新的追问' : '新的分支'}</strong></div>
     <form class="draft-branch-form" data-draft>${draftQuickPhrases(draft)}<textarea maxlength="4000" placeholder="${continuing ? '输入追问' : '输入这个分支的新问题'}" ${draft.sending ? 'disabled' : ''}>${escapeHtml(draft.text)}</textarea>${draftActions(draft)}</form>
   </article>`
@@ -1617,6 +1645,31 @@ function renderPortal() {
   </section>`
 }
 
+function portalCloseControl() {
+  if (BOOT_MODE !== 'portal' || window.parent === window) return ''
+  return '<button class="portal-close" type="button" data-action="close-portal" aria-label="关闭总览" title="关闭总览">×</button>'
+}
+
+function renderThreadRow(thread, seat) {
+  return `<button class="tree-row ${thread.id === state.activeId ? 'active' : ''}" data-action="select-thread" data-thread="${thread.id}" style="--thread-color:${escapeHtml(seat?.accent ?? '#374151')}"><span class="tree-dot"></span><span>${escapeHtml(threadListTitle(thread))}</span>${thread.parentId === null ? '' : '<i>分支</i>'}</button>`
+}
+
+function renderThreadTree(threads, seat) {
+  if (threads.length === 0) return '<p class="tree-empty">暂未同步会话</p>'
+  const groups = new Map()
+  for (const thread of threads) {
+    const cwd = thread.cwd ?? null
+    const group = groups.get(cwd)
+    if (group === undefined) groups.set(cwd, [thread])
+    else group.push(thread)
+  }
+  const labeled = groups.size > 1
+  return [...groups.entries()].map(([cwd, group]) => {
+    const label = !labeled ? '' : `<div class="sidebar-heading canvas-group-label"><span title="${escapeHtml(cwd ?? '')}">${escapeHtml(cwd === null ? '未指定目录' : cwd.split(/[\\/]/).filter(Boolean).pop() ?? cwd)}</span></div>`
+    return label + group.map(thread => renderThreadRow(thread, seat)).join('')
+  }).join('')
+}
+
 function render() {
   // Remember the departing thread's scroll position per thread id, so
   // switching sessions restores each conversation's own place instead of
@@ -1645,7 +1698,7 @@ function render() {
     }
   }
   if (state.mode === 'portal') {
-    app.innerHTML = `<main class="synapse-shell portal-shell magazine-${state.magazineMode}">${state.error ? `<div class="status-message" role="alert"><span>${escapeHtml(state.error)}</span><button data-action="dismiss-error" aria-label="关闭" title="关闭">×</button></div>` : ''}${renderPortal()}</main>`
+    app.innerHTML = `<main class="synapse-shell portal-shell magazine-${state.magazineMode}">${state.error ? `<div class="status-message" role="alert"><span>${escapeHtml(state.error)}</span><button data-action="dismiss-error" aria-label="关闭" title="关闭">×</button></div>` : ''}${portalCloseControl()}${renderPortal()}</main>`
     return
   }
   const workspace = state.workspace
@@ -1664,8 +1717,9 @@ function render() {
   const seatCardArt = seatCoverUrl ?? seat?.chronicleUrl ?? null
   const seatTitle = seat === undefined ? '' : seat.displayName ?? seat.heroId
   const seatVolume = String(seat?.volume ?? '').padStart(2, '0')
+  const portalAction = BOOT_MODE === 'tab' ? 'open-portal' : 'show-portal'
   const seatCardSlot = seat !== undefined && seatCardArt !== null
-    ? `<figure class="seat-card-slot ${state.cardFlightPending ? 'awaiting-flight' : ''}" data-volume="${seatVolume}" data-title="${escapeHtml(seatTitle)}"${seatCoverUrl === null ? '' : ' data-cover="1"'} data-action="show-portal" role="button" tabindex="0" title="返回全部角色"><img src="${escapeHtml(seatCardArt)}" alt="${escapeHtml(seatTitle)}"><figcaption data-title="${escapeHtml(seatTitle)}"><span>${escapeHtml((seat.duties ?? []).slice(0, 3).join(' · ') || '')}</span></figcaption></figure>`
+    ? `<figure class="seat-card-slot ${state.cardFlightPending ? 'awaiting-flight' : ''}" data-volume="${seatVolume}" data-title="${escapeHtml(seatTitle)}"${seatCoverUrl === null ? '' : ' data-cover="1"'} data-action="${portalAction}" role="button" tabindex="0" title="返回全部角色"><img src="${escapeHtml(seatCardArt)}" alt="${escapeHtml(seatTitle)}"><figcaption data-title="${escapeHtml(seatTitle)}"><span>${escapeHtml((seat.duties ?? []).slice(0, 3).join(' · ') || '')}</span></figcaption></figure>`
     : ''
   const seatHero = state.seatId?.startsWith('seat:') ? state.seatId.slice(5) : null
   const orphanUnprojectable = [...state.unprojectable.values()].filter(item =>
@@ -1673,7 +1727,7 @@ function render() {
   const unprojectableList = orphanUnprojectable.length === 0 ? '' :
     `<div class="sidebar-heading"><span>不可投影</span></div><ul class="unprojectable-list">${orphanUnprojectable.map(item => `<li title="${escapeHtml(item.reason)}"><span>${escapeHtml(item.title ?? item.sessionId)}</span><i>${escapeHtml(item.reason)}</i></li>`).join('')}</ul>`
   const mainStageStyle = `--seat-stage-art:${seat?.cardUrl ? `url("${seat.cardUrl}")` : 'none'};--amphoreus-motif-url:${motifUrlForSeat(seat, document.documentElement.dataset.theme === 'dark')};--amphoreus-seat-accent:${seat?.accent ?? 'var(--dsw-alias-brand-primary)'};--amphoreus-seat-accent2:${seat?.accent2 ?? 'var(--dsw-alias-brand-primary)'}`
-  app.innerHTML = `<main class="synapse-shell ${state.sidebarCollapsed ? 'sidebar-collapsed' : ''} magazine-${state.magazineMode}"><aside class="sidebar"><div class="sidebar-brand-row">${seatBrand}<button class="sidebar-toggle" type="button" data-action="toggle-sidebar" aria-label="${state.sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}" title="${state.sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.75" y="1.75" width="12.5" height="12.5" rx="2.25"/><path d="M6 2v12"/></svg></button></div><button class="back-portal" type="button" data-action="show-portal"><svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5 5.5 8 10 12.5"/></svg><span>全部角色</span></button>${seatCardSlot}<button class="new-workspace" type="button" data-action="create-session" ${state.draft !== null ? 'disabled' : ''}><svg class="new-session-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.25"/><path d="M8 4.75v6.5M4.75 8h6.5"/></svg><span>新会话</span></button><div class="sidebar-heading"><span>会话</span></div><nav class="thread-tree">${threads.map(thread => `<button class="tree-row ${thread.id === state.activeId ? 'active' : ''}" data-action="select-thread" data-thread="${thread.id}" style="--thread-color:${escapeHtml(seat?.accent ?? '#374151')}"><span class="tree-dot"></span><span>${escapeHtml(threadListTitle(thread))}</span>${thread.parentId === null ? '' : '<i>分支</i>'}</button>`).join('') || '<p class="tree-empty">暂未同步会话</p>'}</nav>${unprojectableList}</aside><header class="topbar">${canvasControls}</header><section class="main-stage" style="${escapeHtml(mainStageStyle)}">${state.error ? `<div class="status-message" role="alert"><span>${escapeHtml(state.error)}</span><button data-action="dismiss-error" aria-label="关闭" title="关闭">×</button></div>` : ''}${canvasTabs}${view}${selectionFollowupButton()}</section></main>`
+  app.innerHTML = `<main class="synapse-shell ${state.sidebarCollapsed ? 'sidebar-collapsed' : ''} magazine-${state.magazineMode}"><aside class="sidebar"><div class="sidebar-brand-row">${seatBrand}<button class="sidebar-toggle" type="button" data-action="toggle-sidebar" aria-label="${state.sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}" title="${state.sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.75" y="1.75" width="12.5" height="12.5" rx="2.25"/><path d="M6 2v12"/></svg></button></div><button class="back-portal" type="button" data-action="${portalAction}"><svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5 5.5 8 10 12.5"/></svg><span>全部角色</span></button>${seatCardSlot}<button class="new-workspace" type="button" data-action="create-session" ${state.draft !== null ? 'disabled' : ''}><svg class="new-session-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.25"/><path d="M8 4.75v6.5M4.75 8h6.5"/></svg><span>新会话</span></button><div class="sidebar-heading"><span>会话</span></div><nav class="thread-tree">${renderThreadTree(threads, seat)}</nav>${unprojectableList}</aside><header class="topbar">${canvasControls}</header><section class="main-stage" style="${escapeHtml(mainStageStyle)}">${state.error ? `<div class="status-message" role="alert"><span>${escapeHtml(state.error)}</span><button data-action="dismiss-error" aria-label="关闭" title="关闭">×</button></div>` : ''}${canvasTabs}${view}${selectionFollowupButton()}</section></main>`
   installDragging()
   cacheCardConnectors()
   // The initial camera from renderCanvas is inset (viewport not laid out yet);
@@ -1993,6 +2047,11 @@ app.addEventListener('pointerup', queueSelectionFollowup)
 app.addEventListener('scroll', hideSelectionFollowup, true)
 document.addEventListener('selectionchange', queueSelectionFollowup)
 document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && BOOT_MODE === 'portal') {
+    event.preventDefault()
+    post('amphoreus:close')
+    return
+  }
   if (event.key !== 'Escape' || state.mode !== 'canvas' || state.inspectorCardId === null) return
   event.preventDefault()
   closeCardInspector({ animate: false })
@@ -2055,8 +2114,14 @@ app.addEventListener('click', async event => {
         render()
       }
     }
+    if (button.dataset.action === 'close-portal') { post('amphoreus:close'); return }
+    if (button.dataset.action === 'open-portal') { post('amphoreus:open-portal'); return }
     if (button.dataset.action === 'show-portal') { showPortal(); return }
     if (button.dataset.action === 'enter-seat' && typeof button.dataset.workspace === 'string') {
+      if (BOOT_MODE === 'portal') {
+        post('amphoreus:open-seat', { heroId: button.dataset.workspace.startsWith('seat:') ? button.dataset.workspace.slice(5) : null })
+        return
+      }
       await enterSeat(button.dataset.workspace, button.classList.contains('portal-card') ? button : undefined)
       return
     }
@@ -2198,6 +2263,21 @@ window.addEventListener('message', event => {
     state.currentDsh = data.session
     state.currentSessionId = typeof data.session?.id === 'string' ? data.session.id : null
     const preserveCanvasCamera = previousId !== data.session?.id && state.mapCardSessionSwitches.delete(data.session?.id)
+    const tabEntry = tabEntryOf(data)
+    if (BOOT_MODE === 'tab' && tabEntry.key !== state.tabEntryKey) {
+      state.tabEntered = true
+      state.tabEntryKey = tabEntry.key
+      if (state.seatId !== tabEntry.target) {
+        void enterSeat(tabEntry.target).then(() => {
+          const thread = currentDshThread()
+          if (thread !== undefined) {
+            state.activeId = thread.id
+            if (canReplaceView()) render()
+          }
+        })
+        return
+      }
+    }
     if (state.mode === 'portal') return
     const thread = currentDshThread()
     if (thread !== undefined) {
