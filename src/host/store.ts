@@ -32,7 +32,7 @@ export const BindingSchema = z.object({
   skillName: z.string(),
   face: z.string().optional(),
   boundAt: z.number(),
-  source: z.enum(['seat-new', 'seat-enter', 'handoff', 'handoff-fork', 'fork-inherit', 'manual']),
+  source: z.enum(['seat-new', 'seat-enter', 'handoff', 'handoff-fork', 'fork-inherit', 'manual', 'dispatch']),
   injection: InjectionSchema,
   handoffFrom: z.object({ sessionId: z.string(), seq: z.number().int().nonnegative() }).optional(),
   orphaned: z.boolean().optional(),
@@ -57,16 +57,20 @@ export const MemorySchema = z.object({
 export const ObservationSchema = z.object({
   sessionId: z.string(),
   seq: z.number().int().nonnegative(),
-  kind: z.enum(['handoff', 'notify', 'receipt', 'absence']),
+  kind: z.enum(['handoff', 'notify', 'receipt', 'absence', 'dispatch']),
   skillName: z.string().optional(),
   targetSkillName: z.string().nullable().optional(),
   targetDisplayName: z.string().optional(),
   targetFace: z.string().optional(),
   rawLine: z.string(),
   payload: z.string().optional(),
+  tier: z.string().optional(),
   parsedAt: z.number(),
   status: z.enum(['open', 'accepted', 'dismissed']),
   acceptedSessionId: z.string().optional(),
+  dispatchedFrom: z.enum(['panel', 'rail', 'pipeline']).optional(),
+  pipeline: z.string().optional(),
+  station: z.number().int().nonnegative().optional(),
 })
 
 export const SuiteEventSchema = z.object({

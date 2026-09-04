@@ -5,14 +5,15 @@ import { test } from 'node:test'
 import type { Context } from '@deepseek-ai/cordis'
 import type { AmphoreusConfig } from '../src/host/config.ts'
 import type { SuiteResolver } from '../src/host/bridge.ts'
-import { INITIAL_GLOBAL, type AmphoreusStores, type CanvasRecord } from '../src/host/store.ts'
+import { INITIAL_GLOBAL, type AmphoreusStores, type CanvasRecord, type MemoryRecord } from '../src/host/store.ts'
 import { AmphoreusWebApi } from '../src/host/webapi.ts'
 
 const SESSION_ID = 'session-00000000-0000-0000-0000-000000000001'
 const NONCE = 'body-limit-test'
 
-test('canvas alone accepts more than 4 KiB while all routes fail at their own hard limit', async () => {
+test('canvas and memory accept more than 4 KiB while all routes fail at their own hard limit', async () => {
   const canvas = new Map<string, CanvasRecord>()
+  const memory = new Map<string, MemoryRecord>()
   let global = structuredClone(INITIAL_GLOBAL)
   const stores = {
     main: {
@@ -20,7 +21,13 @@ test('canvas alone accepts more than 4 KiB while all routes fail at their own ha
         get: () => global,
         set: async (value: typeof global) => { global = value },
       },
-      table: () => ({ entries: () => new Map().entries() }),
+      table: (name: string) => name === 'memory'
+        ? {
+            get: (key: string) => memory.get(key),
+            put: async (key: string, value: MemoryRecord) => { memory.set(key, value) },
+            entries: () => memory.entries(),
+          }
+        : { entries: () => new Map().entries() },
     },
     canvas: {
       table: () => ({
@@ -91,6 +98,21 @@ test('canvas alone accepts more than 4 KiB while all routes fail at their own ha
     const rejectedPrefs = await put('/amphoreus/api/prefs', JSON.stringify({ padding: 'x'.repeat(4 * 1024) }))
     assert.equal(rejectedPrefs.status, 413)
     assert.deepEqual(await rejectedPrefs.json(), { error: 'request body exceeds 4096 bytes' })
+
+    const memoryBody = JSON.stringify({
+      notes: [{ id: 'large-note', text: '文'.repeat(5000), createdAt: 1 }],
+      pinnedSessionIds: [],
+    })
+    assert.ok(Buffer.byteLength(memoryBody) > 4 * 1024)
+    assert.ok(Buffer.byteLength(memoryBody) < 64 * 1024)
+    const acceptedMemory = await put('/amphoreus/api/memory/amphoreus-testcard-a', memoryBody)
+    assert.equal(acceptedMemory.status, 200)
+    assert.equal(memory.get('amphoreus-testcard-a')?.notes[0]?.text.length, 5000)
+
+    const memoryOversize = JSON.stringify({ notes: [{ id: 'too-large', text: 'x'.repeat(70 * 1024), createdAt: 1 }], pinnedSessionIds: [] })
+    const rejectedMemory = await put('/amphoreus/api/memory/amphoreus-testcard-a', memoryOversize)
+    assert.equal(rejectedMemory.status, 413)
+    assert.deepEqual(await rejectedMemory.json(), { error: 'request body exceeds 65536 bytes' })
   } finally {
     server.close()
     await once(server, 'close')

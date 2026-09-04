@@ -192,6 +192,6 @@ test('DELETE uses the table result directly and leaves existing binding contract
   assert.doesNotMatch(remove, /table\.get\(/)
   assert.match(source, /request\.method !== 'DELETE' && !\(request\.headers\['content-type'\]/)
   assert.match(source, /const SESSION_ID = \/\^session-\[0-9a-f\]\{8\}-\[0-9a-f\]\{4\}-\[0-9a-f\]\{4\}-\[0-9a-f\]\{4\}-\[0-9a-f\]\{12\}\$\/iu/)
-  assert.match(source, /boundBy: z\.enum\(\['seat-new', 'seat-enter', 'handoff', 'handoff-fork', 'fork-inherit', 'manual'\]\)/)
+  assert.match(source, /boundBy: z\.enum\(\['seat-new', 'seat-enter', 'handoff', 'handoff-fork', 'fork-inherit', 'manual', 'dispatch'\]\)/)
   assert.doesNotMatch(source, /WorkbenchThread|SeatResolver/)
 })

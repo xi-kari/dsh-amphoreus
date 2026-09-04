@@ -85,7 +85,7 @@ const VIEWPORT_MARGIN = 1400
 const state = {
   index: new Map(), indexRevision: 0, indexRequest: 0, eventSource: null, persistenceHydrated: false, bootstrapped: false, mapOpenPending: false, workspace: null, activeId: null, selectedCardId: null, mode: BOOT_MODE === 'portal' ? 'portal' : 'canvas', zoom: 1, currentDsh: null, currentSessionId: null, tabEntered: false, tabEntryKey: null, sidebarCollapsed: false,
   // Seat portal: hero seats from the host (chronicle art, palette, folder).
-  seats: [], sessionsById: new Map(), assetsConfigured: false, seatId: BOOT_MODE === 'portal' ? null : restoredSeatId, cardFlightPending: false, cardTextLimit: WORKBENCH_CONFIG.cardTextLimit, magazineMode: 'light',
+  seats: [], sessionsById: new Map(), assetsConfigured: false, seatId: BOOT_MODE === 'portal' ? null : restoredSeatId, cardFlightPending: false, cardTextLimit: WORKBENCH_CONFIG.cardTextLimit, magazineMode: 'light', amph: null, dispatchLaneCollapsed: false,
   unprojectable: new Map(),
   historyBySession: new Map(), historyRevisionBySession: new Map(), historyCompleteBySession: new Map(), pendingReplies: new Map(), pendingRpc: new Map(), liveReplies: new Map(),
   draft: null, error: '', branchAnchors: new Map(), cardPositions: new Map(), legacyPositionKeys: new Set(), collapsedCardIds: new Set(), quickPhrases: [...DEFAULT_QUICK_PHRASES], quickPhraseEditorOpen: false,
@@ -846,13 +846,18 @@ function firstAvailableCardPosition(position, occupied) {
   }
 }
 
-function connectorPath(fromPosition, toPosition) {
-  const fromX = fromPosition.x + CARD_WIDTH
-  const fromY = fromPosition.y + CARD_HEIGHT / 2
-  const toX = toPosition.x
-  const toY = toPosition.y + CARD_HEIGHT / 2
+function connectorCurve(fromX, fromY, toX, toY) {
   const bend = Math.min(110, Math.max(36, Math.abs(toX - fromX) * .2))
   return `M ${fromX} ${fromY} C ${fromX + bend} ${fromY}, ${toX - bend} ${toY}, ${toX} ${toY}`
+}
+
+function connectorPath(fromPosition, toPosition) {
+  return connectorCurve(
+    fromPosition.x + CARD_WIDTH,
+    fromPosition.y + CARD_HEIGHT / 2,
+    toPosition.x,
+    toPosition.y + CARD_HEIGHT / 2,
+  )
 }
 
 function connectorPathFromElements(fromCard, toCard) {
@@ -861,8 +866,7 @@ function connectorPathFromElements(fromCard, toCard) {
   const toX = Number.parseFloat(toCard.style.left)
   const toY = Number.parseFloat(toCard.style.top) + CARD_HEIGHT / 2
   if (![fromX, fromY, toX, toY].every(Number.isFinite)) return null
-  const bend = Math.min(110, Math.max(36, Math.abs(toX - fromX) * .2))
-  return `M ${fromX} ${fromY} C ${fromX + bend} ${fromY}, ${toX - bend} ${toY}, ${toX} ${toY}`
+  return connectorCurve(fromX, fromY, toX, toY)
 }
 
 function selectorValue(value) {
@@ -1232,6 +1236,10 @@ function conversationCard(card, graph) {
   const cardThread = state.workspace?.threads.find(item => item.id === card.dshThreadId)
   const unprojectable = cardThread?.dshSessionId ? state.unprojectable.get(cardThread.dshSessionId) : undefined
   const unprojectableBadge = unprojectable ? `<span class="card-unprojectable" title="${escapeHtml(unprojectable.reason)}">不可投影</span>` : ''
+  const dispatchedBadge = card.turnIndex === 0 && typeof cardThread?.dshSessionId === 'string'
+    && (state.amph?.observations ?? []).some(observation => observation?.kind === 'dispatch' && observation.sessionId === cardThread.dshSessionId)
+    ? '<span class="card-dispatched" title="由全体会议派发">派发</span>'
+    : ''
   const selected = card.id === state.selectedCardId ? 'selected' : ''
   const source = card.parentId === null ? 'DSH 会话' : card.turnIndex === 0 ? 'DSH 分支' : '追问'
   const continueButton = card.canContinue === true
@@ -1247,7 +1255,7 @@ function conversationCard(card, graph) {
     <button class="node-handle" data-drag-card="${card.id}" aria-label="拖动 ${escapeHtml(card.question)}" title="拖动卡片"></button>
     ${continueButton}${foldButton}${branchButton}
     <div class="thread-card-head"><span class="topic-dot"></span>${badge}<button class="thread-title" data-action="show-thread" data-thread="${card.dshThreadId}" data-card="${escapeHtml(card.id)}" title="查看完整会话：${escapeHtml(card.question)}">${escapeHtml(card.question)}</button></div>
-    <div class="thread-meta"><span>${source}</span>${seatInfo.face ? `<span class="card-seat-face">${escapeHtml(seatInfo.face)}</span>` : ''}<span>第 ${card.turnIndex + 1} 轮</span>${card.error === null ? '' : '<span class="card-error-status">失败</span>'}${unprojectableBadge}${card.processCount > 0 ? `<span class="card-process-count">工具 ${card.processCount}</span>` : ''}</div>
+    <div class="thread-meta"><span>${source}</span>${seatInfo.face ? `<span class="card-seat-face">${escapeHtml(seatInfo.face)}</span>` : ''}<span>第 ${card.turnIndex + 1} 轮</span>${dispatchedBadge}${card.error === null ? '' : '<span class="card-error-status">失败</span>'}${unprojectableBadge}${card.processCount > 0 ? `<span class="card-process-count">工具 ${card.processCount}</span>` : ''}</div>
     <div class="thread-answer">${card.placeholder ? '<p class="thread-answer-empty">选中此会话后加载正文</p>' : card.answer === null ? (card.error === null ? '<p class="thread-answer-empty">等待助手回复</p>' : '') : card.answer.pending && card.answer.text === '' ? '<p class="thread-answer-pending">正在回复</p>' : `${renderMarkdown(clampCardText(card.answer.text))}${card.answer.pending ? '<p class="thread-answer-pending">正在回复</p>' : ''}`}${card.error === null ? '' : `<p class="thread-answer-error" title="${escapeHtml(card.error.text)}">本轮失败：${escapeHtml(card.error.text)}</p>`}</div>
     <footer><button data-action="show-thread" data-thread="${card.dshThreadId}" data-card="${escapeHtml(card.id)}" title="查看完整会话" aria-label="查看完整会话"><svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="M2 8.5 8 2.5l6 6V13.5a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5Z"/><path d="M6.2 14v-3.6a1.8 1.8 0 0 1 3.6 0V14" /></svg>详情</button><button data-action="open-dsh" data-thread="${card.dshThreadId}" data-seq="${Number.isInteger(card.sourceSeq) ? card.sourceSeq : ''}" data-turn="${Number.isInteger(card.turn) ? card.turn : ''}" title="在 DSH 中打开" aria-label="在 DSH 中打开"><svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3.5H4.5A1.5 1.5 0 0 0 3 5v6.5A1.5 1.5 0 0 0 4.5 13H11a1.5 1.5 0 0 0 1.5-1.5V9"/><path d="M9.5 3.5h3v3M12.4 3.6 7.5 8.5"/></svg>DSH</button><button data-action="archive-thread" data-thread="${card.dshThreadId}" title="归档此会话" aria-label="归档此会话"><svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 5h11M5.5 7v5.5a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1V7"/><path d="M4 5 5 2.8a.7.7 0 0 1 .6-.4h4.8a.7.7 0 0 1 .6.4L12 5M6 9.5h4"/></svg>归档</button></footer>
   </article>`
@@ -1390,9 +1398,145 @@ function syncCanvasViewport() {
   }
 }
 
+function dispatchRecords() {
+  return (state.amph?.observations ?? [])
+    .filter(observation => observation?.kind === 'dispatch' && typeof observation.sessionId === 'string')
+    .sort((left, right) => Number(right.parsedAt ?? 0) - Number(left.parsedAt ?? 0))
+}
+
+function handoffChain(sessionId) {
+  const chain = [sessionId]
+  const seen = new Set(chain)
+  for (let guard = 0; guard < 32; guard++) {
+    const current = chain.at(-1)
+    const next = (state.amph?.observations ?? []).find(observation =>
+      observation?.kind === 'handoff'
+      && observation.status === 'accepted'
+      && observation.sessionId === current
+      && typeof observation.acceptedSessionId === 'string'
+      && !seen.has(observation.acceptedSessionId))
+    if (next === undefined) break
+    chain.push(next.acceptedSessionId)
+    seen.add(next.acceptedSessionId)
+  }
+  return chain
+}
+
+function statusOf(observation) {
+  if ((state.amph?.observations ?? []).some(item => item?.kind === 'receipt' && item.sessionId === observation.sessionId)) return '已回应'
+  if (state.pendingReplies.has(observation.sessionId)
+    || state.liveReplies.has(observation.sessionId)
+    || state.sessionsById.get(observation.sessionId)?.running === true) return '进行中'
+  return '已派发'
+}
+
+function heroIdOfSkill(skillName) {
+  const heroId = state.seats.find(seat => seat.skillName === skillName)?.heroId
+  return typeof heroId === 'string' && heroId !== '' ? heroId : null
+}
+
+function deployedSkill(skillName) {
+  return state.seats.find(seat => seat.skillName === skillName)?.deployed === true
+}
+
+function stickerOrInitial(skillName) {
+  const seat = state.seats.find(item => item.skillName === skillName)
+  if (typeof seat?.stickerUrl === 'string' && seat.stickerUrl !== '') {
+    return `<img class="dispatch-stub-mark" src="${escapeHtml(seat.stickerUrl)}" alt="">`
+  }
+  const name = String(seat?.displayName ?? skillName ?? '席').trim()
+  const initial = Array.from(name)[0] ?? '席'
+  return `<span class="dispatch-stub-mark dispatch-stub-mark-generic" style="--seat-hue:${seat?.hue ?? hashHue(String(skillName ?? 'seat'))}" aria-hidden="true">${escapeHtml(initial)}</span>`
+}
+
+function renderStandby(observation) {
+  const pipeline = (state.amph?.pipelines ?? []).find(item => item.name === observation.pipeline)
+  if (pipeline === undefined) return ''
+  const station = Number.isInteger(observation.station) ? observation.station : 0
+  const done = handoffChain(observation.sessionId).length
+  const stations = pipeline.stations.map((item, index) => {
+    const connected = index < station + done
+    const undeployed = typeof item.skill !== 'string' || !deployedSkill(item.skill)
+    const title = `${connected ? '已接通' : '待命'}${undeployed ? '（未部署）' : ''}`
+    return `<span class="station ${connected ? 'done' : 'standby'}${undeployed ? ' undeployed' : ''}" title="${title}">${escapeHtml(item.text)}</span>`
+  }).join('<i class="arrow" aria-hidden="true">→</i>')
+  return `<div class="stub-standby">${stations}</div>`
+}
+
+function renderDispatchLane() {
+  if (state.seatId !== 'all') return ''
+  const records = dispatchRecords()
+  const stubs = records.map(observation => {
+    const skillName = typeof observation.targetSkillName === 'string' ? observation.targetSkillName : ''
+    const title = observation.rawLine ?? observation.payload ?? ''
+    const displayName = observation.targetDisplayName ?? state.seats.find(seat => seat.skillName === skillName)?.displayName ?? skillName
+    return `<li class="dispatch-stub" data-stub="${escapeHtml(observation.sessionId)}">
+      <button type="button" data-action="open-dispatched" data-session="${escapeHtml(observation.sessionId)}" data-skill="${escapeHtml(skillName)}">
+        ${stickerOrInitial(skillName)}<span class="stub-title">${escapeHtml(title)}</span>
+        <span class="stub-meta">${escapeHtml(displayName)} · ${statusOf(observation)}</span>
+      </button>
+      ${observation.pipeline ? renderStandby(observation) : ''}
+    </li>`
+  }).join('')
+  return `<aside class="dispatch-lane${state.dispatchLaneCollapsed ? ' collapsed' : ''}" aria-label="派发泳道">
+    <button class="dispatch-lane-toggle" type="button" data-action="toggle-dispatch-lane" title="${state.dispatchLaneCollapsed ? '展开泳道' : '收起泳道'}">${state.dispatchLaneCollapsed ? '›' : '‹'}</button>
+    <div class="dispatch-root" data-root><span class="portal-all-mark" aria-hidden="true">✦</span><strong>全体会议</strong><small>${records.length} 次派发</small></div>
+    <svg class="dispatch-edges" aria-hidden="true"></svg>
+    <ol class="dispatch-stubs">${stubs}</ol>
+  </aside>`
+}
+
+let dispatchLaneResizeObserver = null
+
+function disconnectDispatchLaneEdges() {
+  dispatchLaneResizeObserver?.disconnect()
+  dispatchLaneResizeObserver = null
+}
+
+function drawDispatchEdges() {
+  const lane = document.querySelector('.dispatch-lane')
+  const root = lane?.querySelector('[data-root]')
+  const svg = lane?.querySelector('.dispatch-edges')
+  if (!(lane instanceof HTMLElement) || !(root instanceof HTMLElement) || !(svg instanceof SVGElement)) return
+  const laneRect = lane.getBoundingClientRect()
+  const rootRect = root.getBoundingClientRect()
+  const fromX = rootRect.right - laneRect.left + lane.scrollLeft
+  const fromY = rootRect.top + rootRect.height / 2 - laneRect.top + lane.scrollTop
+  const paths = []
+  for (const button of lane.querySelectorAll('.dispatch-stub > button')) {
+    if (!(button instanceof HTMLElement)) continue
+    const rect = button.getBoundingClientRect()
+    const toX = rect.left - laneRect.left + lane.scrollLeft
+    const toY = rect.top + rect.height / 2 - laneRect.top + lane.scrollTop
+    paths.push(`<path class="dispatch-edge" d="${connectorCurve(fromX, fromY, toX, toY)}"></path>`)
+  }
+  const width = Math.max(lane.clientWidth, lane.scrollWidth)
+  const height = Math.max(lane.clientHeight, lane.scrollHeight)
+  svg.setAttribute('width', String(width))
+  svg.setAttribute('height', String(height))
+  svg.setAttribute('viewBox', `0 0 ${width} ${height}`)
+  svg.innerHTML = paths.join('')
+}
+
+function installDispatchLaneEdges() {
+  disconnectDispatchLaneEdges()
+  const lane = document.querySelector('.dispatch-lane')
+  if (!(lane instanceof HTMLElement)) return
+  drawDispatchEdges()
+  lane.addEventListener('scroll', drawDispatchEdges, { passive: true })
+  if (typeof ResizeObserver === 'function') {
+    dispatchLaneResizeObserver = new ResizeObserver(drawDispatchEdges)
+    dispatchLaneResizeObserver.observe(lane)
+  }
+}
+
 function renderCanvas() {
   const threads = state.workspace?.threads ?? []
-  if (threads.length === 0 && state.draft?.kind !== 'new') return `<section class="empty-canvas"><strong>当前工作目录还没有 DSH 对话。</strong><p>点击新会话，在画布中输入第一条消息。</p><div><button class="primary" type="button" data-action="create-session">新建会话</button></div></section>`
+  const dispatchLane = state.seatId === 'all' ? renderDispatchLane() : ''
+  if (threads.length === 0 && state.draft?.kind !== 'new') {
+    const empty = `<section class="empty-canvas"><strong>当前工作目录还没有 DSH 对话。</strong><p>点击新会话，在画布中输入第一条消息。</p><div><button class="primary" type="button" data-action="create-session">新建会话</button></div></section>`
+    return state.seatId === 'all' ? `<section class="canvas-view">${dispatchLane}${empty}</section>` : empty
+  }
   const allCards = conversationCards(threads)
   const turnTotals = new Map()
   for (const card of allCards) turnTotals.set(card.dshThreadId, (turnTotals.get(card.dshThreadId) ?? 0) + 1)
@@ -1417,7 +1561,7 @@ function renderCanvas() {
   state.mountedCardIds = new Set(visible)
   const mounted = cards.filter(card => visible.has(card.id))
   const inspector = state.inspectorCardId === null ? '' : renderCardInspector(state.canvasCardsById.get(state.inspectorCardId))
-  return `<section class="canvas-view"><div class="canvas-viewport"><div class="canvas-content" style="transform:translate(${state.canvasCamera.x}px, ${state.canvasCamera.y}px) scale(${state.zoom})"><svg class="connectors">${canvasConnectors(cards)}</svg><div class="cards-layer">${mounted.map(card => conversationCard(card, graph)).join('')}${draftCard(cards)}</div></div></div>${inspector}</section>`
+  return `<section class="canvas-view">${dispatchLane}<div class="canvas-viewport"><div class="canvas-content" style="transform:translate(${state.canvasCamera.x}px, ${state.canvasCamera.y}px) scale(${state.zoom})"><svg class="connectors">${canvasConnectors(cards)}</svg><div class="cards-layer">${mounted.map(card => conversationCard(card, graph)).join('')}${draftCard(cards)}</div></div></div>${inspector}</section>`
 }
 
 function isProcessMessage(message) {
@@ -1671,6 +1815,7 @@ function renderThreadTree(threads, seat) {
 }
 
 function render() {
+  disconnectDispatchLaneEdges()
   // Remember the departing thread's scroll position per thread id, so
   // switching sessions restores each conversation's own place instead of
   // smearing one session's position onto another.
@@ -1730,6 +1875,7 @@ function render() {
   app.innerHTML = `<main class="synapse-shell ${state.sidebarCollapsed ? 'sidebar-collapsed' : ''} magazine-${state.magazineMode}"><aside class="sidebar"><div class="sidebar-brand-row">${seatBrand}<button class="sidebar-toggle" type="button" data-action="toggle-sidebar" aria-label="${state.sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}" title="${state.sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.75" y="1.75" width="12.5" height="12.5" rx="2.25"/><path d="M6 2v12"/></svg></button></div><button class="back-portal" type="button" data-action="${portalAction}"><svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5 5.5 8 10 12.5"/></svg><span>全部角色</span></button>${seatCardSlot}<button class="new-workspace" type="button" data-action="create-session" ${state.draft !== null ? 'disabled' : ''}><svg class="new-session-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.25"/><path d="M8 4.75v6.5M4.75 8h6.5"/></svg><span>新会话</span></button><div class="sidebar-heading"><span>会话</span></div><nav class="thread-tree">${renderThreadTree(threads, seat)}</nav>${unprojectableList}</aside><header class="topbar">${canvasControls}</header><section class="main-stage" style="${escapeHtml(mainStageStyle)}">${state.error ? `<div class="status-message" role="alert"><span>${escapeHtml(state.error)}</span><button data-action="dismiss-error" aria-label="关闭" title="关闭">×</button></div>` : ''}${canvasTabs}${view}${selectionFollowupButton()}</section></main>`
   installDragging()
   cacheCardConnectors()
+  installDispatchLaneEdges()
   // The initial camera from renderCanvas is inset (viewport not laid out yet);
   // center it on the focused card once the canvas DOM is mounted.
   if (state.canvasNeedsCenter) {
@@ -2117,6 +2263,17 @@ app.addEventListener('click', async event => {
     if (button.dataset.action === 'close-portal') { post('amphoreus:close'); return }
     if (button.dataset.action === 'open-portal') { post('amphoreus:open-portal'); return }
     if (button.dataset.action === 'show-portal') { showPortal(); return }
+    if (button.dataset.action === 'toggle-dispatch-lane') {
+      state.dispatchLaneCollapsed = !state.dispatchLaneCollapsed
+      render()
+      return
+    }
+    if (button.dataset.action === 'open-dispatched' && typeof button.dataset.session === 'string') {
+      post('amphoreus:activate-session', { sessionId: button.dataset.session })
+      const heroId = heroIdOfSkill(button.dataset.skill ?? '')
+      if (heroId !== null) await enterSeat(`seat:${heroId}`)
+      return
+    }
     if (button.dataset.action === 'enter-seat' && typeof button.dataset.workspace === 'string') {
       if (BOOT_MODE === 'portal') {
         post('amphoreus:open-seat', { heroId: button.dataset.workspace.startsWith('seat:') ? button.dataset.workspace.slice(5) : null })

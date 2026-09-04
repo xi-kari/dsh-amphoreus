@@ -556,7 +556,7 @@
 - 偏离与理由：任务书写槽位数 `≥9`，测试收紧为当前契约的精确 `9`；新增装配回归测试以防后续 E/F 重排破坏 C 章顺序。
 - 遗留：E 章尚需兑现总空间派发能力；C 章验收使用前序 TC2–TC10 已建立的真实测试会话，章末将按官方接口清理本章新增状态。
 ## C 章完成定义：席位绑定、独立工作区与门户 — 2026-09-05 05:01
-- commit: PENDING-CHAPTER
+- commit: 205004a; tag: chapter-C
 - 范围：TC1–TC11 共 `11` 项全部各自提交；执行顺序 C 位于 D 后，依赖的 D 章主题、纹样与杂志契约均已落地；`chapter-A`、`chapter-B`、`chapter-D` 基线标签保持不变。
 - 机器验收：
   - `npm run build` → exit `0`，derive/client/host=`28.87/170.83/188.25 kB`；`node --test tests/*.test.ts` → `tests 242; pass 241; fail 0; skipped 1; duration_ms 2706.9925`，唯一 skip 为无真实套件环境变量时的预期门 PASS
@@ -572,7 +572,7 @@
   - 实测 fork 继承为 `fork-inherit`；席内创建为 `seat-new/done`；晚到绑定会原地更新身份；无绑定与昔涟均保持全局层；流式与快速切席回归无重复淡入 PASS
   - 门户覆盖层的按钮/X/Escape/scrim/iframe Escape、已有席导航、无会话创建、全体会议 close-only、窄栏图标和 Tab「全部角色」入口均通过；关闭后底层工作台与选中卡保留 PASS
   - 画布已验证已知席色/徽记/贴纸、未知 `hsl(...)` 通用徽记、多 cwd 目录标签与当前卡定位；卡片尺寸、folio、full magazine 与正文投影契约未回退 PASS
-- 恢复状态：主题与杂志已恢复系统/light-config；临时 late-binding 已删除；服务 PID `59556` 正常。C 章专用测试会话只通过官方 archive 语义清理，权威 session 日志不删除。
+- 恢复状态：主题与杂志已恢复系统/light-config；临时 late-binding 已删除；服务 PID `59556` 正常。7 个 C 章专用 binding DELETE 均 HTTP `200`，8 个确认测试会话经官方 `workspace/archiveSession` 均 HTTP `200/result.ok=true`，TC5 fixture workspace 经官方 `workspace/delete` 为 HTTP `200/deleted=true`；复核测试 binding=`0`、workspace id 不存在、8 份权威 session 目录全部保留、fixture 目录保留、stderr=`0` bytes。
 - 偏离与理由：任务书若干行号随 A/B/D/C 实施迁移，均以动手前 `sed -n` 与当前平台源码重新定位；未知视觉卡用隔离同源 iframe fixture 覆盖，未改真实套件；具体差异逐项写在 TC1–TC11。
 - 遗留：总空间派发、移交观察、站位轨、接通尾页与台账由 E 章承接；C 的全体会议入口在 E TE1 从 close-only 升级为同一 Tab 的 all 画布。
 ## TD7：杂志档位 prefs 覆盖与 iframe 桥 — 2026-09-05 00:01
@@ -831,3 +831,17 @@
 - 人工断言：✓ 仅使用本机系统字体 fallback；✓ display/body/mono 三族与五级 type shorthand 单源；✓ CSS Modules 设置标题与 iframe 杂志标题采用同一 display 栈；✓ 不修改 DSH 内容字号 token。
 - 偏离与理由：无。
 - 遗留：无。
+## TE2：派发记录与全体会议派发泳道 — 2026-09-05 05:14
+- commit: PENDING-TASK
+- 动手前核对：实际执行任务书 `sed -n '3772,3924p'`、E.0 `3460,3608p` 与 storage-domain `78,98p`；确认 `update(key, fn)`、domain/changed、现有 4 KiB/64 KiB 路由边界与 connectorPath 的卡片左上角语义 PASS
+- 验收：
+  - 聚焦 → observations/firstframe/body-limits/bindings/lane 共 `tests 16; pass 16; fail 0; skipped 0; duration_ms 484.2495`；审查修正未解析 pipeline 站位 tooltip 后复跑核心 `tests 14; pass 14; fail 0; skipped 0; duration_ms 500.4729` PASS
+  - 全量 → `tests 248; pass 247; fail 0; skipped 1; duration_ms 2708.3829`；`npm run build` → derive/client/host=`28.87/170.95/192.00 kB`；typecheck、node check、Lightning CSS=`66539` bytes、diff check 均 exit `0` PASS
+  - API → Binding/Observation schema 加 dispatch 与 tier/source/pipeline/station；三段 `OBSERVATION_KEY=2`、route/create/safeParse/64KiB=`2/2/3/4`；POST 仅 dispatch 且 seq=`0`，GET filter、PUT patch、403/415/400/404/409/413 均由真实 loopback server 测试 PASS
+  - memory 4–64 KiB PUT=`200`、>64 KiB=`413`；bindings/prefs 等其余写路由仍为 4 KiB；旧 firstframe fixture 抽成共享非 test 文件；zh/en dispatch 来源键与旧枚举回归同步 PASS
+  - 泳道 → 仅 all 画布渲染，空 all 画布仍有 root；status 精确为已派发/进行中/已回应且无工艺词「回执」；pipeline 待命不创建会话，未解析/未部署均标记；首卡才显示派发徽记 PASS
+  - 点到点 `connectorCurve` 保持旧卡片 connectorPath 语义；lane observer 单 owner、每次 render 先 disconnect；CSS block markers=`1/1`、alias=`20`、新增 dark selector=`0`、全文件 dark/canvas-controls=`1/4` PASS
+  - 服务重启后 PID `43936`、state/observations HTTP=`200/200`、L0/cards/seatDirs=`L0/13/13`、observations=`0`、stderr=`0` bytes PASS
+- 人工断言：✓ 浏览器只能创建 dispatch observation，observer 专属四类不对外开放；✓ rawLine 截前 200 字而 payload 保留全文；✓ stub 点击只 activate/enter-seat、不 prompt；✓ status/standby 只读现有状态；✓ 旧 ResizeObserver 不残留。
+- 偏离与理由：依赖环使可构建顺序采用 TE2→TE3→TE1；本任务先落宿主 API 与 lane 消费端，`state.amph` 实时桥、真实派发与 receipt 三态分别由 TE1/TE3/TE4 后置联验。任务书只写非负 seq，但 E.0 明定 dispatch 固定 `0`，输入 schema 收紧为 literal 0；任务书漏列 locales、bindings/body-limit 回归，均随领域扩展同步。任务书 connectorPath 端点描述与现实现不符，抽共享点曲线保持两类调用正确。
+- 遗留：真实浏览器 stub/edge/pipeline/三态在 TE1+TE3+TE4 联通后回填；未写入 dummy observation，避免无 DELETE 路由时污染真实 store。

@@ -11,7 +11,7 @@ import { GLOBAL_WALLPAPERS } from '../shared/heroes.ts'
 import type { AmphoreusConfig } from './config.ts'
 import { deriveAssets, probeMagick, type DeriveOptions, type DeriveResult } from './derive.ts'
 import { publicWorkbench } from './firstframe.ts'
-import { BindingSchema, CanvasSchema, MemorySchema, updateAmphoreusGlobal, type AmphoreusStores } from './store.ts'
+import { BindingSchema, CanvasSchema, MemorySchema, ObservationSchema, updateAmphoreusGlobal, type AmphoreusStores } from './store.ts'
 import type { SuiteResolver } from './bridge.ts'
 import type { SuiteSnapshot } from './suite/types.ts'
 import { InputError, NotFoundError, type ProjectionIndex } from './workbench.ts'
@@ -21,6 +21,8 @@ const MAX_BODY_BYTES = 4 * 1024
 const MAX_CANVAS_BODY_BYTES = 64 * 1024
 const MAX_SSE_CLIENTS = 8
 const SESSION_ID = /^session-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu
+const SKILL_NAME = /^amphoreus-[a-z0-9]+(?:-[a-z0-9]+)*$/u
+const OBSERVATION_KEY = /^session-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:\d+:(?:handoff|notify|receipt|absence|dispatch)$/iu
 const WORKBENCH_DIR = fileURLToPath(new URL('../workbench/', import.meta.url))
 
 class BodyTooLargeError extends Error {
@@ -32,7 +34,7 @@ class BodyTooLargeError extends Error {
 const BindInput = z.object({
   skill: z.string(),
   face: z.string().optional(),
-  boundBy: z.enum(['seat-new', 'seat-enter', 'handoff', 'handoff-fork', 'fork-inherit', 'manual']),
+  boundBy: z.enum(['seat-new', 'seat-enter', 'handoff', 'handoff-fork', 'fork-inherit', 'manual', 'dispatch']),
   fromSessionId: z.string().optional(),
   fromSeq: z.number().int().nonnegative().optional(),
 })
@@ -44,6 +46,22 @@ const PrefsInput = z.object({
 })
 
 const DeriveInput = z.object({ force: z.boolean().optional() }).strict()
+
+const ObservationCreateInput = z.object({
+  sessionId: z.string().regex(SESSION_ID),
+  seq: z.literal(0),
+  kind: z.literal('dispatch'),
+  targetSkillName: z.string().regex(SKILL_NAME),
+  payload: z.string().min(1).max(4000),
+  dispatchedFrom: z.enum(['panel', 'rail', 'pipeline']),
+  pipeline: z.string().max(40).optional(),
+  station: z.number().int().nonnegative().optional(),
+})
+
+const ObservationPatchInput = z.object({
+  status: z.enum(['open', 'accepted', 'dismissed']),
+  acceptedSessionId: z.string().regex(SESSION_ID).optional(),
+})
 
 interface ConnectionFence {
   requestRejection(request: IncomingMessage): 401 | 403 | undefined
@@ -289,9 +307,10 @@ export class AmphoreusWebApi {
         await this.#memoryRoute(request, response, decodeTail(path, '/amphoreus/api/memory/'))
         return
       }
-      if (path === '/amphoreus/api/observations') {
-        if (!method(request, response, 'GET')) return
-        json(response, 200, { observations: values(this.#stores.main.table('observations').entries()) })
+      if (path === '/amphoreus/api/observations' || path.startsWith('/amphoreus/api/observations/')) {
+        await this.#observationsRoute(request, response, path === '/amphoreus/api/observations'
+          ? undefined
+          : decodeTail(path, '/amphoreus/api/observations/'))
         return
       }
       if (path === '/amphoreus/api/prefs') {
@@ -456,7 +475,7 @@ export class AmphoreusWebApi {
   }
 
   async #memoryRoute(request: IncomingMessage, response: ServerResponse, skill: string | undefined): Promise<void> {
-    if (skill === undefined || !/^amphoreus-[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(skill)) {
+    if (skill === undefined || !SKILL_NAME.test(skill)) {
       json(response, 400, { error: 'invalid skill name' })
       return
     }
@@ -466,10 +485,81 @@ export class AmphoreusWebApi {
       return
     }
     if (!method(request, response, 'PUT')) return
-    const body = await readJson(request)
+    const body = await readJson(request, 64 * 1024)
     const value = MemorySchema.parse({ ...asRecord(body), skillName: skill, updatedAt: Date.now() })
     await table.put(skill, value)
     json(response, 200, { memory: value })
+  }
+
+  async #observationsRoute(request: IncomingMessage, response: ServerResponse, key: string | undefined): Promise<void> {
+    const table = this.#stores.main.table('observations')
+    if (key === undefined) {
+      if (request.method === 'GET') {
+        const sessionId = new URL(request.url ?? '/', 'http://localhost').searchParams.get('sessionId')
+        const observations = values(table.entries()).filter(value => sessionId === null || value.sessionId === sessionId)
+        json(response, 200, { observations })
+        return
+      }
+      if (!method(request, response, 'POST')) return
+      const parsed = ObservationCreateInput.safeParse(await readJson(request, 64 * 1024))
+      if (!parsed.success) {
+        json(response, 400, { error: zodError(parsed.error) })
+        return
+      }
+      const input = parsed.data
+      const snapshot = this.#resolver.current()
+      const seat = this.#stores.main.table('seats').get(input.targetSkillName)
+      const card = snapshot?.cards.get(input.targetSkillName)
+      if (seat === undefined && card === undefined) {
+        json(response, 404, { error: 'seat not found' })
+        return
+      }
+      if (seat?.status === 'undeployed' && card === undefined) {
+        json(response, 409, { error: 'seat is undeployed' })
+        return
+      }
+      const value = ObservationSchema.parse({
+        sessionId: input.sessionId,
+        seq: input.seq,
+        kind: 'dispatch',
+        skillName: input.targetSkillName,
+        targetSkillName: input.targetSkillName,
+        targetDisplayName: card?.displayName ?? seat?.displayName,
+        rawLine: input.payload.slice(0, 200),
+        payload: input.payload,
+        parsedAt: Date.now(),
+        status: 'accepted',
+        acceptedSessionId: input.sessionId,
+        dispatchedFrom: input.dispatchedFrom,
+        ...(input.pipeline === undefined ? {} : { pipeline: input.pipeline }),
+        ...(input.station === undefined ? {} : { station: input.station }),
+      })
+      await table.put(`${input.sessionId}:${input.seq}:dispatch`, value)
+      json(response, 201, { observation: value })
+      return
+    }
+
+    if (!OBSERVATION_KEY.test(key)) {
+      json(response, 400, { error: 'invalid observation key' })
+      return
+    }
+    if (!method(request, response, 'PUT')) return
+    const current = table.get(key)
+    if (current === undefined) {
+      json(response, 404, { error: 'observation not found' })
+      return
+    }
+    const parsed = ObservationPatchInput.safeParse(await readJson(request, 64 * 1024))
+    if (!parsed.success) {
+      json(response, 400, { error: zodError(parsed.error) })
+      return
+    }
+    const next = await table.update(key, value => ({
+      ...value,
+      status: parsed.data.status,
+      ...(parsed.data.acceptedSessionId === undefined ? {} : { acceptedSessionId: parsed.data.acceptedSessionId }),
+    }))
+    json(response, 200, { observation: next })
   }
 
   async #canvasRoute(request: IncomingMessage, response: ServerResponse, sessionId: string | undefined): Promise<void> {
@@ -933,6 +1023,10 @@ function parseCanvasRevision(value: string | string[] | undefined): number | nul
 function asRecord(value: unknown): Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new TypeError('JSON object required')
   return value as Record<string, unknown>
+}
+
+function zodError(error: z.ZodError): string {
+  return error.issues.map(issue => `${issue.path.join('.')} ${issue.message}`).join('; ')
 }
 
 function decodeTail(path: string, prefix: string): string | undefined {
