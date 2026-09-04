@@ -90,7 +90,7 @@ const state = {
   draft: null, error: '', branchAnchors: new Map(), cardPositions: new Map(), legacyPositionKeys: new Set(), collapsedCardIds: new Set(), quickPhrases: [...DEFAULT_QUICK_PHRASES], quickPhraseEditorOpen: false,
   dragging: false, canvasGesture: false, canvasRefreshAfter: 0, canvasViewInitialized: false, canvasCamera: { x: 0, y: 0 }, mapCardSessionSwitches: new Set(),
   expandedMessageIds: new Set(),
-  canvasCards: undefined, canvasCardsById: undefined, canvasGraph: undefined, mountedCardIds: new Set(), canvasNeedsCenter: false,
+  canvasCards: undefined, canvasCardsById: undefined, canvasGraph: undefined, canvasTurnTotals: new Map(), mountedCardIds: new Set(), canvasNeedsCenter: false,
   detailScrollByThread: new Map(), detailThreadId: null, detailTargetCardId: null,
   inspectorCardId: null, inspectorOpening: false, inspectorScrollByCard: new Map(),
 }
@@ -401,6 +401,15 @@ function motifUrlForSeat(seat, dark) {
 
 function syncCurrentMotif(dark) {
   document.querySelector('.main-stage')?.style.setProperty('--amphoreus-motif-url', motifUrlForSeat(seatForCurrentView(), dark))
+}
+
+function syncMagazineClass(mode) {
+  if (mode !== 'light' && mode !== 'full') return false
+  const shell = document.querySelector('.synapse-shell')
+  if (shell === null) return false
+  shell.classList.remove('magazine-light', 'magazine-full')
+  shell.classList.add(`magazine-${mode}`)
+  return true
 }
 
 function currentDshThread(threads = state.workspace?.threads ?? []) {
@@ -1210,7 +1219,7 @@ function conversationCard(card, graph) {
   const foldLabel = collapsed ? '展开后续对话' : '折叠后续对话'
   const foldButton = childCount === 0 || card.canContinue === true ? '' : `<button class="graph-fold-button${collapsed ? ' collapsed' : ''}" data-action="toggle-card-children" data-card="${escapeHtml(card.id)}" aria-expanded="${collapsed ? 'false' : 'true'}" aria-label="${foldLabel}" title="${foldLabel}"><svg aria-hidden="true" viewBox="0 0 16 16"><path d="M3.5 8h9"/>${collapsed ? '<path d="M8 3.5v9"/>' : ''}</svg></button>`
   const branchButton = childCount === 0 || card.canContinue === true || !Number.isInteger(card.answer?.sourceSeq) ? '' : `<button class="graph-branch-button" data-action="open-branch" data-thread="${card.dshThreadId}" data-card="${escapeHtml(card.id)}" data-seq="${card.answer.sourceSeq}" aria-label="在新对话中分支" title="在新对话中分支"><svg aria-hidden="true" viewBox="0 0 16 16"><path fill-rule="evenodd" clip-rule="evenodd" d="M13.0762 1.37207C14.0846 1.37228 14.9021 2.19077 14.9023 3.19922C14.9022 4.20772 14.0847 5.02518 13.0762 5.02539C12.2967 5.02539 11.6325 4.53691 11.3701 3.84961H4.35547C4.79397 4.26458 5.15861 4.7644 5.41699 5.33496L7.10645 9.06738C7.88526 10.7875 9.55104 11.9228 11.4189 12.0371C11.7085 11.4109 12.3411 10.9756 13.0762 10.9756C14.0843 10.9759 14.9023 11.7936 14.9023 12.8018C14.9023 13.81 14.0843 14.6277 13.0762 14.6279C12.2534 14.6279 11.5574 14.0832 11.3291 13.335C8.9868 13.1879 6.89981 11.7612 5.92285 9.60352L4.23242 5.87109C3.67503 4.64033 2.44878 3.84961 1.09766 3.84961V2.54883C1.10665 2.54883 1.11601 2.54975 1.125 2.5498L11.3701 2.54883C11.6326 1.86151 12.2969 1.37207 13.0762 1.37207ZM13.0762 12.2764C12.7858 12.2764 12.5508 12.5114 12.5508 12.8018C12.5508 13.0921 12.7858 13.3281 13.0762 13.3281C13.3664 13.3279 13.6025 13.092 13.6025 12.8018C13.6025 12.5115 13.3664 12.2766 13.0762 12.2764ZM13.0762 2.67285C12.7855 2.67285 12.55 2.90861 12.5498 3.19922C12.5499 3.48987 12.7855 3.72559 13.0762 3.72559C13.3667 3.72538 13.6024 3.48975 13.6025 3.19922C13.6023 2.90874 13.3666 2.67306 13.0762 2.67285Z" fill="currentColor"/></svg></button>`
-  return `<article class="thread-card ${selected} ${card.placeholder ? 'placeholder' : ''}" data-card-id="${escapeHtml(card.id)}" data-position-key="${escapeHtml(card.positionKey)}" data-thread="${card.dshThreadId}" style="left:${card.position.x}px;top:${card.position.y}px;--thread-color:#3478f6">
+  return `<article class="thread-card ${selected} ${card.placeholder ? 'placeholder' : ''}" data-card-id="${escapeHtml(card.id)}" data-position-key="${escapeHtml(card.positionKey)}" data-thread="${card.dshThreadId}" data-folio="${String(card.turnIndex + 1).padStart(2, '0')}" data-folios="${String(state.canvasTurnTotals.get(card.dshThreadId) ?? 1).padStart(2, '0')}" style="left:${card.position.x}px;top:${card.position.y}px;--thread-color:#3478f6">
     <button class="node-handle" data-drag-card="${card.id}" aria-label="拖动 ${escapeHtml(card.question)}" title="拖动卡片"></button>
     ${continueButton}${foldButton}${branchButton}
     <div class="thread-card-head"><span class="topic-dot"></span><button class="thread-title" data-action="show-thread" data-thread="${card.dshThreadId}" data-card="${escapeHtml(card.id)}" title="查看完整会话：${escapeHtml(card.question)}">${escapeHtml(card.question)}</button></div>
@@ -1359,6 +1368,9 @@ function renderCanvas() {
   const threads = state.workspace?.threads ?? []
   if (threads.length === 0 && state.draft?.kind !== 'new') return `<section class="empty-canvas"><strong>当前工作目录还没有 DSH 对话。</strong><p>点击新会话，在画布中输入第一条消息。</p><div><button class="primary" type="button" data-action="create-session">新建会话</button></div></section>`
   const allCards = conversationCards(threads)
+  const turnTotals = new Map()
+  for (const card of allCards) turnTotals.set(card.dshThreadId, (turnTotals.get(card.dshThreadId) ?? 0) + 1)
+  state.canvasTurnTotals = turnTotals
   const graph = conversationGraphView(allCards)
   const cards = graph.cards
   state.canvasCards = cards
@@ -1487,7 +1499,10 @@ function renderThread() {
   const latestAssistant = [...messages].reverse().find(message => message.kind === 'assistant' && (Number.isInteger(message.sourceSeq) || Number.isInteger(message.turn)))
   const latestAssistantSeq = latestAssistant?.sourceSeq
   const latestAssistantTurn = latestAssistant?.turn
-  return `<section class="detail-view"><header class="detail-head"><div class="detail-head-title"><div class="detail-head-meta"><span class="detail-badge">${thread.parentId === null ? '会话' : '分支'}</span>${thread.dshSessionTitle ?? thread.title ? `<span class="detail-subtitle">${escapeHtml(thread.dshSessionTitle ?? thread.title)}</span>` : ''}</div><h1>${escapeHtml(questionFor(thread))}</h1></div><div class="detail-head-actions"><button data-action="open-dsh" data-thread="${thread.id}" data-seq="${Number.isInteger(latestAssistantSeq) ? latestAssistantSeq : ''}" data-turn="${Number.isInteger(latestAssistantTurn) ? latestAssistantTurn : ''}" title="在原生对话中打开此会话">在 DSH 中打开</button><button data-action="open-branch" data-thread="${thread.id}" title="基于最新回答创建分支">创建分支</button><button class="primary" data-action="show-canvas">返回画布</button></div></header><div class="detail-scroll">${messages.map(message => threadMessage(thread, message)).join('') || '<div class="note-empty">等待这条会话的第一条消息。</div>'}</div><form class="message-composer" data-compose="${thread.id}"><textarea maxlength="4000" placeholder="继续当前会话…" ${waiting ? 'disabled' : ''}></textarea><button class="primary" type="submit" ${waiting ? 'disabled' : ''}>${waiting ? '等待回复' : '发送'}</button></form></section>`
+  const seat = seatForCurrentView()
+  const detailTitle = seatTitleOf(state.seatId ?? 'all')
+  const detailVolume = String(seat?.volume ?? '').padStart(2, '0')
+  return `<section class="detail-view" data-title="${escapeHtml(detailTitle)}" data-volume="${detailVolume}"><header class="detail-head" data-title="${escapeHtml(detailTitle)}" data-volume="${detailVolume}"><div class="detail-head-title"><div class="detail-head-meta"><span class="detail-badge">${thread.parentId === null ? '会话' : '分支'}</span>${thread.dshSessionTitle ?? thread.title ? `<span class="detail-subtitle">${escapeHtml(thread.dshSessionTitle ?? thread.title)}</span>` : ''}</div><h1>${escapeHtml(questionFor(thread))}</h1></div><div class="detail-head-actions"><button data-action="open-dsh" data-thread="${thread.id}" data-seq="${Number.isInteger(latestAssistantSeq) ? latestAssistantSeq : ''}" data-turn="${Number.isInteger(latestAssistantTurn) ? latestAssistantTurn : ''}" title="在原生对话中打开此会话">在 DSH 中打开</button><button data-action="open-branch" data-thread="${thread.id}" title="基于最新回答创建分支">创建分支</button><button class="primary" data-action="show-canvas">返回画布</button></div></header><div class="detail-scroll">${messages.map(message => threadMessage(thread, message)).join('') || '<div class="note-empty">等待这条会话的第一条消息。</div>'}</div><form class="message-composer" data-compose="${thread.id}"><textarea maxlength="4000" placeholder="继续当前会话…" ${waiting ? 'disabled' : ''}></textarea><button class="primary" type="submit" ${waiting ? 'disabled' : ''}>${waiting ? '等待回复' : '发送'}</button></form></section>`
 }
 
 // ---- Seat portal（英雄纪卡牌门户） --------------------------------------------
@@ -1566,18 +1581,21 @@ function renderPortal() {
   const visibleSeats = state.seats.filter(seat => typeof seat.heroId === 'string' && seat.heroId !== '')
   const seatCards = visibleSeats.map((seat, index) => {
     const count = seatSessionCount(seat.heroId)
-    const art = seat.chronicleUrl
-      ? `<img class="portal-art" src="${escapeHtml(seat.chronicleUrl)}" alt="" loading="lazy" decoding="async">`
+    const coverUrl = typeof seat.coverUrl === 'string' && seat.coverUrl !== '' ? seat.coverUrl : null
+    const artUrl = coverUrl ?? seat.chronicleUrl
+    const art = artUrl
+      ? `<img class="portal-art" src="${escapeHtml(artUrl)}" alt="" loading="lazy" decoding="async">`
       : `<div class="portal-art portal-art-fallback" style="--seat-accent:${escapeHtml(seat.accent ?? '#8a681c')};--seat-accent2:${escapeHtml(seat.accent2 ?? '#37305e')}"></div>`
     const sticker = seat.stickerUrl ? `<img class="portal-sticker" src="${escapeHtml(seat.stickerUrl)}" alt="" loading="lazy" decoding="async">` : ''
     const name = seat.displayName ?? seat.heroId
     const ordinal = seat.ordinal !== null ? String(seat.ordinal).padStart(2, '0') : String(index + 1).padStart(2, '0')
-    return `<button class="portal-card ${seat.deployed ? '' : 'undeployed'}" type="button" data-action="enter-seat" data-seat="${escapeHtml(seat.heroId)}" data-workspace="seat:${escapeHtml(seat.heroId)}" style="--seat-accent:${escapeHtml(seat.accent ?? '#8a681c')};--d:${index * 36}ms" title="${escapeHtml(name)}${seat.deployed ? '' : '（未部署）'}">
+    const volume = String(seat.volume ?? '').padStart(2, '0')
+    return `<button class="portal-card ${seat.deployed ? '' : 'undeployed'}" type="button" data-action="enter-seat" data-seat="${escapeHtml(seat.heroId)}" data-workspace="seat:${escapeHtml(seat.heroId)}" data-volume="${volume}"${coverUrl === null ? '' : ' data-cover="1"'} style="--seat-accent:${escapeHtml(seat.accent ?? '#8a681c')};--d:${index * 36}ms" title="${escapeHtml(name)}${seat.deployed ? '' : '（未部署）'}">
       ${art}
       <span class="portal-veil"></span>
       ${sticker}
       <span class="portal-meta">
-        <i class="portal-no">${ordinal}</i>
+        <i class="portal-no" data-volume="${volume}">${ordinal}</i>
         <strong class="portal-name">${escapeHtml(name)}</strong>
         <span class="portal-duty">${escapeHtml((seat.duties ?? []).slice(0, 3).join(' · ') || (seat.deployed ? '' : '角色未部署'))}</span>
         <span class="portal-count">${count > 0 ? `${count} 段会话` : '尚无会话'}</span>
@@ -1588,6 +1606,7 @@ function renderPortal() {
   return `<section class="portal" aria-label="黄金裔工作台">
     <header class="portal-head">
       <p class="portal-kicker">CHRYSOS · CONCILIUM</p>
+      <p class="portal-kicker portal-kicker-full">CHRYSOS · XIII VOLUMES</p>
       <h1>黄金裔工作台</h1>
       <p class="portal-sub">点开一张英雄纪，进入这位黄金裔的独立工作空间。</p>
     </header>
@@ -1628,7 +1647,7 @@ function render() {
     }
   }
   if (state.mode === 'portal') {
-    app.innerHTML = `<main class="synapse-shell portal-shell">${state.error ? `<div class="status-message" role="alert"><span>${escapeHtml(state.error)}</span><button data-action="dismiss-error" aria-label="关闭" title="关闭">×</button></div>` : ''}${renderPortal()}</main>`
+    app.innerHTML = `<main class="synapse-shell portal-shell magazine-${state.magazineMode}">${state.error ? `<div class="status-message" role="alert"><span>${escapeHtml(state.error)}</span><button data-action="dismiss-error" aria-label="关闭" title="关闭">×</button></div>` : ''}${renderPortal()}</main>`
     return
   }
   const workspace = state.workspace
@@ -1643,8 +1662,12 @@ function render() {
     : `<div class="brand" aria-label="全体会议"><span class="portal-all-mark" aria-hidden="true">✦</span><strong>${escapeHtml(seatTitleOf(state.seatId ?? 'all'))}</strong></div>`
   // The chronicle card lives on in the seat sidebar — the portal card's FLIP
   // clone lands exactly on this slot.
-  const seatCardSlot = seat !== undefined && seat.chronicleUrl
-    ? `<figure class="seat-card-slot ${state.cardFlightPending ? 'awaiting-flight' : ''}" data-action="show-portal" role="button" tabindex="0" title="返回全部角色"><img src="${escapeHtml(seat.chronicleUrl)}" alt="${escapeHtml(seat.displayName ?? seat.heroId)}"><figcaption><span>${escapeHtml((seat.duties ?? []).slice(0, 3).join(' · ') || '')}</span></figcaption></figure>`
+  const seatCoverUrl = typeof seat?.coverUrl === 'string' && seat.coverUrl !== '' ? seat.coverUrl : null
+  const seatCardArt = seatCoverUrl ?? seat?.chronicleUrl ?? null
+  const seatTitle = seat === undefined ? '' : seat.displayName ?? seat.heroId
+  const seatVolume = String(seat?.volume ?? '').padStart(2, '0')
+  const seatCardSlot = seat !== undefined && seatCardArt !== null
+    ? `<figure class="seat-card-slot ${state.cardFlightPending ? 'awaiting-flight' : ''}" data-volume="${seatVolume}" data-title="${escapeHtml(seatTitle)}"${seatCoverUrl === null ? '' : ' data-cover="1"'} data-action="show-portal" role="button" tabindex="0" title="返回全部角色"><img src="${escapeHtml(seatCardArt)}" alt="${escapeHtml(seatTitle)}"><figcaption data-title="${escapeHtml(seatTitle)}"><span>${escapeHtml((seat.duties ?? []).slice(0, 3).join(' · ') || '')}</span></figcaption></figure>`
     : ''
   const seatHero = state.seatId?.startsWith('seat:') ? state.seatId.slice(5) : null
   const orphanUnprojectable = [...state.unprojectable.values()].filter(item =>
@@ -1652,7 +1675,7 @@ function render() {
   const unprojectableList = orphanUnprojectable.length === 0 ? '' :
     `<div class="sidebar-heading"><span>不可投影</span></div><ul class="unprojectable-list">${orphanUnprojectable.map(item => `<li title="${escapeHtml(item.reason)}"><span>${escapeHtml(item.title ?? item.sessionId)}</span><i>${escapeHtml(item.reason)}</i></li>`).join('')}</ul>`
   const mainStageStyle = `--seat-stage-art:${seat?.cardUrl ? `url("${seat.cardUrl}")` : 'none'};--amphoreus-motif-url:${motifUrlForSeat(seat, document.documentElement.dataset.theme === 'dark')};--amphoreus-seat-accent:${seat?.accent ?? 'var(--dsw-alias-brand-primary)'};--amphoreus-seat-accent2:${seat?.accent2 ?? 'var(--dsw-alias-brand-primary)'}`
-  app.innerHTML = `<main class="synapse-shell ${state.sidebarCollapsed ? 'sidebar-collapsed' : ''}"><aside class="sidebar"><div class="sidebar-brand-row">${seatBrand}<button class="sidebar-toggle" type="button" data-action="toggle-sidebar" aria-label="${state.sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}" title="${state.sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.75" y="1.75" width="12.5" height="12.5" rx="2.25"/><path d="M6 2v12"/></svg></button></div><button class="back-portal" type="button" data-action="show-portal"><svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5 5.5 8 10 12.5"/></svg><span>全部角色</span></button>${seatCardSlot}<button class="new-workspace" type="button" data-action="create-session" ${state.draft !== null ? 'disabled' : ''}><svg class="new-session-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.25"/><path d="M8 4.75v6.5M4.75 8h6.5"/></svg><span>新会话</span></button><div class="sidebar-heading"><span>会话</span></div><nav class="thread-tree">${threads.map(thread => `<button class="tree-row ${thread.id === state.activeId ? 'active' : ''}" data-action="select-thread" data-thread="${thread.id}" style="--thread-color:${escapeHtml(seat?.accent ?? '#374151')}"><span class="tree-dot"></span><span>${escapeHtml(threadListTitle(thread))}</span>${thread.parentId === null ? '' : '<i>分支</i>'}</button>`).join('') || '<p class="tree-empty">暂未同步会话</p>'}</nav>${unprojectableList}</aside><header class="topbar">${canvasControls}</header><section class="main-stage" style="${escapeHtml(mainStageStyle)}">${state.error ? `<div class="status-message" role="alert"><span>${escapeHtml(state.error)}</span><button data-action="dismiss-error" aria-label="关闭" title="关闭">×</button></div>` : ''}${canvasTabs}${view}${selectionFollowupButton()}</section></main>`
+  app.innerHTML = `<main class="synapse-shell ${state.sidebarCollapsed ? 'sidebar-collapsed' : ''} magazine-${state.magazineMode}"><aside class="sidebar"><div class="sidebar-brand-row">${seatBrand}<button class="sidebar-toggle" type="button" data-action="toggle-sidebar" aria-label="${state.sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}" title="${state.sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.75" y="1.75" width="12.5" height="12.5" rx="2.25"/><path d="M6 2v12"/></svg></button></div><button class="back-portal" type="button" data-action="show-portal"><svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5 5.5 8 10 12.5"/></svg><span>全部角色</span></button>${seatCardSlot}<button class="new-workspace" type="button" data-action="create-session" ${state.draft !== null ? 'disabled' : ''}><svg class="new-session-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.25"/><path d="M8 4.75v6.5M4.75 8h6.5"/></svg><span>新会话</span></button><div class="sidebar-heading"><span>会话</span></div><nav class="thread-tree">${threads.map(thread => `<button class="tree-row ${thread.id === state.activeId ? 'active' : ''}" data-action="select-thread" data-thread="${thread.id}" style="--thread-color:${escapeHtml(seat?.accent ?? '#374151')}"><span class="tree-dot"></span><span>${escapeHtml(threadListTitle(thread))}</span>${thread.parentId === null ? '' : '<i>分支</i>'}</button>`).join('') || '<p class="tree-empty">暂未同步会话</p>'}</nav>${unprojectableList}</aside><header class="topbar">${canvasControls}</header><section class="main-stage" style="${escapeHtml(mainStageStyle)}">${state.error ? `<div class="status-message" role="alert"><span>${escapeHtml(state.error)}</span><button data-action="dismiss-error" aria-label="关闭" title="关闭">×</button></div>` : ''}${canvasTabs}${view}${selectionFollowupButton()}</section></main>`
   installDragging()
   cacheCardConnectors()
   // The initial camera from renderCanvas is inset (viewport not laid out yet);
@@ -2167,10 +2190,7 @@ window.addEventListener('message', event => {
   if (data.type === 'amphoreus:magazine-mode' && (data.mode === 'light' || data.mode === 'full') && data.mode !== state.magazineMode) {
     state.magazineMode = data.mode
     document.documentElement.dataset.magazine = data.mode
-    if (state.mode !== 'portal') {
-      if (canReplaceView()) render()
-      else deferCanvasRefresh()
-    } else render()
+    syncMagazineClass(data.mode)
   }
   if (data.type === 'amphoreus:workspaces') {
     applyWorkspaces(data)

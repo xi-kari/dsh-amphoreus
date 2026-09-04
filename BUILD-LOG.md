@@ -406,7 +406,7 @@
 - 偏离与理由：无。
 - 遗留：无。
 ## TD7：杂志档位 prefs 覆盖与 iframe 桥 — 2026-09-05 00:01
-- commit: PENDING-TASK
+- commit: 6f6bafa
 - 验收：
   - `node --test tests/magazine-mode.test.ts tests/store-seats.test.ts` → `tests 10; pass 10; fail 0; skipped 0; duration_ms 369.6249` PASS（exit: `0`）
   - 全量测试 → `tests 149; pass 148; fail 0; skipped 1; duration_ms 1796.2558` PASS（exit: `0`）；首次全量暴露旧 VM fixture 无 documentElement，生产初始 dataset 写增加存在性守卫后重跑全绿
@@ -423,6 +423,29 @@
 - 人工断言：✓ 存储值 only light/full/absent，null 仅为删键命令；✓ omitted 不动；✓ source 精确标 prefs/config；✓ client 写入用 nonce 并 await refresh；✓ magazineBridge 稳定构造，effect 初发、model 变化与 map-ready 重发；✓ iframe 仅接受 light/full 且同值不重绘；✓ portal 可直接 render，canvas 经 canReplaceView；✓ 未提前实现 TD11 设置控件。
 - 偏离与理由：初始 dataset 赋值加 `document.documentElement` 存在性守卫以兼容既有 VM probe；真实浏览器路径语义不变。任务书目标中的设置区点击控件由明确后置 TD11 实现，本任务只提供持久化与桥接能力。
 - 遗留：无。
+## TD8 G21：杂志 full 档 Q&A／封面／栏目版式 — 2026-09-05 00:23
+- commit: PENDING-TASK
+- 验收：
+  - TD7+TD8 聚焦 → `tests 9; pass 9; fail 0; skipped 0; duration_ms 346.1989` PASS（exit: `0`）
+  - 全量最终 → `tests 154; pass 153; fail 0; skipped 1; duration_ms 1796.3757` PASS（exit: `0`）
+  - `npm run typecheck`、`node --check workbench/app.js`、Lightning CSS 解析、`npm run build` 全通过；client `109.53 kB`、host `152.54 kB` PASS（各 exit: `0`）
+  - 静态门 → 两处 `magazine-${state.magazineMode}`=`2`、行首 `.magazine-full`=`32`、`.magazine-light` CSS=`0`、type shorthand=`12`、data-cover=`2`、data-volume=`5`、data-title=`4`、data-folio/data-folios=`1/1`、data-turn 仍=`3` PASS
+  - CARD_WIDTH/CARD_HEIGHT `310/276` 与 CSS 尺寸不变；main-stage before/after 各=`1`；未新增 full render 函数或 innerHTML 分叉 PASS
+  - 中途第一次全量因新测试把任务书双引号 selector 写成单引号而 `fail=1`；CSS 改为精确 `[data-message-seq=""]` 后全绿
+  - `git diff --check` → 无空白错误 PASS（exit: `0`）
+- 浏览器验收：
+  - light 基线 → shell=`magazine-light`、正式卡=`16`、首卡 folio=`01/06`；PUT full 后 shell=`magazine-full`、卡仍=`16`、Q pseudo fontSize=`22px`/weight=`800`、页码 content=`"01 / 06"` PASS
+  - 折叠首线程 → 同线程可见卡 `6→1`，首卡 `data-folios` 仍=`06`；随后重新展开恢复 `6` PASS
+  - full 门户 → 13 张 portal-card 全有 data-volume，full kicker=`CHRYSOS · XIII VOLUMES`/display block，原 kicker display none，阿格莱雅角标 pseudo=`"No.01"` PASS
+  - full 阿格莱雅侧栏 → CHRYSOS/No.01/title 三个伪元素可见，data-volume=`01`；TD10 前无 data-cover，原图 aspect=`744 / 1211`（派生后 3:4 联合门留给 TD10）PASS
+  - full 详情 → header pseudo=`"全体会议 · 栏目"`、user=`Q`、assistant=`A`、seq pseudo=`"§ 7"` PASS
+  - 首次 full→light 实测仍调用 TD7 完整 render，虚拟卡 DOM `24→16`，不满足“结构不变” FAIL；改为 mode 消息只原位 `syncMagazineClass`，不 render/defer，并更新 TD7/TD8 回归测试后重跑全门 PASS
+  - 修复后 fresh browser：light→full 正式卡 `16→16`；full→light `16→16`，Q/folio 装饰随 class 即时出现/消失 PASS
+  - 真实草稿输入 `TD8-原位切档焦点保留`：切 full 后 textarea value 不变、active=`true`、同一 shell 原位变 `magazine-full`，draft folio pseudo=`none`；取消草稿并恢复 null 后 state=`light/config` PASS
+  - 最终服务 PID `22116` running、HTTP `200`、stderr=`0` bytes；prefs 恢复无 magazineMode、临时 cookie/nonce 已删除 PASS
+- 人工断言：✓ folio 分母来自折叠前 allCards；✓ data attrs 两档共用，档位只切 class；✓ draft 不显示空 folio；✓ sidebar/portal 优先 coverUrl、缺失回退 chronicle；✓ full CSS 优先消费 `--thread-color` 并保留 selected halo，为 TC9 逐卡席色留路；✓ light 无专属 CSS；✓ DOM 与交互节点不因切档重建。
+- 偏离与理由：TD8 同时要求“不改 `--thread-color`”与 `#3478f6=0`，但这三处 producer 明确归后置 C/TC9；当前保持 `3`，并把 0 作为 TD8+TC9 联合门。为满足 DOM 数量、焦点与失焦详情输入不丢失的更强验收，档位变化只同步现有 shell class，不再执行 TD7 的完整 render。Folio selector 收紧到具备 data attrs 的正式卡，避免草稿显示空页码。
+- 遗留：`#3478f6 3→0` 与逐卡多席色由 C/TC9；派生 cover 的 data-cover/3:4 实机门由 TD10。
 ## TD2 G2：宿主页向 iframe 桥接 87 个主题 token — 2026-09-04 22:35
 - commit: 1722602
 - 验收：

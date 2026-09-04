@@ -384,3 +384,47 @@ button.primary:hover { border-color: var(--dsw-alias-button-primary-hover, #000)
 .thread-card.placeholder { opacity: .78; }
 .thread-card.placeholder .thread-title { font-style: italic; }
 .thread-card.placeholder .thread-answer-empty::before { content: '◌ '; }
+
+/* 派生封面为 3:4；原英雄纪回退仍使用原图比例。 */
+.seat-card-slot[data-cover], .portal-card[data-cover] { aspect-ratio: 3 / 4; }
+
+/* 杂志 full 档：Q&A 页。 */
+.magazine-full .thread-card { border-width: 1px 1px 3px; border-bottom-color: var(--thread-color, var(--amphoreus-seat-accent, var(--dsw-alias-brand-primary))); border-radius: 3px; box-shadow: inset 3px 0 0 var(--thread-color, var(--amphoreus-seat-accent, var(--dsw-alias-brand-primary))), 0 2px 0 var(--dsw-alias-border-l1), 0 10px 24px rgba(0,0,0,.08); }
+.magazine-full .thread-card.selected { box-shadow: inset 3px 0 0 var(--thread-color, var(--amphoreus-seat-accent, var(--dsw-alias-brand-primary))), 0 0 0 2px color-mix(in srgb, var(--thread-color, var(--amphoreus-seat-accent, var(--dsw-alias-brand-primary))) 35%, transparent), 0 10px 24px rgba(0,0,0,.12); }
+.magazine-full .thread-card-head { align-items: flex-start; gap: 10px; padding: 12px 12px 4px; }
+.magazine-full .thread-card-head .topic-dot { position: relative; width: 30px; height: 30px; border-radius: 4px; background: var(--thread-color, var(--dsw-alias-brand-primary)); }
+.magazine-full .thread-card-head .topic-dot::after { content: 'Q'; position: absolute; inset: 0; display: grid; place-items: center; color: var(--dsw-alias-brand-primary-invert); font: var(--amphoreus-type-q); }
+.magazine-full .thread-title { display: -webkit-box; overflow: hidden; white-space: normal; -webkit-box-orient: vertical; -webkit-line-clamp: 2; font-family: var(--amphoreus-font-display); font-weight: 650; line-height: 1.35; }
+.magazine-full .thread-meta { color: var(--dsw-alias-label-caption); font: var(--amphoreus-type-kicker); letter-spacing: .32em; text-transform: uppercase; }
+.magazine-full .thread-answer { border-top: 1px solid var(--dsw-alias-border-l1); padding-top: 8px; }
+.magazine-full .thread-card[data-folio][data-folios]::after { content: attr(data-folio) ' / ' attr(data-folios); position: absolute; bottom: 9px; left: 12px; color: var(--dsw-alias-label-caption); font: var(--amphoreus-type-folio); letter-spacing: .2em; pointer-events: none; }
+.magazine-full .thread-card footer { padding-left: 64px; }
+
+/* 杂志 full 档：席位侧栏封面。 */
+.magazine-full .seat-card-slot::before { content: 'CHRYSOS'; position: absolute; z-index: 2; top: 8px; right: 10px; left: 10px; color: #fdfbff; font: var(--amphoreus-type-masthead); font-size: 22px; letter-spacing: .14em; text-shadow: 0 1px 6px rgba(20,14,50,.6); pointer-events: none; }
+.magazine-full .seat-card-slot::after { content: 'No.' attr(data-volume); position: absolute; z-index: 2; top: 34px; left: 10px; color: #fdfbff; font: var(--amphoreus-type-kicker); font-family: var(--amphoreus-font-display); letter-spacing: .28em; opacity: .85; pointer-events: none; }
+.magazine-full .seat-card-slot figcaption::before { content: attr(data-title); display: block; margin-bottom: 2px; font: var(--amphoreus-type-title); font-size: 15px; }
+
+/* 杂志 full 档：详情栏目页。 */
+.magazine-full .detail-view { background: var(--dsw-alias-bg-layer-1); }
+.magazine-full .detail-head { border-bottom: 3px double var(--dsw-alias-border-l3); padding-top: 26px; }
+.magazine-full .detail-head::before { content: attr(data-title) ' · 栏目'; display: block; margin-bottom: 6px; color: var(--dsw-alias-brand-primary); font: var(--amphoreus-type-kicker); font-family: var(--amphoreus-font-display); letter-spacing: .32em; }
+.magazine-full .detail-head h1 { font: var(--amphoreus-type-title); }
+.magazine-full .detail-badge { border: 1px solid var(--dsw-alias-brand-primary); border-radius: 0; background: transparent; color: var(--dsw-alias-brand-primary); letter-spacing: .18em; }
+.magazine-full .message { position: relative; border-width: 0 0 1px; border-color: var(--dsw-alias-border-l1); border-radius: 0; background: transparent; box-shadow: none; }
+.magazine-full .message-user { align-self: stretch; max-width: none; background: transparent; padding-left: 52px; }
+.magazine-full .message-user::before { content: 'Q'; position: absolute; top: 10px; left: 12px; display: grid; width: 30px; height: 30px; place-items: center; border-radius: 4px; background: var(--dsw-alias-brand-primary); color: var(--dsw-alias-brand-primary-invert); font: var(--amphoreus-type-q); }
+.magazine-full .message-assistant { border-left: 0; padding-left: 52px; }
+.magazine-full .message-assistant::before { content: 'A'; position: absolute; top: 10px; left: 12px; display: grid; width: 30px; height: 30px; place-items: center; border: 1px solid var(--dsw-alias-brand-primary); border-radius: 4px; color: var(--dsw-alias-brand-primary); font: var(--amphoreus-type-q); }
+.magazine-full .message[data-message-seq]:not([data-message-seq=""])::after { content: '§ ' attr(data-message-seq); position: absolute; right: 14px; bottom: 8px; color: var(--dsw-alias-label-caption); font: var(--amphoreus-type-folio); letter-spacing: .2em; }
+
+/* 杂志 full 档：13 册封面墙。 */
+.magazine-full .portal-kicker:not(.portal-kicker-full) { display: none; }
+.portal-kicker-full { display: none; }
+.magazine-full .portal-kicker-full { display: block; }
+.magazine-full .portal-card { border-radius: 4px; }
+.magazine-full .portal-card::before { content: 'CHRYSOS'; position: absolute; z-index: 2; top: 10px; right: 12px; left: 12px; color: #fdfbff; font: var(--amphoreus-type-masthead); font-size: 20px; letter-spacing: .14em; text-shadow: 0 1px 6px rgba(20,14,50,.6); pointer-events: none; }
+.magazine-full .portal-no { font-size: 0; }
+.magazine-full .portal-no::after { content: 'No.' attr(data-volume); font-family: var(--amphoreus-font-display); font-size: 10px; letter-spacing: .3em; }
+.magazine-full .portal-name { font-size: 21px; }
+.magazine-full .portal-duty::before { content: '— '; }

@@ -176,7 +176,12 @@ test('stable host bridge sends magazine mode initially and again on map-ready', 
   assert.equal(app.match(/data\.type === 'amphoreus:magazine-mode'/g)?.length, 1)
   assert.match(app, /data\.mode === 'light' \|\| data\.mode === 'full'/)
   assert.match(app, /document\.documentElement\.dataset\.magazine = data\.mode/)
-  assert.match(app, /state\.mode !== 'portal'[\s\S]*canReplaceView\(\)[\s\S]*else deferCanvasRefresh\(\)[\s\S]*else render\(\)/)
+  const branch = app.slice(
+    app.indexOf("if (data.type === 'amphoreus:magazine-mode'"),
+    app.indexOf("if (data.type === 'amphoreus:workspaces'"),
+  )
+  assert.match(branch, /syncMagazineClass\(data\.mode\)/)
+  assert.doesNotMatch(branch, /\brender\(|deferCanvasRefresh\(/)
 })
 
 function fixtureConfig(): AmphoreusConfig {
