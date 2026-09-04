@@ -541,7 +541,7 @@
 - 偏离与理由：任务书文件表漏列、步骤却明确要求导出 `AmphoreusMark`，故把 `brand.tsx` 纳入本任务。任务书 Portal hook 简写遗漏 theme/magazine 与 map-opened，本实现复用 TC8 可选桥并传入同一稳定实例，避免暗色/full 门户失配。
 - 遗留：TC10 阶段全体会议只关闭覆盖层；TE1 将按既定任务改为总空间会话/队列。多标签页 Portal store 各自为内存态，刷新默认关闭。
 ## TC11：客户端装配顺序、类型与回归收口 — 2026-09-05 04:55
-- commit: PENDING-TASK
+- commit: 440a6a9
 - 动手前核对：实际执行 `sed -n '2438,2545p'` 核对任务书；最终依赖列表为 slots/locale/theme/sessions/uiConversation/workspaces/uiWorkspace，九个槽位及 TC3–TC10 单例均已存在，跨插件 imports 均为 type-only PASS
 - 验收：
   - 新增 `tests/client-assembly.test.ts`；聚焦 → `tests 4; pass 4; fail 0; skipped 0; duration_ms 120.679`；默认全量 → `tests 242; pass 241; fail 0; skipped 1; duration_ms 2706.9925` PASS（唯一 skip 为未设置 `AMPHOREUS_REAL_SUITE` 的预期集成门）
@@ -555,6 +555,26 @@
 - 人工断言：✓ 所有控制器单例先创建再注入；✓ garnish 唯一 DOM 装饰例外保留且目录图标分支自然失效；✓ README 不把席位与 cwd 目录混为一谈；✓ fresh page 水合后 C 章全部组件共存。
 - 偏离与理由：任务书写槽位数 `≥9`，测试收紧为当前契约的精确 `9`；新增装配回归测试以防后续 E/F 重排破坏 C 章顺序。
 - 遗留：E 章尚需兑现总空间派发能力；C 章验收使用前序 TC2–TC10 已建立的真实测试会话，章末将按官方接口清理本章新增状态。
+## C 章完成定义：席位绑定、独立工作区与门户 — 2026-09-05 05:01
+- commit: PENDING-CHAPTER
+- 范围：TC1–TC11 共 `11` 项全部各自提交；执行顺序 C 位于 D 后，依赖的 D 章主题、纹样与杂志契约均已落地；`chapter-A`、`chapter-B`、`chapter-D` 基线标签保持不变。
+- 机器验收：
+  - `npm run build` → exit `0`，derive/client/host=`28.87/170.83/188.25 kB`；`node --test tests/*.test.ts` → `tests 242; pass 241; fail 0; skipped 1; duration_ms 2706.9925`，唯一 skip 为无真实套件环境变量时的预期门 PASS
+  - 必需测试 `injector-inherit/client-seat-model/client-seat-wallpaper/seat-theme` 全部存在；`session/created=1`、`fork-inherit=4`、`freshFork=3`；DELETE route=`2`、seatDirs=`1` PASS
+  - 旧 `WorkbenchThread|SeatResolver|createSeatResolver=0`；client/iframe `seatHeroId=0/0`；`putBinding` 第 `61` 行先于 `sessions.create` 第 `64` 行；回滚 DELETE 定义+调用=`2` PASS
+  - sidebar priority -10=`1`、children=`0`、seat browser markers=`2`、seatViewsFrom=`5`；header order -20=`1`；footer/overlay=`1/1`；portal mode=`1`；openPortal=`2` PASS
+  - seat theme 注册=`1`、seatLayer.apply=`3`、GLOBAL_SEAT_HERO seat-model/theme=`1/3`、firstframe layer/wallpaper=`5/1`、decode=`1`、260=`1`、旧 overrideTokens=`0` PASS
+  - workbench thread-color important=`0`（grep exit `1`）、badge JS/CSS=`1/2`、旧蓝/last-seat/bindingBySession=`0/0/0`、cwd group=`1`；双向 open-seat/open-portal=`2/2`、close=`2`、共享 bridge=`2` PASS
+  - 三个新 CSS module 禁止 hex=`0`、禁止 rgba=`0`，portal 仅 panel shadow 一处 rgba；locale zh/en 键集合相等、portal key=`2`；uiWorkspace=`1`、CSSProperties=`5` PASS
+  - 运行态重启后 state L0、cards/deployed seats/seatDirs=`13/13/13`、缺失 binding DELETE=`404`、HTTP=`200`、stderr=`0` bytes PASS
+- 浏览器验收：
+  - fresh load 后侧栏席位组、目录组、13 席、席内新建、名牌、逐席主题/壁纸、工作台承办徽记与 cwd 分组同时存在；官方 workspace tree 已被唯一替换，未出现双浏览器 PASS
+  - 实测 fork 继承为 `fork-inherit`；席内创建为 `seat-new/done`；晚到绑定会原地更新身份；无绑定与昔涟均保持全局层；流式与快速切席回归无重复淡入 PASS
+  - 门户覆盖层的按钮/X/Escape/scrim/iframe Escape、已有席导航、无会话创建、全体会议 close-only、窄栏图标和 Tab「全部角色」入口均通过；关闭后底层工作台与选中卡保留 PASS
+  - 画布已验证已知席色/徽记/贴纸、未知 `hsl(...)` 通用徽记、多 cwd 目录标签与当前卡定位；卡片尺寸、folio、full magazine 与正文投影契约未回退 PASS
+- 恢复状态：主题与杂志已恢复系统/light-config；临时 late-binding 已删除；服务 PID `59556` 正常。C 章专用测试会话只通过官方 archive 语义清理，权威 session 日志不删除。
+- 偏离与理由：任务书若干行号随 A/B/D/C 实施迁移，均以动手前 `sed -n` 与当前平台源码重新定位；未知视觉卡用隔离同源 iframe fixture 覆盖，未改真实套件；具体差异逐项写在 TC1–TC11。
+- 遗留：总空间派发、移交观察、站位轨、接通尾页与台账由 E 章承接；C 的全体会议入口在 E TE1 从 close-only 升级为同一 Tab 的 all 画布。
 ## TD7：杂志档位 prefs 覆盖与 iframe 桥 — 2026-09-05 00:01
 - commit: 6f6bafa
 - 验收：
