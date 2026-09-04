@@ -3,7 +3,7 @@
  * postMessage RPC (amphoreus:create-session / send-message / fork-session /
  * open-session / activate-session) with the injected session service, so the
  * canvas can create seat sessions, prompt them, and fork branches. All skill
- * binding stays host-side (the binding PUT below + the injector); the iframe
+ * binding stays host-side (the shared seat action + the injector); the iframe
  * receives only the bounded browser conversation feed for the active session.
  */
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
@@ -50,9 +50,7 @@ export interface WorkbenchViewInjected {
     readonly mode: () => 'light' | 'full'
     readonly subscribe: (listener: () => void) => () => void
   }
-  /** PUT a seat binding before the first prompt (host webapi, nonce-gated). */
-  readonly bindSeat: (sessionId: string, skillName: string) => Promise<void>
-  readonly seatSkillOf: (heroId: string) => string | undefined
+  readonly startSeatSession: (skillName: string) => Promise<string>
 }
 
 export type WorkbenchViewProps = PropsRuntime<'conversation.view'> & PropsLocale<'amphoreus'> & WorkbenchViewInjected
@@ -67,7 +65,7 @@ interface BridgeMessage {
   text?: string
   seq?: number
   turn?: number
-  seatHeroId?: string
+  skillName?: string
   heroId?: string | null
   defer?: boolean
   activate?: boolean
@@ -83,8 +81,7 @@ export function WorkbenchView({
   theme,
   setSeat,
   magazine,
-  bindSeat,
-  seatSkillOf,
+  startSeatSession,
   openView,
   completeViewRequest,
   viewRequest,
@@ -332,14 +329,13 @@ export function WorkbenchView({
               pushConfig()
               return
             case 'amphoreus:create-session': {
-              const sessionId = await sessions.create(typeof data.cwd === 'string' && data.cwd !== '' ? { cwd: data.cwd } : {})
-              // Seat binding must land before the first prompt so the host
-              // injector seeds the skill card on session start.
-              if (typeof data.seatHeroId === 'string') {
-                const skill = seatSkillOf(data.seatHeroId)
-                if (skill !== undefined) await bindSeat(sessionId, skill).catch(() => undefined)
+              if (typeof data.skillName === 'string' && data.skillName !== '') {
+                const id = await startSeatSession(data.skillName)
+                reply({ type: 'amphoreus:created-session', requestId: data.requestId, session: summaryOf(id) })
+                return
               }
-              reply({ type: 'amphoreus:created-session', requestId: data.requestId, session: summaryOf(sessionId) })
+              const id = await sessions.create(typeof data.cwd === 'string' && data.cwd !== '' ? { cwd: data.cwd } : {})
+              reply({ type: 'amphoreus:created-session', requestId: data.requestId, session: summaryOf(id) })
               return
             }
             case 'amphoreus:send-message': {
@@ -421,8 +417,7 @@ export function WorkbenchView({
   }, [
     sessionId,
     sessions,
-    bindSeat,
-    seatSkillOf,
+    startSeatSession,
     setSeat,
     openView,
     completeViewRequest,

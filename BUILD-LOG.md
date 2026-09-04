@@ -418,7 +418,7 @@
 - 偏离与理由：任务书最少要求 5 例，补为 10 例以覆盖真实写队列竞态、失败与释放；真实分支取父卡已经注入后的路径，故精确命中 `skipped/inherited-from-parent`。
 - 遗留：注入前 seq 的真实 `pending→done` 与旧无绑定子会话重开，由纯函数与监听集成回归覆盖，并在 TC4/TC9 联合浏览器流继续观察。
 ## TC3：客户端席位模型纯函数与词典键 — 2026-09-05 02:25
-- commit: PENDING-TASK
+- commit: 10f3cc2
 - 动手前核对：任务书 `1831-1887`；`src/client/state.ts:3` 的实际快照类型为 `AmphoreusClientSnapshot`；`HeroVisual/stickerAssetUrl/heroVisualOf/fallbackHue` 均按现有共享导出接入 PASS
 - 验收：
   - `node --test tests/client-seat-model.test.ts tests/client-theme.test.ts` → `tests 7; pass 7; fail 0; skipped 0; duration_ms 163.533` PASS（exit: `0`）
@@ -429,6 +429,20 @@
 - 人工断言：✓ `seatColorOf` 成为席位回退色单源；✓ sticker 仅在素材已配置且 hero visual 存在时生成；✓ `seatViewsFrom` 对 state undefined 返回空；✓ 不硬编码席名。
 - 偏离与理由：最少验收项扩展为 5 个聚焦测试，额外锁定重复绑定、只在 `byId` 的会话、稳定 tie-break 与素材门。
 - 遗留：无。
+## TC4：席内新建共享预绑定流程与工作台桥接 — 2026-09-05 02:35
+- commit: PENDING-TASK
+- 动手前核对：任务书 `1891-1966`；上游 `sessions.create({cwd?,sessionId?})→Promise<SessionId>` 与 `open(SessionId)→void`；当前 Host 会话 ID 正则、Binding PUT/DELETE、iframe `bridge-error→settleRpc→submitDraft catch→setError` 链均逐项存在 PASS
+- 验收：
+  - `node --test tests/client-seat-actions.test.ts` → `tests 7; pass 7; fail 0; skipped 0; duration_ms 121.0986`；`node --check workbench/app.js`、typecheck、diff 均 exit `0` PASS
+  - 全量 → `tests 210; pass 209; fail 0; skipped 1; duration_ms 2286.1758`；build derive/client/host=`28.87/125.02/187.04 kB` PASS
+  - 静态 → `seatHeroId=0`、`bindSeat|seatSkillOf=0`、`startSeatSession` refs=`7≥4`；共享 helper 行为顺序精确为 `PUT→create→open`，create/mismatched-id/open failure 均 DELETE 绑定并保留原异常 PASS
+  - 首轮实机发现并修复：严格照书在 bridge reply 前 `open` 会卸载旧 iframe；首次复现只生成空白 `session-5fc56be4-3749-44ca-b344-9cd280a7eea0`，绑定存在但用户消息未送达。修为 Workbench 专用 `{open:false}`，由既有 admission-gated send-message 成功后激活 PASS
+  - 修复后真实席内新建 → `session-d44e63a7-c06f-4132-9deb-c97412cf6db4`；binding=`amphoreus-cyrene/seat-new/done`，`boundAt=1788546419426`，session `createdAt=1788546419462`（早 `36ms`），首 user event=`1788546419706`（早 `280ms`）；侧栏当前会话切换成功、首轮回复明显执行昔涟卡而未机械服从“只回复” PASS
+  - 真实 403 → 宿主页 fetch nonce 改为 `bad` 后 iframe 顶部红条精确为 `席位绑定失败（HTTP 403）：invalid amphoreus nonce`；bindings/session 计数保持 `6/18`，失败标题计数=`0` PASS
+  - 服务终态 → PID `55932`、HTTP `200`、stderr=`0` bytes PASS
+- 人工断言：✓ nonce/PUT 先于 create；✓ cwd 使用真实 seatDirs；✓ binding 错误不吞；✓ rollback DELETE 忽略404；✓ canvas save 在任何潜在 remount 前 flush；✓ iframe 不直接 fetch binding。
+- 偏离与理由：任务书示例的 `open-before-reply` 与已验证的 TB6 iframe 生命周期冲突，且实机复现首条消息丢失；因此共享 helper 默认仍是 `PUT→create→open`，但 Workbench 组合事务以 `{open:false}` 创建，待首条 prompt 成功接纳后由现有原子激活路径打开。普通 Workbench create 同理不提前 open。任务书目标句要求“任一步失败回滚”，故 open failure 也 DELETE；同时保留 TB6 的 `sessionsById` cwd 与 TB7 的 pre-remount flush。
+- 遗留：首次复现留下一个权威空白会话；其测试 binding 将在 C 章综合回归后解除，权威 session 仅通过产品归档入口处理。
 ## TD7：杂志档位 prefs 覆盖与 iframe 桥 — 2026-09-05 00:01
 - commit: 6f6bafa
 - 验收：

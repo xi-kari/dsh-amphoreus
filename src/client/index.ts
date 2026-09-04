@@ -11,13 +11,13 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { HeroBrandMark, SidebarBrandMark, SidebarBrandName } from './brand.tsx'
 import { installGarnish } from './garnish.ts'
 import { en, NS, zh, type AmphoreusKey } from './locales.ts'
+import { startSeatSession, type SeatActionDeps } from './seat-actions.ts'
 import { AmphoreusSettings } from './settings.tsx'
 import { AmphoreusClientModel } from './state.ts'
 import { seedConversationView } from './tabmemory.ts'
 import { createSeatLayer, readDswTokens, registerGlobalTheme } from './theme.ts'
 import { WorkbenchView, type WorkbenchViewInjected } from './workbench.tsx'
 import { createWorkspacesSource } from './workspaces-source.ts'
-import { HERO_VISUALS } from '../shared/heroes.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -46,6 +46,11 @@ export function apply(ctx: ClientContext): void {
     ctx.sessions.list as unknown as Parameters<typeof createWorkspacesSource>[0],
     model,
   )
+  const seatDeps: SeatActionDeps = {
+    nonce: () => model.getSnapshot().state?.nonce ?? window.__AMPHOREUS_BOOT__?.nonce,
+    seatDirOf: skillName => model.getSnapshot().state?.seatDirs.find(directory => directory.skillName === skillName)?.dir,
+    sessions: ctx.sessions as unknown as SeatActionDeps['sessions'],
+  }
   const bootWorkbench = window.__AMPHOREUS_BOOT__?.workbench
   const workbenchEnabled = bootWorkbench?.enabled ?? true
   ctx.effect(() => registerGlobalTheme(ctx, model), 'amphoreus: global theme')
@@ -100,7 +105,6 @@ export function apply(ctx: ClientContext): void {
 
   if (workbenchEnabled) {
     // Workbench as a second conversation view (id/order shape mirrors ui-trajectory).
-    const skillByHero = new Map<string, string>(HERO_VISUALS.map(hero => [hero.heroId, hero.skill]))
     type SessionFeed = Exclude<ReturnType<WorkbenchViewInjected['sessionFace']>, undefined>
     const sessionAdapter = ctx.sessions as unknown as {
       binding(id: SessionId): { session: SessionFeed } | undefined
@@ -126,18 +130,7 @@ export function apply(ctx: ClientContext): void {
         theme: themeBridge,
         setSeat,
         magazine: magazineBridge,
-        seatSkillOf: heroId => skillByHero.get(heroId),
-        bindSeat: async (sessionId, skillName) => {
-          const nonce = model.getSnapshot().state?.nonce ?? window.__AMPHOREUS_BOOT__?.nonce
-          if (nonce === undefined) throw new Error('nonce 未就绪')
-          const response = await fetch(`/amphoreus/api/bindings/${encodeURIComponent(sessionId)}`, {
-            method: 'PUT',
-            credentials: 'include',
-            headers: { 'content-type': 'application/json', 'x-amphoreus-nonce': nonce },
-            body: JSON.stringify({ skill: skillName, boundBy: 'seat-new' }),
-          })
-          if (!response.ok) throw new Error(`席位绑定失败（HTTP ${response.status}）`)
-        },
+        startSeatSession: skillName => startSeatSession(seatDeps, skillName, { open: false }),
       }),
     }, WorkbenchView))
   }

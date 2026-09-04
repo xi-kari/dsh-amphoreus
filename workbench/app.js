@@ -622,15 +622,13 @@ async function submitDraft() {
   render()
   try {
     if (draft.kind === 'new') {
-      // Seat sessions live in the seat's own folder so the projection (and
-      // DSH's cwd grouping) put them on this hero's canvas; seatHeroId lets
-      // the DSH-side bridge bind the seat before the first prompt, which
-      // makes the host injector seed the hero's skill card.
-      const seatHeroId = state.seatId !== null && state.seatId.startsWith('seat:') ? state.seatId.slice(5) : undefined
-      const seatDir = seatHeroId !== undefined ? state.seats.find(item => item.heroId === seatHeroId)?.dir : undefined
+      // Seat sessions are pre-bound by skillName on the DSH side (PUT bindings
+      // before create), so the host injector seeds the hero's skill card on the
+      // first prompt; cwd falls back to the seat folder for cwd grouping.
+      const seatSkill = state.seatId !== null && state.seatId.startsWith('seat:') ? state.seats.find(item => item.heroId === state.seatId.slice(5)) : undefined
       const currentCwd = state.currentSessionId === null ? undefined : state.sessionsById.get(state.currentSessionId)?.cwd ?? undefined
-      const session = await dshRpc('amphoreus:create-session', { cwd: seatDir ?? currentCwd, seatHeroId })
       await flushCanvasSaves()
+      const session = await dshRpc('amphoreus:create-session', { cwd: seatSkill?.dir ?? currentCwd, skillName: seatSkill?.skillName })
       post('amphoreus:activate-session', { sessionId: session.id, defer: true })
       await dshRpc('amphoreus:send-message', { sessionId: session.id, text, activate: true })
       state.draft = null
