@@ -536,7 +536,7 @@
 - 偏离与理由：TD12 局部文字要求直接改 HANDOFF 原句并使 raw `待 token 化=0`，与总纲 §0.6.13“不删/不改原文，只加失效前缀”不可同时成立；服从全局硬规则，采用 `[已失效]` + 新行，语义活跃计数为0。README 目录表补入实际存在的 `翁法罗斯日历/`，避免每席 calendar 列无目录归属。
 - 遗留：第二步 fallback 删除明确未执行；只有在建立 token-before-first-ready 握手并完成至少三席 light/dark 同一人工矩阵后才能重审。
 ## D 章完成定义：十三套视觉、杂志语法与派生素材 — 2026-09-05 01:42
-- commit: PENDING-CHAPTER
+- commit: 630df08
 - tag: `chapter-D`
 - 最终测试与构建：`npm test` → `tests 185; pass 184; fail 0; skipped 1; duration_ms 2108.3823`；`npm run build` → derive `28.87 kB`、client `121.16 kB`、host `184.52 kB`；typecheck/node/CSS/diff 均 exit `0` PASS
 - 机器门汇总：
@@ -562,6 +562,19 @@
 - 已知书内冲突与裁决：① `canReplaceView` 两分支门被 TD8 的不重建 DOM 验收取代；② D-before-C 与 TC9 归属决定固定蓝在 D 时为3；③ HANDOFF raw=0 与历史只加失效前缀冲突；④ “同帧”与规定双 rAF 冲突。全部按更强全局/行为契约记录，不用伪计数规避。
 - 回滚与终态：所有 prefs 恢复 config/light；cache 保留已验证84文件；TD11 backup 已在内容一致后安全删除；服务运行、stderr0；源素材与 sessions 未改。
 - 遗留：第二步 CSS fallback 按条件明确保留；固定蓝由紧接的 C/TC9 清零；稳定 URL 强制重派生 cache-bust 为后续版本化设计项。
+## TC1：Binding DELETE API 与队列语义 — 2026-09-05 01:54
+- commit: PENDING-TASK
+- 动手前核对：当前 #bindingsRoute=`409`、#authorize JSON gate=`826`；DELETE 原本会被 content-type 415；上游 table.delete 返回 Promise<boolean> 且在队列执行槽判存在性 PASS
+- 验收：
+  - `node --test tests/bindings-delete.test.ts` → `tests 3; pass 3; fail 0; skipped 0; duration_ms 300.5128` PASS（exit: `0`）
+  - 真实 HTTP fixture：missing DELETE（无 body/content-type+正确 nonce）=`404 {"error":"binding not found"}`；existing=`200 {"deleted":true}` 后第二次=`404`；无 nonce=`403` PASS
+  - 排队并发：PUT 已入队但 commit 阻塞时 DELETE 直接入同一队列；放行后 PUT=`200`、DELETE=`200`、最终 GET=`404` PASS
+  - 静态：DELETE 分支 table.get calls=`0`、direct `await table.delete`=`1`；BindInput enum=`1`、SESSION_ID regex=`1`、WorkbenchThread/SeatResolver=`0` PASS
+  - 全量 → `tests 188; pass 187; fail 0; skipped 1; duration_ms 2144.8056`；typecheck/build/diff 全通过，host `184.75 kB` PASS
+  - 本地服务 Stop/Start 后 state seatDirs=`13`；DELETE 固定不存在 ID → HTTP `404`、body 精确 `{"error":"binding not found"}`，非415/403；stderr=`0` bytes PASS
+- 人工断言：✓ DELETE 只豁免 JSON Content-Type，不豁免 Host、connection 或 nonce；✓ 归属真相源仍只有 bindings；✓ 直接采用 delete job 的布尔结果，封闭 get→delete TOCTOU。
+- 偏离与理由：任务书旧伪码先 get 再 delete 与 storage-domain 队列契约冲突；按上游权威及 C 章裁决改为直接 `await table.delete(sessionId)`。
+- 遗留：无。
 ## TD2 G2：宿主页向 iframe 桥接 87 个主题 token — 2026-09-04 22:35
 - commit: 1722602
 - 验收：

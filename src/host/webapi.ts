@@ -418,6 +418,11 @@ export class AmphoreusWebApi {
       else json(response, 200, { binding: value })
       return
     }
+    if (request.method === 'DELETE') {
+      const deleted = await table.delete(sessionId)
+      json(response, deleted ? 200 : 404, deleted ? { deleted: true } : { error: 'binding not found' })
+      return
+    }
     if (!method(request, response, 'PUT')) return
     const input = BindInput.parse(await readJson(request))
     const snapshot = this.#resolver.current()
@@ -823,7 +828,7 @@ export class AmphoreusWebApi {
       return false
     }
     if (!write) return true
-    if (!(request.headers['content-type'] ?? '').toLowerCase().startsWith('application/json')) {
+    if (request.method !== 'DELETE' && !(request.headers['content-type'] ?? '').toLowerCase().startsWith('application/json')) {
       json(response, 415, { error: 'application/json required' })
       return false
     }
