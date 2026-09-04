@@ -5,6 +5,7 @@ import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/clie
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-chat/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
@@ -16,14 +17,18 @@ import { HeroBrandMark, SidebarBrandMark, SidebarBrandName } from './brand.tsx'
 import { installGarnish } from './garnish.ts'
 import { en, NS, zh, type AmphoreusKey } from './locales.ts'
 import { SeatNameplate } from './nameplate.tsx'
+import { PortalFooterAction, PortalOverlay, type PortalFooterInjected, type PortalOverlayInjected } from './portal.tsx'
+import { createPortalStore } from './portal-store.ts'
 import { startSeatSession, type SeatActionDeps } from './seat-actions.ts'
 import { SeatBrowser, type SeatBrowserInjected } from './seat-browser.tsx'
+import { seatViewsFrom } from './seat-model.ts'
 import { AmphoreusSettings } from './settings.tsx'
 import { AmphoreusClientModel } from './state.ts'
 import { seedConversationView } from './tabmemory.ts'
 import { createSeatLayer, readDswTokens, registerGlobalTheme, registerSeatTheme } from './theme.ts'
-import { WorkbenchView, type WorkbenchViewInjected } from './workbench.tsx'
+import { WorkbenchView, type SessionsFace, type WorkbenchViewInjected } from './workbench.tsx'
 import { createWorkspacesSource } from './workspaces-source.ts'
+import { heroVisualById } from '../shared/heroes.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -52,6 +57,8 @@ export function apply(ctx: ClientContext): void {
     ctx.sessions as unknown as Parameters<typeof registerSeatTheme>[2],
     seatLayer,
   )
+  const portal = createPortalStore()
+  const openPortal = portal.open
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'amphoreus: dictionaries')
   const workspaces = createWorkspacesSource(
     ctx.sessions.list as unknown as Parameters<typeof createWorkspacesSource>[0],
@@ -61,6 +68,23 @@ export function apply(ctx: ClientContext): void {
     nonce: () => model.getSnapshot().state?.nonce ?? window.__AMPHOREUS_BOOT__?.nonce,
     seatDirOf: skillName => model.getSnapshot().state?.seatDirs.find(directory => directory.skillName === skillName)?.dir,
     sessions: ctx.sessions as unknown as SeatActionDeps['sessions'],
+  }
+  const sessionsFace = ctx.sessions as unknown as SessionsFace
+  const startPortalSeatSession = (skillName: string): Promise<string> => startSeatSession(seatDeps, skillName)
+  const openSeat = async (heroId: string | null): Promise<void> => {
+    portal.close()
+    if (heroId === null) return
+    const state = model.getSnapshot().state
+    if (state === undefined) return
+    const skill = heroVisualById(heroId)?.skill ?? state.seats.find(seat => seat.heroId === heroId)?.skillName
+    if (skill === undefined) return
+    const view = seatViewsFrom(
+      model.getSnapshot(),
+      sessionsFace.list.getSnapshot() as unknown as Parameters<typeof seatViewsFrom>[1],
+      ctx.workspaces.list.getSnapshot(),
+    ).find(candidate => candidate.skillName === skill)
+    if (view !== undefined && view.sessionIds.length > 0) sessionsFace.open(view.sessionIds[0]!)
+    else await startPortalSeatSession(skill)
   }
   const bootWorkbench = window.__AMPHOREUS_BOOT__?.workbench
   const workbenchEnabled = bootWorkbench?.enabled ?? true
@@ -143,6 +167,30 @@ export function apply(ctx: ClientContext): void {
     locale: NS,
     inject: () => ({ model }),
   }, SeatNameplate))
+  ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
+    name: 'sidebar.footer.action',
+    id: 'amphoreus-portal',
+    order: 0,
+    locale: NS,
+    inject: (): PortalFooterInjected => ({ portal, assetsConfigured }),
+  }, PortalFooterAction))
+  ctx.slots.inject('shell.overlay', () => ctx.slots.register({
+    name: 'shell.overlay',
+    id: 'amphoreus-portal',
+    order: 0,
+    locale: NS,
+    inject: (): PortalOverlayInjected => ({
+      portal,
+      model,
+      sessions: sessionsFace,
+      workspaces,
+      startSeatSession: startPortalSeatSession,
+      setSeat: seatTheme.hint,
+      theme: themeBridge,
+      magazine: magazineBridge,
+      openSeat,
+    }),
+  }, PortalOverlay))
 
   if (workbenchEnabled) {
     // Workbench as a second conversation view (id/order shape mirrors ui-trajectory).
@@ -172,6 +220,7 @@ export function apply(ctx: ClientContext): void {
         setSeat: seatTheme.hint,
         magazine: magazineBridge,
         startSeatSession: skillName => startSeatSession(seatDeps, skillName, { open: false }),
+        openPortal,
       }),
     }, WorkbenchView))
   }

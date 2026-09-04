@@ -30,7 +30,7 @@ export function SidebarBrandName({ t }: SidebarBrandNameProps) {
   )
 }
 
-function AmphoreusMark({ size, className, assetsConfigured }: {
+export function AmphoreusMark({ size, className, assetsConfigured }: {
   readonly size: number
   readonly className?: string | undefined
   readonly assetsConfigured?: (() => boolean) | undefined

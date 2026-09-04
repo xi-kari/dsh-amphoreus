@@ -504,7 +504,7 @@
 - 偏离与理由：任务书的简化 hook deps 无法承载既有 feed/theme/magazine，故将其作为显式可选依赖，Tab 传全、未来 Portal 传最小；返回面额外含 `onFrameLoad` 以单源保留 map-opened+theme 握手。Portal store 归 TC10，TC8 使用 optional `openPortal` 且不注入假 noop。
 - 遗留：open-seat/open-portal 的最终 UI 消费分别由 TC9/TC10 接通；当前 handler 路由已由测试执行，未伪称门户已完成。
 ## TC9：iframe 承办席身份、门户模式与目录分组 — 2026-09-05 04:16
-- commit: PENDING-TASK
+- commit: 48ce315
 - 动手前核对：任务书 `2295-2371`；app 固定 `#3478f6=3`、旧 last-seat=`1`、thread-color important=`0`、bindingBySession=`0`；D targeted 基线 `29/29`；current-session 两项赋值与 connector/magazine/folio 锚点均按现文件重定位 PASS
 - 验收：
   - focused → `tests 6; pass 6; fail 0`；D/TC8/TC9 targeted → `tests 44; pass 44; fail 0; skipped 0; duration_ms 480.4718`；全量 → `tests 231; pass 230; fail 0; skipped 1; duration_ms 2405.6168` PASS
@@ -522,6 +522,24 @@
 - 人工断言：✓ late-binding key 含 session/skill/hero；✓ currentSessionId 与 camera marker 均在提前 return 前处理；✓ 未复制英雄色表；✓ binding source 只留数据不进可见正文；✓ draft 无 folio/badge；✓ full magazine、总页数与 graph 算法未改；✓ portal 打开不泄漏上次 Tab seat hint。
 - 偏离与理由：任务书明写代码只会产生一处 close，却又要求 `app.js≥2`；新增真正可用、仅嵌入 portal 显示的 iframe close 与 Esc 两条路径，避开顶层无父窗口按钮。任务书 one-shot `tabEntered` 会吞 TC8 late binding，保留该字段并以 session+seat key 作为真正去重。独立审查发现并修复 portal 恢复旧 seat 与 camera marker 泄漏两项。
 - 遗留：主 suite 没有第14张未知视觉卡，故用同源真实 iframe+隔离 host payload 执行 DOM 分支；未污染实际 skills/profile/store。
+## TC10：侧栏总览入口与 shell Portal 覆盖层 — 2026-09-05 04:28
+- commit: PENDING-TASK
+- 动手前核对：任务书 `2375-2434`；`sidebar.footer.action`/`shell.overlay` 均为 root list slot，overlay anchor=`display:contents` 且平台层 pointer-events none→child auto；现有 model/workspaces/seatDeps/seatTheme 单例与 AmphoreusMark 可复用 PASS
+- 验收：
+  - 聚焦 → `tests 37; pass 37; fail 0; skipped 0; duration_ms 519.3411`；全量 → `tests 238; pass 237; fail 0; skipped 1; duration_ms 2493.8693` PASS
+  - typecheck/build/diff/CSS parse → 全 exit `0`；build derive/client/host=`28.87/170.72/188.25 kB`，portal CSS parsed bytes=`1314`；clsx 为任务指定且已正式依赖，构建仅提示、未失败 PASS
+  - 静态 → footer/overlay registrations=`1/1`、mode=portal=`1`、openPortal index=`2`、slots total=`9`、AmphoreusMark export=`1`、CSS hex/rgba=`0/1`（唯一 panel shadow）、portal fetch/appendChild/ctx=`0/0/0`、Workbench open:false=`1` PASS
+  - 宽栏入口位于设置上方；点击后 dialog=`1`、portal iframe=`1`、aria-pressed=`true`，iframe 实际聚焦；宿主 X、宿主 Escape、iframe Escape、scrim 5px 空白点击均实测关闭 PASS
+  - 关闭后 dialog=`0`，`shell.overlay` anchor=`1` 且 children=`0`，页面点击不被空覆盖层拦截 PASS
+  - 已有会话导航 → 当前昔涟时门户点那刻夏，title 从 `TC4修复后席内新建验收` 切到最新 `TC6那刻夏名牌验收`，overlay 关闭、名牌=`那刻夏 · 代码` PASS
+  - 全体会议 → 当前 title 前后均为 `TC6那刻夏名牌验收`、overlay 关闭且不新建/切会话 PASS
+  - 无会话导航 → 门户点万敌创建并打开 `session-f679980f-4569-4649-a220-a50f40ee019e`，binding=`amphoreus-mydei/seat-new/done`，总 bindings=`10`，侧栏当前高亮=`万敌 1 段会话` PASS
+  - 窄栏 → footer 保留 aria-label/title=`翁法罗斯总览`、pressed false、共享 mark img/svg=`1`，视觉快照不显示文字；点击仍可打开 PASS
+  - Tab 内「全部角色」→ overlay=`1` 且底层 `.main-stage=1`；关闭后底层 canvas=`1`、card badge 仍 `那刻夏`，没有把原 Workbench换成本地 portal PASS
+  - 服务终态 → PID `60676`、HTTP `200`、stderr=`0` bytes PASS
+- 人工断言：✓ store snapshot 稳定且 open/close 幂等；✓ Overlay hooks 全在 conditional return 前；✓ iframe onLoad 走 TC8 map-opened；✓ openSeat 先 close，再按 TC3 最新非归档 session 或 TC4 默认预绑定创建；✓ projected workspaces 而非 raw controller 注入 bridge；✓ portal 与 Tab 共用同一 model/theme/magazine/seatTheme。
+- 偏离与理由：任务书文件表漏列、步骤却明确要求导出 `AmphoreusMark`，故把 `brand.tsx` 纳入本任务。任务书 Portal hook 简写遗漏 theme/magazine 与 map-opened，本实现复用 TC8 可选桥并传入同一稳定实例，避免暗色/full 门户失配。
+- 遗留：TC10 阶段全体会议只关闭覆盖层；TE1 将按既定任务改为总空间会话/队列。多标签页 Portal store 各自为内存态，刷新默认关闭。
 ## TD7：杂志档位 prefs 覆盖与 iframe 桥 — 2026-09-05 00:01
 - commit: 6f6bafa
 - 验收：

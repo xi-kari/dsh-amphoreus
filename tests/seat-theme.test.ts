@@ -207,7 +207,7 @@ test('seat layer preserves first-frame intent until an explicit selection takes 
   }
 })
 
-test('seat bridge has exactly three iframe posts and one stable host injection', () => {
+test('seat bridge has exactly three iframe posts and two stable host injections', () => {
   const app = readFileSync(new URL('../workbench/app.js', import.meta.url), 'utf8')
   const workbench = readFileSync(new URL('../src/client/workbench.tsx', import.meta.url), 'utf8')
   const client = readFileSync(new URL('../src/client/index.ts', import.meta.url), 'utf8')
@@ -218,7 +218,7 @@ test('seat bridge has exactly three iframe posts and one stable host injection',
   assert.match(workbench, /case 'amphoreus:seat-changed':[\s\S]*setSeat\(typeof data\.heroId === 'string'/)
   assert.doesNotMatch(workbench, /setSeat\(null\)/)
   assert.equal(client.match(/const seatTheme = registerSeatTheme\(/g)?.length, 1)
-  assert.equal(client.match(/setSeat: seatTheme\.hint/g)?.length, 1)
+  assert.equal(client.match(/setSeat: seatTheme\.hint/g)?.length, 2)
   assert.doesNotMatch(client, /seatLayer\.apply\.bind\(seatLayer\)/)
   assert.match(api, /interface SeatChangedMessage[\s\S]*type: 'amphoreus:seat-changed'[\s\S]*heroId: string \| null/)
 })

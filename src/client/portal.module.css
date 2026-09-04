@@ -1,0 +1,71 @@
+.scrim {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: var(--dsw-alias-bg-mask-2);
+  backdrop-filter: blur(6px);
+  pointer-events: auto;
+}
+
+.panel {
+  position: relative;
+  width: min(1280px, 96vw);
+  height: min(860px, 92vh);
+  overflow: hidden;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 16px;
+  background: var(--dsw-alias-bg-layer-1);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, .28);
+}
+
+.frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: transparent;
+}
+
+.close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  z-index: 2;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--dsw-alias-button-floating-fill);
+  color: var(--dsw-alias-label-primary);
+  cursor: pointer;
+}
+
+.footerButton {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 36px;
+  gap: 8px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+}
+
+.footerButton:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.footerButton[aria-pressed='true'] {
+  background: var(--dsw-specific-sidebar-nav-item-active);
+  color: var(--dsw-alias-label-primary);
+}
+
+.rail {
+  width: 36px;
+  justify-content: center;
+  padding: 0;
+}

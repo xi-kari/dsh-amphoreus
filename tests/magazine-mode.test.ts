@@ -166,7 +166,7 @@ test('stable host bridge sends magazine mode initially and again on map-ready', 
   const app = readFileSync(new URL('../workbench/app.js', import.meta.url), 'utf8')
 
   assert.equal(client.match(/const magazineBridge = \{/g)?.length, 1)
-  assert.equal(client.match(/magazine: magazineBridge/g)?.length, 1)
+  assert.equal(client.match(/magazine: magazineBridge/g)?.length, 2)
   assert.match(workbench, /const pushMagazineRef = useRef/)
   assert.match(workbench, /const unsubscribe = magazine\.subscribe\(push\)/)
   assert.match(workbench, /pushMagazineRef\.current = push[\s\S]*push\(\)/)
