@@ -17,9 +17,16 @@ import { InputError, NotFoundError, type ProjectionIndex } from './workbench.ts'
 import type { SeatDirRecord } from './seatdirs.ts'
 
 const MAX_BODY_BYTES = 4 * 1024
+const MAX_CANVAS_BODY_BYTES = 64 * 1024
 const MAX_SSE_CLIENTS = 8
 const SESSION_ID = /^session-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu
 const WORKBENCH_DIR = fileURLToPath(new URL('../workbench/', import.meta.url))
+
+class BodyTooLargeError extends Error {
+  constructor(limit: number) {
+    super(`request body exceeds ${limit} bytes`)
+  }
+}
 
 const BindInput = z.object({
   skill: z.string(),
@@ -119,6 +126,7 @@ export class AmphoreusWebApi {
   readonly #workbenchStatus: () => WorkbenchStatus
   readonly #seatDirs: readonly SeatDirRecord[]
   readonly #sse = new SseHub()
+  readonly #canvasRevisions = new Map<string, number>()
 
   constructor(ctx: Context, options: WebApiOptions) {
     this.#ctx = ctx as HostContext
@@ -234,7 +242,7 @@ export class AmphoreusWebApi {
           ...current,
           prefs: {
             ...current.prefs,
-            ...(input.quickPhrases === undefined ? {} : { quickPhrases: input.quickPhrases }),
+            ...(input.quickPhrases === undefined ? {} : { quickPhrases: input.quickPhrases, quickPhrasesInitialized: true }),
             ...(input.lastSeat === undefined ? {} : { lastSeat: input.lastSeat }),
           },
         }))
@@ -276,6 +284,10 @@ export class AmphoreusWebApi {
       }
       json(response, 404, { error: 'not found' })
     } catch (error) {
+      if (error instanceof BodyTooLargeError) {
+        json(response, 413, { error: error.message })
+        return
+      }
       if (!response.headersSent) json(response, 500, { error: error instanceof Error ? error.message : String(error) })
       else if (!response.writableEnded) response.end()
     }
@@ -383,9 +395,23 @@ export class AmphoreusWebApi {
       return
     }
     if (!method(request, response, 'PUT')) return
-    const value = CanvasSchema.parse({ ...asRecord(await readJson(request)), updatedAt: Date.now() })
+    const rawRevision = request.headers['x-amphoreus-canvas-revision']
+    const revision = parseCanvasRevision(rawRevision)
+    if (revision === null) {
+      json(response, 400, { error: 'invalid canvas revision' })
+      return
+    }
+    const value = CanvasSchema.parse({ ...asRecord(await readJson(request, MAX_CANVAS_BODY_BYTES)), updatedAt: Date.now() })
+    if (revision !== undefined) {
+      const seen = this.#canvasRevisions.get(sessionId) ?? -1
+      if (revision <= seen) {
+        json(response, 200, { canvas: table.get(sessionId), stale: true, revision: seen })
+        return
+      }
+      this.#canvasRevisions.set(sessionId, revision)
+    }
     await table.put(sessionId, value)
-    json(response, 200, { canvas: value })
+    json(response, 200, { canvas: value, ...(revision === undefined ? {} : { stale: false, revision }) })
   }
 
   /**
@@ -587,17 +613,24 @@ function method(request: IncomingMessage, response: ServerResponse, expected: st
   return false
 }
 
-async function readJson(request: IncomingMessage): Promise<unknown> {
+async function readJson(request: IncomingMessage, limit = MAX_BODY_BYTES): Promise<unknown> {
   const chunks: Buffer[] = []
   let size = 0
   for await (const chunk of request) {
     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
     size += buffer.length
-    if (size > MAX_BODY_BYTES) throw new Error(`request body exceeds ${MAX_BODY_BYTES} bytes`)
+    if (size > limit) throw new BodyTooLargeError(limit)
     chunks.push(buffer)
   }
   if (size === 0) return {}
   return JSON.parse(Buffer.concat(chunks).toString('utf8'))
+}
+
+function parseCanvasRevision(value: string | string[] | undefined): number | null | undefined {
+  if (value === undefined) return undefined
+  if (typeof value !== 'string' || !/^\d+$/u.test(value)) return null
+  const revision = Number(value)
+  return Number.isSafeInteger(revision) && revision >= 0 ? revision : null
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

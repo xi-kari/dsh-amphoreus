@@ -273,7 +273,7 @@
 - 偏离与理由：任务书原伪码以节点长度/尾 seq 判重，改用 `legacy.nodes` 引用与 `hasMore` 联合判重，避免同长度节点替换漏发；真实 alpha.4 节点名采用 `model-retry`/`turn-max-tokens`。提交短 SHA 按下一提交回填规则处理。
 - 遗留：iframe 旧 workspaces/threads 轮询仍显示过渡期 404，由 TB6 按任务书整体删除。
 ## TB6 G8/G14：iframe 索引、正文喂入与占位卡数据层 — 2026-09-04 19:22
-- commit: PENDING-TASK
+- commit: ba952a9
 - 验收：
   - `node --check workbench/app.js` → 无输出 PASS（exit: `0`）
   - `npm run typecheck && npm test && npm run build` → `tests 90; pass 89; fail 0; skipped 1; duration_ms 1408.6957`；client `82.77 kB`、host `147.46 kB` PASS（各 exit: `0`）
@@ -291,3 +291,22 @@
 - 人工断言：✓ Index 只含结构；✓ 正文唯一来自 current conversation feed；✓ hidden/旧 revision/迟到 feed 均不复活归档；✓ cardTextLimit 只裁卡片/live，详情/检查器全文；✓ 非当前发送先表达激活意图且 prompt admission 失败不切会话；✓ remount 后恢复原席位；✓ 服务终态运行且配置完全恢复。
 - 偏离与理由：真实 React session 切换会销毁 iframe，任务书单纯“activate 后 send”会丢第二条消息；新增 `activation-bridge.ts` 以一次性 deferred intent 保持旧 listener，parent 以实际 current 裁决并先完成 prompt admission，随后 reply/open。为闭合实机路径，TB6 跨改 `src/client/workbench.tsx` 并新增行为测试；未改变外部消息顺序。提交短 SHA 按下一提交回填规则处理。
 - 遗留：index 首响应前 hidden 会话可能短暂闪现；统一 unsafe-render dirty flush、branch prompt 失败后的 fork/draft 恢复与浏览器旧 canvas 状态清理由 TB7/TB10 后续收口。
+## TB7 G11：Canvas/Prefs 服务端持久化与独立体积门 — 2026-09-04 20:56
+- commit: PENDING-TASK
+- 验收：
+  - `node --check workbench/app.js && npm run typecheck && npm test && npm run build` → `tests 102; pass 101; fail 0; skipped 1; duration_ms 1614.6301`；client `82.77 kB`、host `148.79 kB` PASS（各 exit: `0`）
+  - TB7 聚焦测试 `workbench-bootstrap + workbench-persistence + webapi-body-limits + store-seats` → `tests 18; pass 18; fail 0; skipped 0` PASS
+  - `git diff --check` → 无空白错误；独立只读终审 P0/P1/P2 均 `0`、可提交 PASS
+  - 静态门 → `localStorage=5` 行（唯一 last-seat 集中读写 + 两个 legacy quick 读 + 两个成功后删）；旧 card-position/collapsed/branch-anchor key 均 `0`；`QUICK_PHRASES_KEY=0`；top-level await `0`；`setInterval=0`；nonce 实现 `1`；canvas revision header 实现 `1` PASS
+  - 真实 HTTP：70 个 canonical positions 请求体 `5129` bytes（>4096,<65536）→ canvas `200` 且 GET `70`；canvas >64KiB → `413 {"error":"request body exceeds 65536 bytes"}`；prefs >4KiB → `413 {"error":"request body exceeds 4096 bytes"}` PASS
+  - revision fence → 新代 revision `200` 先写 x=`222`，旧代 `100` 后到返回 `200,stale=true`，最终仍 x=`222`；`1.5` → `400 invalid canvas revision`；验收后以更高 revision 恢复原卡位 PASS
+  - Quick 迁移 ①：首选 Amphoreus legacy JSON 损坏、Synapse 候选有效 → 迁移为去重的 `TB7-旧词A|TB7-旧词B`，两个旧键均删除；随后服务端值恢复为空 PASS
+  - Quick 迁移 ②：首选 legacy 合法 `[]`、旧 Synapse 非空 → 空数组权威，不复活旧值，服务端 `quickPhrases=[] / quickPhrasesInitialized=true`，两个键删除；再放入旧 Synapse 值并重载，草稿 quick button 仍 `0` 且旧键未被读取 PASS
+  - 浏览器用 CDP 真实鼠标拖动 S2 首卡，DOM 从 `86,82` 经多轮验收到最终 `286,192`；400ms 合并后磁盘 per-record 文件出现，顶层键 `version,record`，record 键 `positions,collapsed,branchAnchors,updatedAt`，positions=`1`，`turn-index=0`，canonical x/y=`286/192` PASS
+  - 折叠后立即切另一个 session → 切换前 flush 完成，磁盘 collapsed 从含首卡恢复为空且 canonical position 保留；父页面随后才切到 TA6-S3 PASS
+  - 删除插件 last-seat 后刷新 → 先回门户，再进 all；卡位从服务端恢复，浏览器不存在任何 card-positions/collapsed-cards/branch-anchors localStorage 键 PASS
+  - 启动失败行为测试 → 首次无效 state 时 `persistenceHydrated=false,bootstrapped=false`，无 index/SSE/map-ready/写；单一 1000ms retry 成功后才开放；migration PUT 非致命失败时仍 ready 且 `state.error='migration failed'`、legacy 键保留 PASS
+  - 服务重启后 state → `quickPhrases=[], quickPhrasesInitialized=true, canvasCount=1, workbench=ready`，canvas canonical position可读，stderr `0` bytes PASS
+- 人工断言：✓ 位置/折叠/锚点只走服务端 Canvas；✓ 400ms 内无 pointermove PUT；✓ 已知 remount 前可等待 flush；✓ pagehide 与在途写由单调 revision fence 保证新代胜出；✓ 未 hydrate 时 whole-record 写 fail closed；✓ 快捷词合法空值、旧数据升级与多次编辑都有确定语义。
+- 偏离与理由：任务书用空数组同时表示“未初始化/用户清空”会丢合法空值，新增向后兼容 `quickPhrasesInitialized` sentinel；实机揭示 iframe remount 与 pagehide 可绕过 400ms timer，增加可等待串行 flush、keepalive revision header 与服务端本进程代次栅栏。64KiB 实测约容 864 条当前形状记录，不沿用“≥900”估算。提交短 SHA 按下一提交回填规则处理。
+- 遗留：无

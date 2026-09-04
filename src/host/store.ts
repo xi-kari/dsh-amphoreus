@@ -90,6 +90,7 @@ export const GlobalSchema = z.object({
     lastSeat: z.string().nullable(),
     wallpaperCursor: z.number().int().nonnegative(),
     quickPhrases: z.array(z.string()),
+    quickPhrasesInitialized: z.boolean().default(false),
   }),
   workbench: z.object({
     hiddenSessionIds: z.array(z.string()).default([]),
@@ -117,7 +118,7 @@ export const INITIAL_GLOBAL: AmphoreusGlobal = {
   dataVersion: 1,
   seeded: false,
   suite: { kind: 'none', parsedAt: 0, status: 'missing', degradedReasons: [] },
-  prefs: { lastSeat: null, wallpaperCursor: 0, quickPhrases: [] },
+  prefs: { lastSeat: null, wallpaperCursor: 0, quickPhrases: [], quickPhrasesInitialized: false },
   workbench: { hiddenSessionIds: [] },
 }
 

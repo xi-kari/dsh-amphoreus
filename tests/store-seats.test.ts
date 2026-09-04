@@ -6,6 +6,7 @@ import {
   amphoreusDomain,
   BindingSchema,
   CanvasSchema,
+  GlobalSchema,
   INITIAL_GLOBAL,
   SeatSchema,
   updateAmphoreusGlobal,
@@ -30,6 +31,12 @@ test('storage domains expose the required single and per-record table layouts', 
   }).success, true)
   assert.equal(CanvasSchema.safeParse({ positions: {}, collapsed: [], branchAnchors: {}, updatedAt: 1 }).success, true)
   assert.deepEqual(INITIAL_GLOBAL.workbench, { hiddenSessionIds: [] })
+  assert.equal(INITIAL_GLOBAL.prefs.quickPhrasesInitialized, false)
+  const legacyGlobal = GlobalSchema.parse({
+    ...INITIAL_GLOBAL,
+    prefs: { lastSeat: null, wallpaperCursor: 0, quickPhrases: [] },
+  })
+  assert.equal(legacyGlobal.prefs.quickPhrasesInitialized, false)
 })
 
 test('global updates serialize read-modify-write across independent fields', async () => {

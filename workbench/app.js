@@ -5,10 +5,6 @@
  */
 const app = document.querySelector('#app')
 if ('scrollRestoration' in history) history.scrollRestoration = 'manual'
-const LEGACY_CARD_POSITIONS_KEY = 'dsh-amphoreus:card-positions'
-const CARD_POSITIONS_KEY = 'dsh-amphoreus:card-positions:v3'
-const COLLAPSED_CARDS_KEY = 'dsh-amphoreus:collapsed-cards:v1'
-const QUICK_PHRASES_KEY = 'dsh-amphoreus:quick-phrases:v1'
 const DEFAULT_QUICK_PHRASES = ['展开说明', '举例', '通俗易懂', '对比解释']
 const MAX_QUICK_PHRASES = 12
 const MAX_QUICK_PHRASE_LENGTH = 16
@@ -22,33 +18,6 @@ function normalizeQuickPhrases(value) {
   }
   return phrases
 }
-const savedQuickPhrases = (() => {
-  try {
-    const stored = localStorage.getItem(QUICK_PHRASES_KEY)
-    return stored === null ? DEFAULT_QUICK_PHRASES : normalizeQuickPhrases(JSON.parse(stored))
-  } catch { return DEFAULT_QUICK_PHRASES }
-})()
-const savedBranchAnchors = (() => {
-  try {
-    const value = JSON.parse(localStorage.getItem('dsh-amphoreus:branch-anchors') ?? '[]')
-    return Array.isArray(value) ? value.filter(item => Array.isArray(item) && typeof item[0] === 'string' && typeof item[1] === 'string') : []
-  } catch { return [] }
-})()
-const savedCardPositions = (() => {
-  try {
-    // Drop formats that were never persisted; the current key stores drags.
-    localStorage.removeItem(LEGACY_CARD_POSITIONS_KEY)
-    localStorage.removeItem('dsh-amphoreus:card-positions:v2')
-    const value = JSON.parse(localStorage.getItem(CARD_POSITIONS_KEY) ?? '[]')
-    return Array.isArray(value) ? value.filter(item => Array.isArray(item) && typeof item[0] === 'string' && item[1] !== null && Number.isFinite(item[1].x) && Number.isFinite(item[1].y)) : []
-  } catch { return [] }
-})()
-const savedCollapsedCards = (() => {
-  try {
-    const value = JSON.parse(localStorage.getItem(COLLAPSED_CARDS_KEY) ?? '[]')
-    return Array.isArray(value) ? value.filter(item => typeof item === 'string') : []
-  } catch { return [] }
-})()
 function storedSeat(value) {
   try { return value === undefined ? localStorage.getItem('dsh-amphoreus:last-seat') : (localStorage.setItem('dsh-amphoreus:last-seat', value), value) } catch { return null }
 }
@@ -69,12 +38,12 @@ const CAMERA_INSET_Y = 56
 // so panning never flashes empty space.
 const VIEWPORT_MARGIN = 1400
 const state = {
-  index: new Map(), indexRevision: 0, indexRequest: 0, eventSource: null, workspace: null, activeId: null, selectedCardId: null, mode: restoredSeatId === null ? 'portal' : 'canvas', zoom: 1, currentDsh: null, currentSessionId: null, sidebarCollapsed: false,
+  index: new Map(), indexRevision: 0, indexRequest: 0, eventSource: null, persistenceHydrated: false, bootstrapped: false, mapOpenPending: false, workspace: null, activeId: null, selectedCardId: null, mode: restoredSeatId === null ? 'portal' : 'canvas', zoom: 1, currentDsh: null, currentSessionId: null, sidebarCollapsed: false,
   // Seat portal: hero seats from the host (chronicle art, palette, folder).
   seats: [], sessionsById: new Map(), assetsConfigured: false, seatId: restoredSeatId, cardFlightPending: false, cardTextLimit: WORKBENCH_CONFIG.cardTextLimit,
   unprojectable: new Map(),
   historyBySession: new Map(), historyRevisionBySession: new Map(), historyCompleteBySession: new Map(), pendingReplies: new Map(), pendingRpc: new Map(), liveReplies: new Map(),
-  draft: null, error: '', branchAnchors: new Map(savedBranchAnchors), cardPositions: new Map(savedCardPositions), collapsedCardIds: new Set(savedCollapsedCards), quickPhrases: savedQuickPhrases, quickPhraseEditorOpen: false,
+  draft: null, error: '', branchAnchors: new Map(), cardPositions: new Map(), legacyPositionKeys: new Set(), collapsedCardIds: new Set(), quickPhrases: [...DEFAULT_QUICK_PHRASES], quickPhraseEditorOpen: false,
   dragging: false, canvasGesture: false, canvasRefreshAfter: 0, canvasViewInitialized: false, canvasCamera: { x: 0, y: 0 }, mapCardSessionSwitches: new Set(),
   expandedMessageIds: new Set(),
   canvasCards: undefined, canvasCardsById: undefined, canvasGraph: undefined, mountedCardIds: new Set(), canvasNeedsCenter: false,
@@ -87,36 +56,150 @@ const formatTime = value => new Date(value).toLocaleString('zh-CN', { month: 'nu
 const currentThread = () => state.workspace?.threads.find(thread => thread.id === state.activeId) ?? state.workspace?.threads[0] ?? null
 const threadListTitle = thread => thread.dshSessionTitle ?? thread.title ?? questionFor(thread)
 
+const canvasDirty = new Set()
+const canvasPendingPayloads = new Set()
+let canvasTimer = 0
+let canvasSaveChain = Promise.resolve()
+let canvasLastOperation = Promise.resolve()
+let canvasRevisionCounter = 0
+let lastCanvasRevision = 0
+
+function nextCanvasRevision() {
+  const revision = Math.max(lastCanvasRevision + 1, Date.now() * 1000 + canvasRevisionCounter++)
+  if (!Number.isSafeInteger(revision) || revision < 0) throw new Error('画布写入版本已超出安全整数范围')
+  lastCanvasRevision = revision
+  return revision
+}
+
+function sessionOfCardId(cardId) {
+  const index = cardId.indexOf(':turn')
+  return index === -1 ? null : cardId.slice(0, index)
+}
+
+function persistablePositionKey(id) {
+  const sessionId = sessionOfCardId(id)
+  if (sessionId === null) return false
+  const suffix = id.slice(sessionId.length)
+  return /^:turn:\d+$/.test(suffix) || /^:turn-index:\d+$/.test(suffix) && state.legacyPositionKeys.has(id)
+}
+
+function canvasRecordFor(sessionId) {
+  const positions = {}
+  for (const [id, position] of state.cardPositions) {
+    if (sessionOfCardId(id) === sessionId && persistablePositionKey(id)) positions[id] = position
+  }
+  const collapsed = [...state.collapsedCardIds].filter(id => sessionOfCardId(id) === sessionId)
+  const branchAnchors = {}
+  const anchor = state.branchAnchors.get(sessionId)
+  if (anchor !== undefined) {
+    const parent = sessionOfCardId(anchor)
+    const seq = Number(anchor.slice(anchor.lastIndexOf(':') + 1))
+    if (parent !== null && Number.isInteger(seq) && seq >= 0) branchAnchors[parent] = seq
+  }
+  return { positions, collapsed, branchAnchors }
+}
+
+function canvasWrite(sessionId, body, revision, keepalive = false) {
+  return api(`/amphoreus/api/canvas/${encodeURIComponent(sessionId)}`, {
+    method: 'PUT',
+    body,
+    keepalive,
+    headers: { 'x-amphoreus-canvas-revision': String(revision) },
+  })
+}
+
+function persistenceUnavailableError() {
+  return new Error('画布持久化状态尚未加载')
+}
+
+function flushCanvasSaves() {
+  if (!state.persistenceHydrated) return Promise.reject(persistenceUnavailableError())
+  if (canvasTimer !== 0) window.clearTimeout(canvasTimer)
+  canvasTimer = 0
+  const payloads = [...canvasDirty].map(sessionId => ({ sessionId, body: JSON.stringify(canvasRecordFor(sessionId)), revision: nextCanvasRevision() }))
+  canvasDirty.clear()
+  if (payloads.length === 0) return canvasLastOperation
+  for (const payload of payloads) canvasPendingPayloads.add(payload)
+  const operation = canvasSaveChain.then(async () => {
+    let firstError
+    for (const payload of payloads) {
+      try {
+        await canvasWrite(payload.sessionId, payload.body, payload.revision)
+      } catch (error) {
+        canvasDirty.add(payload.sessionId)
+        firstError ??= error
+      } finally {
+        canvasPendingPayloads.delete(payload)
+      }
+    }
+    if (firstError !== undefined) throw firstError
+  })
+  canvasLastOperation = operation
+  canvasSaveChain = operation.catch(() => {})
+  return operation
+}
+
+function scheduleCanvasSave(sessionId) {
+  if (sessionId === null) return
+  if (!state.persistenceHydrated) throw persistenceUnavailableError()
+  canvasDirty.add(sessionId)
+  if (canvasTimer !== 0) return
+  canvasTimer = window.setTimeout(() => {
+    canvasTimer = 0
+    void flushCanvasSaves().catch(setError)
+  }, 400)
+}
+
+function flushCanvasKeepalive() {
+  if (!state.persistenceHydrated) return
+  if (canvasTimer !== 0) window.clearTimeout(canvasTimer)
+  canvasTimer = 0
+  const payloads = new Map([...canvasPendingPayloads].map(payload => [payload.sessionId, { body: payload.body, revision: payload.revision }]))
+  for (const sessionId of canvasDirty) payloads.set(sessionId, { body: JSON.stringify(canvasRecordFor(sessionId)), revision: nextCanvasRevision() })
+  canvasDirty.clear()
+  for (const [sessionId, payload] of payloads) {
+    void canvasWrite(sessionId, payload.body, payload.revision, true).catch(() => { canvasDirty.add(sessionId) })
+  }
+}
+
 function rememberBranchAnchor(sessionId, cardId) {
   state.branchAnchors.set(sessionId, cardId)
-  try { localStorage.setItem('dsh-amphoreus:branch-anchors', JSON.stringify([...state.branchAnchors])) } catch { /* Private browsing may disable local storage. */ }
+  scheduleCanvasSave(sessionId)
 }
 
-function persistCardPositions() {
-  try { localStorage.setItem(CARD_POSITIONS_KEY, JSON.stringify([...state.cardPositions])) } catch { /* Private browsing may disable local storage. */ }
+function persistCardPositions(cardIds = [...state.cardPositions.keys()]) {
+  const sessionIds = cardIds.filter(persistablePositionKey).map(sessionOfCardId)
+  for (const sessionId of new Set(sessionIds)) scheduleCanvasSave(sessionId)
 }
 
-function persistCollapsedCards() {
-  try { localStorage.setItem(COLLAPSED_CARDS_KEY, JSON.stringify([...state.collapsedCardIds])) } catch { /* Private browsing may disable local storage. */ }
+function persistCollapsedCards(cardId) {
+  scheduleCanvasSave(sessionOfCardId(cardId))
 }
 
+let quickPhraseSaveChain = Promise.resolve()
 function persistQuickPhrases() {
-  try { localStorage.setItem(QUICK_PHRASES_KEY, JSON.stringify(state.quickPhrases)) } catch { /* Private browsing may disable local storage. */ }
+  if (!state.persistenceHydrated) {
+    const operation = Promise.reject(persistenceUnavailableError())
+    void operation.catch(setError)
+    return operation
+  }
+  const quickPhrases = [...state.quickPhrases]
+  const operation = quickPhraseSaveChain.then(() => api('/amphoreus/api/prefs', { method: 'PUT', body: JSON.stringify({ quickPhrases }) }))
+  quickPhraseSaveChain = operation.catch(setError)
+  return quickPhraseSaveChain
 }
 
 function rememberCardPosition(cardId, position, aliases = []) {
   state.cardPositions.set(cardId, { x: Math.round(position.x), y: Math.round(position.y) })
   for (const alias of aliases) state.cardPositions.set(alias, { x: Math.round(position.x), y: Math.round(position.y) })
-  persistCardPositions()
+  persistCardPositions([cardId, ...aliases])
 }
 
 function resetCardPositions() {
+  const sessionIds = new Set([...state.cardPositions.keys()].map(sessionOfCardId))
   state.cardPositions.clear()
-  persistCardPositions()
-  try {
-    localStorage.removeItem(LEGACY_CARD_POSITIONS_KEY)
-    localStorage.removeItem('dsh-amphoreus:card-positions:v2')
-  } catch { /* Private browsing may disable local storage. */ }
+  state.legacyPositionKeys.clear()
+  for (const sessionId of sessionIds) scheduleCanvasSave(sessionId)
 }
 
 function resetCanvasCamera() {
@@ -135,6 +218,80 @@ async function api(path, options = {}) {
     throw new Error(body.error ?? '请求失败')
   }
   return body
+}
+
+function legacyQuickPhraseCandidates() {
+  let amphoreus = null
+  let synapse = null
+  try { amphoreus = localStorage.getItem('dsh-amphoreus:quick-phrases:v1') } catch { /* Storage may be unavailable. */ }
+  try { synapse = localStorage.getItem('dsh-synapse:quick-phrases:v1') } catch { /* Storage may be unavailable. */ }
+  return [amphoreus, synapse]
+}
+
+function parseLegacyQuickPhrases(raw) {
+  if (raw === null) return null
+  try {
+    const value = JSON.parse(raw)
+    return Array.isArray(value) && value.every(item => typeof item === 'string') ? normalizeQuickPhrases(value) : null
+  } catch { return null }
+}
+
+async function hydrateBootState(bootState) {
+  if (typeof bootState !== 'object' || bootState === null || !Array.isArray(bootState.canvas)
+    || typeof bootState.prefs !== 'object' || bootState.prefs === null || !Array.isArray(bootState.prefs.quickPhrases)
+    || !bootState.prefs.quickPhrases.every(phrase => typeof phrase === 'string')
+    || bootState.prefs.quickPhrasesInitialized !== undefined && typeof bootState.prefs.quickPhrasesInitialized !== 'boolean') {
+    throw new Error('持久化状态响应无效')
+  }
+  state.cardPositions.clear()
+  state.legacyPositionKeys.clear()
+  state.collapsedCardIds.clear()
+  state.branchAnchors.clear()
+  for (const item of bootState.canvas) {
+    if (typeof item?.sessionId !== 'string' || typeof item.value !== 'object' || item.value === null
+      || typeof item.value.positions !== 'object' || item.value.positions === null || Array.isArray(item.value.positions)
+      || !Array.isArray(item.value.collapsed)
+      || typeof item.value.branchAnchors !== 'object' || item.value.branchAnchors === null || Array.isArray(item.value.branchAnchors)) {
+      throw new Error('画布持久化记录无效')
+    }
+    for (const [cardId, position] of Object.entries(item.value.positions ?? {})) {
+      if (typeof position?.x !== 'number' || !Number.isFinite(position.x) || typeof position.y !== 'number' || !Number.isFinite(position.y)) throw new Error('画布坐标无效')
+      state.cardPositions.set(cardId, { x: position.x, y: position.y })
+      if (cardId.includes(':turn-index:')) state.legacyPositionKeys.add(cardId)
+    }
+    for (const cardId of Array.isArray(item.value.collapsed) ? item.value.collapsed : []) {
+      if (typeof cardId !== 'string') throw new Error('画布折叠记录无效')
+      state.collapsedCardIds.add(cardId)
+    }
+    for (const [parentSessionId, userSeq] of Object.entries(item.value.branchAnchors ?? {})) {
+      if (!Number.isInteger(userSeq) || userSeq < 0) throw new Error('画布分支锚点无效')
+      state.branchAnchors.set(item.sessionId, `${parentSessionId}:turn:${userSeq}`)
+    }
+  }
+
+  const storedPhrases = Array.isArray(bootState?.prefs?.quickPhrases) ? bootState.prefs.quickPhrases : []
+  const initialized = bootState?.prefs?.quickPhrasesInitialized === true
+  if (initialized || storedPhrases.length > 0) {
+    state.quickPhrases = normalizeQuickPhrases(storedPhrases)
+    if (!initialized) {
+      try {
+        await api('/amphoreus/api/prefs', { method: 'PUT', body: JSON.stringify({ quickPhrases: state.quickPhrases }) })
+      } catch (error) { setError(error) }
+    }
+  } else {
+    state.quickPhrases = [...DEFAULT_QUICK_PHRASES]
+    const [amphoreus, synapse] = legacyQuickPhraseCandidates()
+    const migrated = parseLegacyQuickPhrases(amphoreus) ?? parseLegacyQuickPhrases(synapse)
+    if (migrated !== null) {
+      try {
+        await api('/amphoreus/api/prefs', { method: 'PUT', body: JSON.stringify({ quickPhrases: migrated }) })
+        state.quickPhrases = migrated
+        try { localStorage.removeItem('dsh-amphoreus:quick-phrases:v1') } catch { /* Storage may be unavailable. */ }
+        try { localStorage.removeItem('dsh-synapse:quick-phrases:v1') } catch { /* Storage may be unavailable. */ }
+      } catch (error) { setError(error) }
+    }
+  }
+  state.persistenceHydrated = true
 }
 
 function post(type, payload = {}) {
@@ -280,6 +437,7 @@ async function refreshIndex() {
 }
 
 function openNewSession() {
+  if (!state.persistenceHydrated) return setError(persistenceUnavailableError())
   if (state.draft !== null) return
   state.mode = 'canvas'
   state.activeId = null
@@ -313,17 +471,21 @@ async function archiveThread(thread) {
   }
   if (Number.isSafeInteger(result.revision)) state.indexRevision = result.revision
   for (const key of [...state.cardPositions.keys()]) {
-    if (hidden.some(sessionId => key.startsWith(`${sessionId}:`))) state.cardPositions.delete(key)
+    if (!hidden.some(sessionId => key.startsWith(`${sessionId}:`))) continue
+    state.cardPositions.delete(key)
+    state.legacyPositionKeys.delete(key)
   }
-  let collapsedChanged = false
   for (const key of [...state.collapsedCardIds]) {
     if (!hidden.some(sessionId => key.startsWith(`${sessionId}:`))) continue
     state.collapsedCardIds.delete(key)
-    collapsedChanged = true
   }
-  if (collapsedChanged) persistCollapsedCards()
+  for (const sessionId of hidden) {
+    state.branchAnchors.delete(sessionId)
+    scheduleCanvasSave(sessionId)
+  }
   rebuildWorkspace()
   render()
+  await flushCanvasSaves()
 }
 
 function focusDraftInput() {
@@ -358,6 +520,7 @@ async function sendMessage(thread, text) {
   state.error = ''
   render()
   try {
+    await flushCanvasSaves()
     const activate = thread.dshSessionId !== state.currentSessionId
     if (activate) post('amphoreus:activate-session', { sessionId: thread.dshSessionId, defer: true })
     await dshRpc('amphoreus:send-message', { sessionId: thread.dshSessionId, text, activate })
@@ -385,6 +548,7 @@ async function submitDraft() {
       const seatDir = seatHeroId !== undefined ? state.seats.find(item => item.heroId === seatHeroId)?.dir : undefined
       const currentCwd = state.currentSessionId === null ? undefined : state.sessionsById.get(state.currentSessionId)?.cwd ?? undefined
       const session = await dshRpc('amphoreus:create-session', { cwd: seatDir ?? currentCwd, seatHeroId })
+      await flushCanvasSaves()
       post('amphoreus:activate-session', { sessionId: session.id, defer: true })
       await dshRpc('amphoreus:send-message', { sessionId: session.id, text, activate: true })
       state.draft = null
@@ -403,6 +567,7 @@ async function submitDraft() {
     }
     const session = await dshRpc('amphoreus:fork-session', { sessionId: parent.dshSessionId, atSeq: draft.atSeq })
     if (draft.anchorId !== undefined) rememberBranchAnchor(session.id, draft.anchorId)
+    await flushCanvasSaves()
     const child = {
       id: session.id,
       dshSessionId: session.id,
@@ -747,11 +912,19 @@ function conversationCards(threads) {
       const turnIndex = turns.length
       const placeholder = question.placeholder === true
       const indexedCard = state.index.get(thread.dshSessionId)?.cards?.find(card => card.userSeq === question.sourceSeq)
-      const id = `${thread.id}:turn:${question.sourceSeq ?? messageIndex}`
+      const hasSourceSeq = Number.isInteger(question.sourceSeq)
+      const id = hasSourceSeq ? `${thread.id}:turn:${question.sourceSeq}` : `${thread.id}:pending:${turnIndex}`
       const previous = turns.at(-1)
       const positionKey = `${thread.id}:turn-index:${turnIndex}`
       const naturalPosition = previous === undefined ? { x: 86, y: 82 } : { x: previous.naturalPosition.x + 365, y: previous.naturalPosition.y }
-      const savedPosition = state.cardPositions?.get(id) ?? state.cardPositions?.get(positionKey)
+      const indexedPosition = state.cardPositions?.get(id)
+      const fallbackPosition = state.cardPositions?.get(positionKey)
+      if (hasSourceSeq && indexedPosition === undefined && fallbackPosition !== undefined) {
+        state.cardPositions.set(id, fallbackPosition)
+        state.cardPositions.delete(`${thread.id}:pending:${turnIndex}`)
+        persistCardPositions([id])
+      }
+      const savedPosition = indexedPosition ?? fallbackPosition
       const positionLocked = savedPosition !== undefined
       const position = positionLocked ? savedPosition : naturalPosition
       turns.push({
@@ -922,17 +1095,17 @@ function conversationGraphView(cards, collapsedCardIds = state.collapsedCardIds)
 
 function revealConversationThread(cards, threadId) {
   const byId = new Map(cards.map(card => [card.id, card]))
-  let changed = false
+  const revealed = new Set()
   for (const target of cards.filter(card => card.dshThreadId === threadId)) {
     const visited = new Set([target.id])
     let parentId = target.parentId
     while (parentId !== null && !visited.has(parentId)) {
       visited.add(parentId)
-      if (state.collapsedCardIds.delete(parentId)) changed = true
+      if (state.collapsedCardIds.delete(parentId)) revealed.add(parentId)
       parentId = byId.get(parentId)?.parentId ?? null
     }
   }
-  if (changed) persistCollapsedCards()
+  for (const cardId of revealed) persistCollapsedCards(cardId)
 }
 
 function canvasConnectors(cards) {
@@ -1751,7 +1924,10 @@ app.addEventListener('click', async event => {
     // without closing the map; the client confirms via amphoreus:current-session.
     if (thread.dshSessionId !== null) {
       if (thread.dshSessionId !== state.currentDsh?.id) state.mapCardSessionSwitches.add(thread.dshSessionId)
-      post('amphoreus:activate-session', { sessionId: thread.dshSessionId })
+      try {
+        await flushCanvasSaves()
+        post('amphoreus:activate-session', { sessionId: thread.dshSessionId })
+      } catch (error) { setError(error) }
     }
     return
   }
@@ -1790,7 +1966,10 @@ app.addEventListener('click', async event => {
     if (button.dataset.action === 'close-card-inspector') { closeCardInspector(); return }
     if (button.dataset.action === 'toggle-sidebar') { state.sidebarCollapsed = !state.sidebarCollapsed; render() }
     if (button.dataset.action === 'create-session') openNewSession()
-    if (button.dataset.action === 'open-current' && state.currentDsh !== null) post('amphoreus:open-session', { sessionId: state.currentDsh.id })
+    if (button.dataset.action === 'open-current' && state.currentDsh !== null) {
+      await flushCanvasSaves()
+      post('amphoreus:open-session', { sessionId: state.currentDsh.id })
+    }
     if (button.dataset.action === 'select-thread' && thread !== undefined) {
       state.mapCardSessionSwitches.clear()
       state.activeId = thread.id
@@ -1802,13 +1981,19 @@ app.addEventListener('click', async event => {
       render()
       // Bidirectional current-session sync: switch DSH's current session
       // without closing the map; the client confirms via amphoreus:current-session.
-      if (thread.dshSessionId !== null) post('amphoreus:activate-session', { sessionId: thread.dshSessionId })
+      if (thread.dshSessionId !== null) {
+        await flushCanvasSaves()
+        post('amphoreus:activate-session', { sessionId: thread.dshSessionId })
+      }
     }
     if (button.dataset.action === 'show-thread' && thread !== undefined) {
       state.activeId = thread.id
       state.mode = 'thread'
       state.detailTargetCardId = button.dataset.card ?? null
-      if (thread.dshSessionId !== null && thread.dshSessionId !== state.currentSessionId) post('amphoreus:activate-session', { sessionId: thread.dshSessionId })
+      if (thread.dshSessionId !== null && thread.dshSessionId !== state.currentSessionId) {
+        await flushCanvasSaves()
+        post('amphoreus:activate-session', { sessionId: thread.dshSessionId })
+      }
       render()
     }
     if (button.dataset.action === 'show-canvas') { state.mode = 'canvas'; render() }
@@ -1825,7 +2010,7 @@ app.addEventListener('click', async event => {
         if (state.activeId !== null && !visibleCards.some(card => card.dshThreadId === state.activeId)) return setError('当前会话位于这个后续分支中，请先切换会话')
       }
       collapsing ? state.collapsedCardIds.add(cardId) : state.collapsedCardIds.delete(cardId)
-      persistCollapsedCards()
+      persistCollapsedCards(cardId)
       render()
       window.setTimeout(() => document.querySelector(`[data-action="toggle-card-children"][data-card="${selectorValue(cardId)}"]`)?.focus(), 0)
     }
@@ -1838,7 +2023,10 @@ app.addEventListener('click', async event => {
     }
     if (button.dataset.action === 'cancel-draft') { state.draft = null; state.quickPhraseEditorOpen = false; render() }
     if (button.dataset.action === 'toggle-message' && button.dataset.message !== undefined) { state.expandedMessageIds.has(button.dataset.message) ? state.expandedMessageIds.delete(button.dataset.message) : state.expandedMessageIds.add(button.dataset.message); renderPreservingDetailScroll() }
-    if (button.dataset.action === 'open-dsh' && thread?.dshSessionId !== null) post('amphoreus:open-session', { sessionId: thread.dshSessionId, seq: Number.isInteger(Number(button.dataset.seq)) ? Number(button.dataset.seq) : undefined })
+    if (button.dataset.action === 'open-dsh' && typeof thread?.dshSessionId === 'string') {
+      await flushCanvasSaves()
+      post('amphoreus:open-session', { sessionId: thread.dshSessionId, seq: Number.isInteger(Number(button.dataset.seq)) ? Number(button.dataset.seq) : undefined })
+    }
     if (button.dataset.action === 'archive-thread' && thread !== undefined) await archiveThread(thread)
     if (button.dataset.action === 'zoom-in') zoomCanvasAtCenter(.1)
     if (button.dataset.action === 'zoom-out') zoomCanvasAtCenter(-.1)
@@ -1872,17 +2060,22 @@ app.addEventListener('submit', event => {
   void sendMessage(thread, text).catch(setError)
 })
 
+function completeMapOpen() {
+  if (state.mode === 'thread') state.mode = 'canvas'
+  render()
+  void refreshIndex().catch(setError)
+  window.requestAnimationFrame(() => post('amphoreus:map-ready'))
+  window.setTimeout(() => post('amphoreus:map-ready'), 240)
+}
+
 window.addEventListener('message', event => {
   if (event.origin !== window.location.origin || event.data?.source !== 'dsh-amphoreus') return
   const data = event.data
   if (data.type === 'amphoreus:map-opened') {
     // Reopening keeps the current surface; remounts restore the last valid
     // seat before the parent bridge sends this handshake.
-    if (state.mode === 'thread') state.mode = 'canvas'
-    render()
-    void refreshIndex().catch(setError)
-    window.requestAnimationFrame(() => post('amphoreus:map-ready'))
-    window.setTimeout(() => post('amphoreus:map-ready'), 240)
+    if (state.bootstrapped) completeMapOpen()
+    else state.mapOpenPending = true
   }
   if (data.type === 'amphoreus:theme') {
     document.documentElement.dataset.theme = data.dark === true ? 'dark' : 'light'
@@ -2028,7 +2221,45 @@ function connectEvents() {
   })
 }
 
-post('amphoreus:request-current')
-post('amphoreus:request-config')
-void refreshIndex().catch(setError)
-connectEvents()
+window.addEventListener('pagehide', flushCanvasKeepalive)
+
+const BOOT_RETRY_MS = 1000
+let bootInFlight = false
+let bootRetryTimer = 0
+
+function scheduleBootRetry() {
+  if (state.bootstrapped || bootInFlight || bootRetryTimer !== 0) return
+  bootRetryTimer = window.setTimeout(() => {
+    bootRetryTimer = 0
+    void bootWorkbench()
+  }, BOOT_RETRY_MS)
+}
+
+async function bootWorkbench() {
+  if (state.bootstrapped || bootInFlight) return
+  bootInFlight = true
+  state.error = ''
+  try {
+    const bootState = await api('/amphoreus/api/state')
+    await hydrateBootState(bootState)
+    if (!state.persistenceHydrated) throw persistenceUnavailableError()
+  } catch (error) {
+    state.persistenceHydrated = false
+    setError(error)
+    bootInFlight = false
+    scheduleBootRetry()
+    return
+  }
+  post('amphoreus:request-current')
+  post('amphoreus:request-config')
+  try { await refreshIndex() } catch (error) { setError(error) }
+  connectEvents()
+  state.bootstrapped = true
+  bootInFlight = false
+  if (state.mapOpenPending) {
+    state.mapOpenPending = false
+    completeMapOpen()
+  }
+}
+
+void bootWorkbench()
