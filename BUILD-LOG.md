@@ -520,7 +520,7 @@
 - 回滚与终态：magazine prefs 已恢复 config/light；cache 内容与备份逐字节相同且服务扫描为84，故无需恢复目录；权威 sessions/storage-domain 未改。TD11 临时 cookie/nonce/second-response 与 backup 在 D 章总验收后清理。
 - 遗留：稳定派生 URL 的浏览器 24h 缓存刷新策略需后续版本化 URL 设计；不影响新安装、首载或本章验收。
 ## TD12：素材包文档、NOTICE/HANDOFF 对账与回退条件裁决 — 2026-09-05 01:41
-- commit: PENDING-TASK
+- commit: 4b624ce
 - 验收：
   - README `## 素材包`=`1`、`assets-cache`=`1`、`npm run derive`=`1`、`--data-dir`=`2`、`09阿格莱呀.jpg`=`2`；Markdown image=`0` PASS
   - README 提供 profile insert 示例、6 个精确目录、6 张壁纸名、13 席 HERO_VISUALS 文件表、build/derive/magick/dataDir/cache/设置路径与版权边界；未建议把素材复制进包目录 PASS
@@ -535,6 +535,33 @@
 - 人工断言：✓ README 不嵌图、不链接原图下载源；✓ Calendar 作为完整清单列出并注明当前 CLI 不消费；✓ HANDOFF 历史 append-only；✓ 验证记录只写已观察值；✓ fallback 的保留理由具体且可复验。
 - 偏离与理由：TD12 局部文字要求直接改 HANDOFF 原句并使 raw `待 token 化=0`，与总纲 §0.6.13“不删/不改原文，只加失效前缀”不可同时成立；服从全局硬规则，采用 `[已失效]` + 新行，语义活跃计数为0。README 目录表补入实际存在的 `翁法罗斯日历/`，避免每席 calendar 列无目录归属。
 - 遗留：第二步 fallback 删除明确未执行；只有在建立 token-before-first-ready 握手并完成至少三席 light/dark 同一人工矩阵后才能重审。
+## D 章完成定义：十三套视觉、杂志语法与派生素材 — 2026-09-05 01:42
+- commit: PENDING-CHAPTER
+- tag: `chapter-D`
+- 最终测试与构建：`npm test` → `tests 185; pass 184; fail 0; skipped 1; duration_ms 2108.3823`；`npm run build` → derive `28.87 kB`、client `121.16 kB`、host `184.52 kB`；typecheck/node/CSS/diff 均 exit `0` PASS
+- 机器门汇总：
+  1. D 五个指定测试文件均存在，全量 fail=`0` PASS
+  2. token registry alias/specific=`77/10`，异常 token=`0` PASS
+  3. theme-tokens host/app=`1/1`，theme/change=`1` PASS
+  4. styles DSW vars=`313`、dark selector=`1`、thread important=`0`、blue=`25` 且 fallback=`25`、raw hex=`4≤8` PASS
+  5. seat layer source=`1`、seat-changed app=`3`/host=`1`；contrast=`104` 行、FAIL=`0` PASS
+  6. Cyrene 排除逻辑显式存在 PASS
+  7. motif 两个共享文件存在，payload motifDataUri=`3`、CSS/app refs=`2/2`、直接子层级规则=`1` PASS
+  8. font-face=`0`、display var uses=`14`、settings def/use=`1/1`、typography.css absent、type shorthand=`12` PASS
+  9. magazine schema/source/message 均存在；当前 canReplaceView calls=`11`。magazine 分支不再调用它，而以 syncMagazineClass 原位切换，DOM/焦点行为门更强且实测通过
+  10. magazine-full selectors=`32`、data-folio=`1`、data-volume=`4`、data-cover=`2`、CARD_HEIGHT=`1`；app 固定蓝=`3`，按任务书同段 J-7 保留到后置 C/TC9，届时联合门变0
+  11. lib JS 恰 client/derive/index 三个、unexpected=`0`、deriveConfig=`2`、白名单 derive/CLI=`1/1`、媒体扩展=`0`、sibling imports=`0/0`；spawnSync 仅 probe 一次，实际转换 spawn=`1` PASS
+  12. derived route refs=`5`、coverUrl/workspaces+app 均存在、assetsCacheDir 与 derivedWallpaper 已接线 PASS
+  13. settings.visualHeading=`2`、client derive/setMode=`2`、derive route=`1`、derivedCount 插值调用=`1` PASS
+  14. README 素材包=`1`、NOTICE magazine phrase=`1`、data-dir≥1；HANDOFF raw 旧词=`1` 但唯一命中已失效，active=`0`（append-only 语义门）
+- 运行态：state=`light/config`、cache path 字符串、running=`false`、derived=`84`、magick 非空；derived GET=`200 image/webp`、traversal=`404`、derive 无 nonce=`403`、stderr=`0` PASS
+- 人工三点：
+  - DSH light/dark 后 iframe token、theme、card/sidebar surface 在约180ms内同步；协议规定双 rAF，故不虚报“同一帧”；草稿由原位 token/motif/class 更新保持 value 与焦点
+  - 阿格莱雅 light/dark 分别为金米白/暗金深棕；昔涟不安装席位层；门户恢复 brand `rgb(138, 104, 28)`
+  - 设置区 full 即时出现 Q（22px/800）与 `01 / 06`，折叠分母不变；light 恢复装饰消失且修复后卡片数 `16→16`；派生 cover 实测 aspect `3 / 4`
+- 已知书内冲突与裁决：① `canReplaceView` 两分支门被 TD8 的不重建 DOM 验收取代；② D-before-C 与 TC9 归属决定固定蓝在 D 时为3；③ HANDOFF raw=0 与历史只加失效前缀冲突；④ “同帧”与规定双 rAF 冲突。全部按更强全局/行为契约记录，不用伪计数规避。
+- 回滚与终态：所有 prefs 恢复 config/light；cache 保留已验证84文件；TD11 backup 已在内容一致后安全删除；服务运行、stderr0；源素材与 sessions 未改。
+- 遗留：第二步 CSS fallback 按条件明确保留；固定蓝由紧接的 C/TC9 清零；稳定 URL 强制重派生 cache-bust 为后续版本化设计项。
 ## TD2 G2：宿主页向 iframe 桥接 87 个主题 token — 2026-09-04 22:35
 - commit: 1722602
 - 验收：
