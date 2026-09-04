@@ -8,7 +8,8 @@
  *    text node; the observer re-applies it whenever the hero remounts.
  * 2. Workspace folder icons → chimera stickers. Each workspace header row's
  *    folder SVG is replaced by a chimera sticker chosen by a stable hash of
- *    the workspace title, so a given folder always keeps its chimera.
+ *    the workspace title, so a given folder always keeps its chimera. 本插件遮蔽
+ *    sidebar.workspaces 后，目录图标替换自然失效；席位组自带徽记。
  *
  * Both effects only touch presentation, never handlers or state, and both
  * disconnect + undo cleanly on dispose. When assets are not configured the

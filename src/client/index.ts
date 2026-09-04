@@ -40,6 +40,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 export const inject = ['slots', 'locale', 'theme', 'sessions', 'uiConversation', 'workspaces', 'uiWorkspace']
 
 export function apply(ctx: ClientContext): void {
+  ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'amphoreus: dictionaries')
   const model = new AmphoreusClientModel()
   const themeBridge = {
     read: readDswTokens,
@@ -50,16 +51,18 @@ export function apply(ctx: ClientContext): void {
     mode: () => model.getSnapshot().state?.effectiveConfig.magazineMode ?? 'light',
     subscribe: (listener: () => void) => model.subscribe(listener),
   }
+  ctx.effect(() => registerGlobalTheme(ctx, model), 'amphoreus: global theme')
   const seatLayer = createSeatLayer(ctx, model)
+  ctx.effect(() => () => seatLayer.dispose(), 'amphoreus: seat theme')
   const seatTheme = registerSeatTheme(
     ctx,
     model,
     ctx.sessions as unknown as Parameters<typeof registerSeatTheme>[2],
     seatLayer,
   )
+  ctx.effect(() => () => seatTheme.dispose(), 'amphoreus: seat wallpaper')
   const portal = createPortalStore()
   const openPortal = portal.open
-  ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'amphoreus: dictionaries')
   const workspaces = createWorkspacesSource(
     ctx.sessions.list as unknown as Parameters<typeof createWorkspacesSource>[0],
     model,
@@ -88,9 +91,6 @@ export function apply(ctx: ClientContext): void {
   }
   const bootWorkbench = window.__AMPHOREUS_BOOT__?.workbench
   const workbenchEnabled = bootWorkbench?.enabled ?? true
-  ctx.effect(() => registerGlobalTheme(ctx, model), 'amphoreus: global theme')
-  ctx.effect(() => () => seatLayer.dispose(), 'amphoreus: seat theme')
-  ctx.effect(() => () => seatTheme.dispose(), 'amphoreus: seat wallpaper')
   ctx.effect(async () => {
     await model.start()
     return () => model.close()
@@ -125,6 +125,19 @@ export function apply(ctx: ClientContext): void {
     ctx.slots.register({ name: 'sidebar.brand.name', priority: -10, locale: NS }, SidebarBrandName))
   ctx.slots.inject('conversation.hero.brand.mark', () =>
     ctx.slots.register({ name: 'conversation.hero.brand.mark', priority: -10, inject: () => ({ assetsConfigured }) }, HeroBrandMark))
+
+  // DOM garnish: time-of-day greeting headline + chimera folder stickers.
+  ctx.effect(() => installGarnish({ assetsConfigured }), 'amphoreus: garnish')
+
+  const t = ctx.locale.bind(NS)
+  ctx.slots.inject('settings.section', () => ctx.slots.register({
+    name: 'settings.section',
+    id: 'amphoreus',
+    order: 30,
+    label: () => t('settings.nav'),
+    locale: NS,
+    inject: () => ({ model }),
+  }, AmphoreusSettings))
   ctx.slots.inject('sidebar.workspaces', () => ctx.slots.register({
     name: 'sidebar.workspaces',
     priority: -10,
@@ -147,19 +160,6 @@ export function apply(ctx: ClientContext): void {
       },
     }),
   }, SeatBrowser))
-
-  // DOM garnish: time-of-day greeting headline + chimera folder stickers.
-  ctx.effect(() => installGarnish({ assetsConfigured }), 'amphoreus: garnish')
-
-  const t = ctx.locale.bind(NS)
-  ctx.slots.inject('settings.section', () => ctx.slots.register({
-    name: 'settings.section',
-    id: 'amphoreus',
-    order: 30,
-    label: () => t('settings.nav'),
-    locale: NS,
-    inject: () => ({ model }),
-  }, AmphoreusSettings))
   ctx.slots.inject('conversation.session.header.actions', () => ctx.slots.register({
     name: 'conversation.session.header.actions',
     id: 'amphoreus-nameplate',

@@ -523,7 +523,7 @@
 - 偏离与理由：任务书明写代码只会产生一处 close，却又要求 `app.js≥2`；新增真正可用、仅嵌入 portal 显示的 iframe close 与 Esc 两条路径，避开顶层无父窗口按钮。任务书 one-shot `tabEntered` 会吞 TC8 late binding，保留该字段并以 session+seat key 作为真正去重。独立审查发现并修复 portal 恢复旧 seat 与 camera marker 泄漏两项。
 - 遗留：主 suite 没有第14张未知视觉卡，故用同源真实 iframe+隔离 host payload 执行 DOM 分支；未污染实际 skills/profile/store。
 ## TC10：侧栏总览入口与 shell Portal 覆盖层 — 2026-09-05 04:28
-- commit: PENDING-TASK
+- commit: 903ee42
 - 动手前核对：任务书 `2375-2434`；`sidebar.footer.action`/`shell.overlay` 均为 root list slot，overlay anchor=`display:contents` 且平台层 pointer-events none→child auto；现有 model/workspaces/seatDeps/seatTheme 单例与 AmphoreusMark 可复用 PASS
 - 验收：
   - 聚焦 → `tests 37; pass 37; fail 0; skipped 0; duration_ms 519.3411`；全量 → `tests 238; pass 237; fail 0; skipped 1; duration_ms 2493.8693` PASS
@@ -540,6 +540,21 @@
 - 人工断言：✓ store snapshot 稳定且 open/close 幂等；✓ Overlay hooks 全在 conditional return 前；✓ iframe onLoad 走 TC8 map-opened；✓ openSeat 先 close，再按 TC3 最新非归档 session 或 TC4 默认预绑定创建；✓ projected workspaces 而非 raw controller 注入 bridge；✓ portal 与 Tab 共用同一 model/theme/magazine/seatTheme。
 - 偏离与理由：任务书文件表漏列、步骤却明确要求导出 `AmphoreusMark`，故把 `brand.tsx` 纳入本任务。任务书 Portal hook 简写遗漏 theme/magazine 与 map-opened，本实现复用 TC8 可选桥并传入同一稳定实例，避免暗色/full 门户失配。
 - 遗留：TC10 阶段全体会议只关闭覆盖层；TE1 将按既定任务改为总空间会话/队列。多标签页 Portal store 各自为内存态，刷新默认关闭。
+## TC11：客户端装配顺序、类型与回归收口 — 2026-09-05 04:55
+- commit: PENDING-TASK
+- 动手前核对：实际执行 `sed -n '2438,2545p'` 核对任务书；最终依赖列表为 slots/locale/theme/sessions/uiConversation/workspaces/uiWorkspace，九个槽位及 TC3–TC10 单例均已存在，跨插件 imports 均为 type-only PASS
+- 验收：
+  - 新增 `tests/client-assembly.test.ts`；聚焦 → `tests 4; pass 4; fail 0; skipped 0; duration_ms 120.679`；默认全量 → `tests 242; pass 241; fail 0; skipped 1; duration_ms 2706.9925` PASS（唯一 skip 为未设置 `AMPHOREUS_REAL_SUITE` 的预期集成门）
+  - 真实套件 → `AMPHOREUS_REAL_SUITE=C:\\Users\\cangm\\.codex\\skills node --test tests/suite-real.test.ts` 得 `tests 1; pass 1; fail 0; skipped 0; duration_ms 228.7538` PASS
+  - `npm run build` → derive/client/host=`28.87/170.83/188.25 kB`；typecheck、build、`git diff --check` 均 exit `0` PASS
+  - 静态 → `ctx.slots.inject=9`；跨插件非 type import=`0` 行；`uiWorkspace=1`；README「席位与目录」=`1`；model/themeBridge/magazineBridge/seatLayer/seatTheme/portal/workspaces/seatDeps/sessionsFace 均唯一，`children=0` PASS
+  - 注册顺序锁定为词典 → model → 全局主题 → seatLayer → 席位换装 → portal → model start → 品牌 → garnish → 设置 → 席位侧栏 → 名牌 → 总览入口/覆盖层 → 工作台；README 只保留后续 `M3`，并写明席位绑定与官方目录边界 PASS
+  - 重启服务后 state=`L0`、cards=`13`、seatDirs=`13`、派生素材=`84`；缺失 binding DELETE=`404`；PID `59556`、HTTP=`200`、stderr=`0` bytes PASS
+  - fresh 浏览器 → 官方 workspace tree=`null`、自定义 seat browser=`1`、host seat=`anaxa`、active layer=`1`、brand=`rgb(35, 102, 77)`、名牌=`那刻夏 · 代码`；iframe card/badge/selected=`1/1/1` PASS
+  - 门户 → footer=`1`，dialog/portal iframe=`1/1`、pressed=`true`；关闭后 dialog=`0`、pressed=`false`、底层 selected card=`1`，原工作台状态保留 PASS
+- 人工断言：✓ 所有控制器单例先创建再注入；✓ garnish 唯一 DOM 装饰例外保留且目录图标分支自然失效；✓ README 不把席位与 cwd 目录混为一谈；✓ fresh page 水合后 C 章全部组件共存。
+- 偏离与理由：任务书写槽位数 `≥9`，测试收紧为当前契约的精确 `9`；新增装配回归测试以防后续 E/F 重排破坏 C 章顺序。
+- 遗留：E 章尚需兑现总空间派发能力；C 章验收使用前序 TC2–TC10 已建立的真实测试会话，章末将按官方接口清理本章新增状态。
 ## TD7：杂志档位 prefs 覆盖与 iframe 桥 — 2026-09-05 00:01
 - commit: 6f6bafa
 - 验收：
