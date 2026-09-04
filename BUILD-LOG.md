@@ -100,7 +100,7 @@
 - 遗留：无
 
 ## TA8 G18：设置、README 与 mark.svg 补齐署名 — 2026-09-04 16:31
-- commit: PENDING-TA8
+- commit: 7800184
 - 验收：
   - `sed -n 2p workbench/mark.svg | grep -c dsh-synapse` → `1` PASS（exit: `0`）
   - `grep -c '^## 致谢' README.md` → `1` PASS（exit: `0`）
@@ -111,4 +111,19 @@
   - 设置页底部 → 灰字 `工作台源自 dsh-synapse v0.4.1（MIT，liangmianya）…` 与 `github.com/liangmianya/dsh-synapse` 链接均可见 PASS
 - 人工断言：✓ 设置区署名位于内容栅格之后；✓ README 致谢固定三条齐全；✓ SVG 第 2 行为 vendoring 注释且 path 未改；✓ NOTICE 版权行未改。
 - 偏离与理由：实现先在隔离 worktree 验证，再以 `cherry-pick --no-commit` 三方合并到 TA7 后主线并重新构建/浏览器验收；提交短 SHA 按下一提交回填规则处理。
+- 遗留：无
+
+## TA9 README 真实化 + HANDOFF 顶部过时声明 — 2026-09-04 16:32
+- commit: PENDING-TA9
+- 验收：
+  - `grep -c '骨架阶段' README.md` → `0` PASS（exit: `1`，零匹配为预期）
+  - `grep -c 'workbench.host\|host' README.md` → `1` PASS（exit: `0`）
+  - `grep -c '## 致谢\|## 配置\|## 已知限制\|## 现状' README.md` → `4` PASS（exit: `0`）
+  - `sed -n 3p HANDOFF.md | grep -c '2026-09-04 更新'` → `1` PASS（exit: `0`）
+  - `[ "$(sed -n 4p HANDOFF.md)" = '' ]` → `无标准输出` PASS（exit: `0`）
+  - `sed -n 5p HANDOFF.md | grep -c '^> 给接手建设的 AI'` → `1` PASS（exit: `0`）
+  - README 禁用措辞 `DeepSeek 官方|官方插件` → `0` PASS；四条已知限制、要求的配置键与审计差距编号齐全。
+  - `git diff --cached --check` → `无输出` PASS（exit: `0`）；HANDOFF diff 仅新增第 3–4 行，原文零删除。
+- 人工断言：✓ README 反映 A 章当时真实能力与未完成 G 项；✓ 开发/安装/边界/致谢结构完整；✓ HANDOFF 旧内容全部保留，新引用块与原引用块以空行隔开。
+- 偏离与理由：实现先在含 TA8 的隔离 worktree 完成，再以 `cherry-pick --no-commit` 合入主线；提交短 SHA 按下一提交回填规则处理。
 - 遗留：无

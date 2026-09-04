@@ -2,7 +2,37 @@
 
 翁法罗斯 × DSH：黄金裔席位工作区、技能无损桥接与画布工作台。基于 DeepSeek Harness（dsh-v0.1.2-alpha.4）构建，非官方产品。
 
-状态：骨架阶段（2026-09-03）。建设者请先读 [HANDOFF.md](HANDOFF.md)。
+## 现状（2026-09-04）
+
+已实现：
+
+- 从 `skillRoots` 在运行时解析技能套件，并提供目录监听、内容指纹与显式降级。
+- 建立 13 席黄金裔席位表与席位目录；席内新会话在首轮一次性注入对应技能卡。
+- 提供 `/amphoreus/*` Web API，并以进程级 nonce 与 Host 门保护写请求。
+- 提供首帧壁纸层、全局昔涟主题层、品牌三槽和设置区。
+- 提供工作台 Tab；其中 iframe 承载由 dsh-synapse 改造的 vendored 画布。
+
+尚未完成的项目以 [AUDIT-2026-09-04.md](AUDIT-2026-09-04.md) 为准：`G1` 注入消息成卡、`G2` 画布主题 token、`G5` 卡片黄金裔身份、`G6/G8` 正文流式与落盘瘦身、`G7` fork 继承席位、`G11–G16`、`G19`、`G21`，以及 `M3` 全部能力。
+
+## 配置
+
+| 配置键 | 说明 |
+|---|---|
+| `skillRoots` | 按顺序列出运行时搜索和解析 Amphoreus 技能套件的只读目录。 |
+| `dataDir` | 指定插件自有文件数据的落盘目录。 |
+| `assetsRoot` | 指向用户本地素材根目录；原始图片不随插件分发。 |
+| `heroWorkspaceMode` | 选择启用十三席席位目录（`seats`）或关闭席位工作区（`off`）。 |
+| `magazineMode` | 选择杂志视觉的 `light` 或 `full` 档；`full` 档仍待 `G21` 完成。 |
+| `seatStyle` | 控制逐席视觉样式是否启用。 |
+| `wallpaper.*` | 配置壁纸开关、全局选图方式与索引、侧栏索引、逐席壁纸、明暗遮罩和表面透明度。 |
+| `autoInvoke.*` | 配置首轮技能卡自动注入开关及允许的会话启动来源。 |
+| `workbench.enabled` | 控制工作台 Tab 与相关工作台能力是否启用。 |
+| `workbench.host` | 选择工作台承载方式；`native` 预留，当前按 `iframe` 处理。 |
+| `workbench.defaultView` | 选择会话默认进入 `chat` 或 `workbench`；页面加载时的首个会话通常不受该设置影响。 |
+| `workbench.cardTextLimit` | 设置当前宿主投影到工作台卡片的正文长度上限。 |
+| `workbench.autoProjection` | 控制会话事件是否自动投影到工作台。 |
+| `suiteWatch.*` | 配置技能套件监听模式（`fs`、`poll`、`off`）、轮询间隔和防抖时间。 |
+| `trustedHosts` | 列出允许通过 Host 门访问插件 Web 路由的额外主机。 |
 
 ## 开发环
 
@@ -32,12 +62,18 @@ pnpm add "link:D:/DeepSeek Harness/deepseek插件开发/dsh-amphoreus"
 
 再运行 `dsh plugin --profile web install` 让 launcher 把本包 reconcile 进 `dsh.profile.bundles`，然后重启 `dsh web`。
 
+## 已知限制
+
+1. 首帧 nonce 每个进程随机生成；宿主重启后需刷新工作台。
+2. 页面加载时的首个会话通常不受 `workbench.defaultView` 影响。
+3. “记住 Tab”在插件热重载或会话回到空白态时可能被误记为“对话”；下次进入工作台 Tab 后会自愈。
+4. 卡片正文当前仍由宿主投影，待 `G8` 完成落盘瘦身。
+
 ## 边界
 
 - 不内嵌技能内容；`skillRoots` 只是目录引用，运行时解析，对技能目录只读。
 - 不写自定义会话事件；自有数据落 storage-domain 与 `dataDir`。
 - 不夹带《崩坏：星穹铁道》原图；素材经 `assetsRoot` 指向用户本地目录。
-- 工作台源自 liangmianya/dsh-synapse v0.4.1（MIT），见 [NOTICE](NOTICE)。
 
 ## 致谢
 
