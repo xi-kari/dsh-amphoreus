@@ -1,0 +1,130 @@
+.root {
+  position: relative;
+}
+
+.chip {
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 13px;
+  background: var(--dsw-alias-button-tool-bar-fill);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.chip:hover {
+  background: var(--dsw-alias-button-tool-bar-hover);
+}
+
+.panel {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 6px);
+  right: 0;
+  display: grid;
+  min-width: 380px;
+  max-width: 560px;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 12px;
+  background: var(--dsw-alias-bg-overlay);
+  box-shadow: 0 10px 30px var(--dsw-alias-bg-mask-1);
+}
+
+.line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.line strong {
+  min-width: 48px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+}
+
+.station {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+}
+
+.station:hover:not(:disabled) {
+  border-color: var(--dsw-alias-brand-primary);
+}
+
+.station:disabled {
+  cursor: not-allowed;
+}
+
+.current {
+  outline: 2px solid var(--dsw-alias-brand-primary);
+  outline-offset: 1px;
+}
+
+.undeployed {
+  opacity: .4;
+  filter: grayscale(1);
+}
+
+.compose {
+  display: grid;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--dsw-alias-border-l1);
+}
+
+.compose label {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+}
+
+.compose textarea {
+  padding: 8px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-base);
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: 13px;
+  resize: vertical;
+}
+
+.composeActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.composeActions button {
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 14px;
+  background: var(--dsw-alias-button-tool-bar-fill);
+  color: var(--dsw-alias-label-primary);
+  cursor: pointer;
+}
+
+.composeActions button:hover:not(:disabled) {
+  background: var(--dsw-alias-button-tool-bar-hover);
+}
+
+.composeActions button:disabled {
+  color: var(--dsw-alias-label-dimmed);
+  cursor: not-allowed;
+}
+
+.error {
+  color: var(--dsw-alias-state-error-primary);
+  font-size: 12px;
+}

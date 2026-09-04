@@ -915,7 +915,7 @@
 - 偏离与理由：任务书 SeatBadge props 缺少 assetsConfigured 却要求素材 gate，增加显式布尔并拆独立 CSS；任务书两写动作只给 accept busy，改为共享同步锁阻止同 tick 双写；任务文件表漏列共享 SeatBadge 支持文件与 assembly 回归。
 - 遗留：child 当前 injection pending 属预期，因为 accept 本身不发送；后续用户首次输入才注入下游卡。TE8 仍需在 iframe 接受路径解决 open-before-reply 生命周期并验证零自动消息；E 结束归档 disposable 父/子会话。
 ## TE6：画布移交虚线边与跨席来源角标 — 2026-09-05 07:16
-- commit: PENDING-TASK
+- commit: 9625ea9
 - 动手前核对：实际执行任务书 `sed -n '4170,4215p'` 并按当前函数重定位；确认 observation seq 对应 `answer.sourceSeq`、connectorPath 世界坐标、drag cache 查询全部 `path[data-from]`，且多数 handoff 因下游重新归席只显示跨席角标 PASS
 - 验收：
   - 新增 `tests/workbench-handoff-edge.test.ts`；聚焦 → `tests 31; pass 31; fail 0; skipped 0; duration_ms 208.0953`；全量 → `tests 305; pass 304; fail 0; skipped 1` PASS
@@ -929,3 +929,22 @@
 - 人工断言：✓ 不修改普通 lineage 实线；✓ 不跨 workspace 画不存在端点；✓ 不为 source 造卡；✓ 同 endpoints 普通谱系与移交语义可并存；✓ 相机 pan/zoom 整体变换不重算世界 path。
 - 偏离与理由：任务书一行 Map 会为 answer 缺失写重复空键，改为显式 assistant/first/last 三表；跨席来源反查显式过滤 kind/status，避免 dispatch 同样带 acceptedSessionId 时误标。README 工作台总说明统一留 TE10 收口。
 - 遗留：真实同席 connector/drag 需当前 March7 disposable 会话完成并经后续接受后回填；TE8 将修 bridge open-before-reply 并继续用这些 observation/child 证据。
+## TE7：会话头流水线站位与点站派发 — 2026-09-05 08:07
+- commit: PENDING-TASK
+- 动手前核对：实际执行任务书指定的 `sed -n '480,500p' deepseek-harness-source/packages/client/ui-slots/src/index.ts`；确认 strict session slot 的 inject 首参为 framework-resolved `sessionId`，声明 store 时才追加 actions，业务依赖只能由 apply closure 注入 PASS
+- 验收：
+  - 聚焦 `node --test tests/client-pipeline-rail.test.ts tests/client-handoff.test.ts tests/client-assembly.test.ts` → `tests 27; pass 27; fail 0; skipped 0; duration_ms 329.7701` PASS（exit: `0`）
+  - `npm run typecheck` → 无诊断 PASS（exit: `0`）；`npm run build` → derive/client/host=`28.87/203.60/199.46 kB` PASS（exit: `0`）
+  - 全量 `node --test tests/*.test.ts` → `tests 313; pass 312; fail 0; skipped 1; duration_ms 3088.4264` PASS（exit: `0`）；`git diff --check` → 无空白错误 PASS（exit: `0`）
+  - helper 行为 → 双面席按 face 精确站位、旧无 face binding 兼容首个同 skill 站；未解析与未部署站保留原 station index 但不可派发；submit 同 tick 第二次获取同步锁失败 PASS
+  - runtime 状态门 → suite 缺失、pipelinesEnabled=false 或 pipelines=[] 均不渲染；面板打开后状态降级会清 open/target/error；外部 pointerdown 与 Escape 共用 closePanel 并成对移除监听 PASS
+  - 热目标门 → 提交前重新读取 model snapshot，pipeline 名、station 索引、skill、face、显示名、部署状态全部仍一致才派发；状态漂移不会创建会话或发送文本 PASS
+  - 派发 → 只调用共享 `dispatchTask`，固定 `from='rail'`、`open=true`，透传 runtime pipeline/station/face；`cwdOf(sessionId)` 每次提交只读取一次并覆盖席位默认 cwd；空白文本零副作用 PASS
+  - UI → strict `conversation.session.header.utilities` 注册 id=`amphoreus-rail`、order=`10`；chip、dialog、textarea label 与 station aria-label 完整；席位徽记复用 SeatBadge 并显式传 assetsConfigured PASS
+  - CSS → `130` 行、alias refs=`21`、raw hex/rgb/hsl=`0`、dark selector=`0`；阴影使用 `--dsw-alias-bg-mask-1`；TSX 硬编码流水线/站名=`0`、直接 fetch/fork/prompt/session.append=`0` PASS
+  - 真实浏览器那刻夏源会话 → header chip=`逐火线 5/10`，展开显示逐火线/守夜线两行且当前站实线高亮；Escape 关闭 dialog PASS
+  - 点赛飞儿站 → 表单=`派发给 赛飞儿`；同一 JS task 双击派发 `请只回复：TE7-CIPHER-OK` 后只生成 `1` 个匹配会话/observation，assistant 精确回复 `TE7-CIPHER-OK`，新会话 header chip=`逐火线 6/10` PASS
+  - 真实持久化记录 → dispatch observation `from=rail`、`pipeline=逐火线`、`station=5`、payload 逐字一致；binding=`amphoreus-cipher/dispatch/done`，新会话 cwd 与来源会话同为 Anaxa 席目录；服务 HTTP=`200`、stderr=`0` bytes PASS
+- 人工断言：✓ 流水线与站名全部来自 `state.suite.pipelines`；✓ 点站派发不是 fork/移交；✓ 未部署与未解析站 disabled；✓ 单站选择；✓ 派发失败保留文本和目标，成功才清空并关闭。
+- 偏离与理由：任务书示例仅按 skill 判定当前站，会把三月七/长夜月这类同 skill 双面席错配；实现按 binding face 精确匹配，旧无 face 记录仍按首站兼容。增加提交时热状态重验与同步锁，避免配置刷新后向已撤站位派发或同 tick 双提交。
+- 遗留：无。

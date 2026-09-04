@@ -20,6 +20,7 @@ import type { HandoffDeps } from './handoff.ts'
 import { HandoffDock } from './handoff-dock.tsx'
 import { en, NS, zh, type AmphoreusKey } from './locales.ts'
 import { SeatNameplate } from './nameplate.tsx'
+import { PipelineRail } from './pipeline-rail.tsx'
 import { PortalFooterAction, PortalOverlay, type PortalFooterInjected, type PortalOverlayInjected } from './portal.tsx'
 import { createPortalStore } from './portal-store.ts'
 import { startSeatSession } from './seat-actions.ts'
@@ -190,6 +191,20 @@ export function apply(ctx: ClientContext): void {
     locale: NS,
     inject: () => ({ model }),
   }, SeatNameplate))
+  ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({
+    name: 'conversation.session.header.utilities',
+    id: 'amphoreus-rail',
+    order: 10,
+    locale: NS,
+    inject: (sessionId: string) => ({
+      model,
+      seatDeps,
+      sessionId,
+      cwdOf: (id: string) => (ctx.sessions.list as unknown as {
+        getSnapshot(): { byId: Record<string, { cwd?: string } | undefined> }
+      }).getSnapshot().byId[id]?.cwd,
+    }),
+  }, PipelineRail))
   ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
     name: 'sidebar.footer.action',
     id: 'amphoreus-portal',
