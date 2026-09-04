@@ -1,15 +1,17 @@
 /**
  * Workbench tab: hosts /amphoreus/workbench/ in an iframe and answers its
  * postMessage RPC (amphoreus:create-session / send-message / fork-session /
- * open-session / activate-session) with real ctx.sessions calls, so the
+ * open-session / activate-session) with the injected session service, so the
  * canvas can create seat sessions, prompt them, and fork branches. All skill
  * binding stays host-side (the binding PUT below + the injector); the iframe
  * never sees session text beyond the host projection.
  */
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import { useEffect, useRef } from 'react'
+import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
+import { useCallback, useEffect, useRef } from 'react'
 import { rememberTab, WORKBENCH_VIEW_ID } from './tabmemory.ts'
 import css from './workbench.module.css'
+import type { WorkspacesPayload } from './workspaces-source.ts'
 
 interface SessionsFace {
   create(opts: { cwd?: string; sessionId?: string }): Promise<string>
@@ -21,6 +23,7 @@ interface SessionsFace {
 
 export interface WorkbenchViewInjected {
   readonly sessions: SessionsFace
+  readonly workspaces: ObservableSnapshot<WorkspacesPayload>
   /** PUT a seat binding before the first prompt (host webapi, nonce-gated). */
   readonly bindSeat: (sessionId: string, skillName: string) => Promise<void>
   readonly seatSkillOf: (heroId: string) => string | undefined
@@ -40,8 +43,14 @@ interface BridgeMessage {
   seatHeroId?: string
 }
 
-export function WorkbenchView({ sessionId, sessions, bindSeat, seatSkillOf, openView, completeViewRequest, viewRequest }: WorkbenchViewProps) {
+export function WorkbenchView({ sessionId, sessions, workspaces, bindSeat, seatSkillOf, openView, completeViewRequest, viewRequest }: WorkbenchViewProps) {
   const frameRef = useRef<HTMLIFrameElement>(null)
+  const reply = useCallback((payload: Record<string, unknown>): void => {
+    frameRef.current?.contentWindow?.postMessage({ source: 'dsh-amphoreus', ...payload }, window.location.origin)
+  }, [])
+  const pushWorkspaces = useCallback((): void => {
+    reply({ type: 'amphoreus:workspaces', ...workspaces.getSnapshot() })
+  }, [reply, workspaces])
 
   useEffect(() => {
     rememberTab(localStorage, WORKBENCH_VIEW_ID)
@@ -51,10 +60,9 @@ export function WorkbenchView({ sessionId, sessions, bindSeat, seatSkillOf, open
     }
   }, [sessionId, sessions])
 
+  useEffect(() => workspaces.subscribe(pushWorkspaces), [workspaces, pushWorkspaces])
+
   useEffect(() => {
-    const reply = (payload: Record<string, unknown>): void => {
-      frameRef.current?.contentWindow?.postMessage({ source: 'dsh-amphoreus', ...payload }, window.location.origin)
-    }
     const fail = (requestId: string | undefined, error: unknown): void => {
       reply({ type: 'amphoreus:bridge-error', requestId, message: error instanceof Error ? error.message : String(error) })
     }
@@ -71,6 +79,8 @@ export function WorkbenchView({ sessionId, sessions, bindSeat, seatSkillOf, open
         try {
           switch (data.type) {
             case 'amphoreus:map-ready':
+              pushWorkspaces()
+              return
             case 'amphoreus:map-opened':
               return
             case 'amphoreus:request-current': {
@@ -137,7 +147,7 @@ export function WorkbenchView({ sessionId, sessions, bindSeat, seatSkillOf, open
     }
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
-  }, [sessionId, sessions, bindSeat, seatSkillOf, openView, completeViewRequest])
+  }, [sessionId, sessions, bindSeat, seatSkillOf, openView, completeViewRequest, pushWorkspaces, reply])
 
   // Keep the iframe informed about the current session so its canvas
   // highlights the active card.
@@ -148,14 +158,11 @@ export function WorkbenchView({ sessionId, sessions, bindSeat, seatSkillOf, open
       if (current === last) return
       last = current
       const summary = current === undefined ? null : { id: current, title: sessions.list.getSnapshot().byId[current]?.displayTitle }
-      frameRef.current?.contentWindow?.postMessage(
-        { source: 'dsh-amphoreus', type: 'amphoreus:current-session', session: summary },
-        window.location.origin,
-      )
+      reply({ type: 'amphoreus:current-session', session: summary })
     }
     const dispose = (sessions.list as unknown as { subscribe(listener: () => void): () => void }).subscribe(push)
     return dispose
-  }, [sessions])
+  }, [sessions, reply])
 
   useEffect(() => {
     if (viewRequest?.view === WORKBENCH_VIEW_ID) completeViewRequest()
@@ -168,12 +175,7 @@ export function WorkbenchView({ sessionId, sessions, bindSeat, seatSkillOf, open
         className={css.frame}
         src="/amphoreus/workbench/"
         title="翁法罗斯工作台"
-        onLoad={() => {
-          frameRef.current?.contentWindow?.postMessage(
-            { source: 'dsh-amphoreus', type: 'amphoreus:map-opened' },
-            window.location.origin,
-          )
-        }}
+        onLoad={() => reply({ type: 'amphoreus:map-opened' })}
       />
     </div>
   )

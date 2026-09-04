@@ -1,6 +1,7 @@
 /** dsh-amphoreus browser half. Components receive injected faces, never ctx. */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
+import type {} from '@deepseek-ai/dsh-client-ui-chat/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
@@ -14,6 +15,7 @@ import { AmphoreusClientModel } from './state.ts'
 import { seedConversationView } from './tabmemory.ts'
 import { registerGlobalTheme } from './theme.ts'
 import { WorkbenchView, type WorkbenchViewInjected } from './workbench.tsx'
+import { createWorkspacesSource } from './workspaces-source.ts'
 import { HERO_VISUALS } from '../shared/heroes.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -23,12 +25,15 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   }
 }
 
-// A 章阶段不注入 uiConversation；B TB4 起注入它仅为 binding().target('chat') 读正文——其 binding().activate() 只激活装配目标、不切 Tab（见任务书 A.0 决策 A-2 与总纲裁决 J-2）。
-export const inject = ['slots', 'locale', 'theme', 'sessions']
+export const inject = ['slots', 'locale', 'theme', 'sessions', 'uiConversation']
 
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'amphoreus: dictionaries')
   const model = new AmphoreusClientModel()
+  const workspaces = createWorkspacesSource(
+    ctx.sessions.list as unknown as Parameters<typeof createWorkspacesSource>[0],
+    model,
+  )
   const bootWorkbench = window.__AMPHOREUS_BOOT__?.workbench
   const workbenchEnabled = bootWorkbench?.enabled ?? true
   ctx.effect(() => registerGlobalTheme(ctx, model), 'amphoreus: global theme')
@@ -91,6 +96,7 @@ export function apply(ctx: ClientContext): void {
       label: () => t('view.workbench'),
       inject: (): WorkbenchViewInjected => ({
         sessions: ctx.sessions as unknown as WorkbenchViewInjected['sessions'],
+        workspaces,
         seatSkillOf: heroId => skillByHero.get(heroId),
         bindSeat: async (sessionId, skillName) => {
           const nonce = model.getSnapshot().state?.nonce ?? window.__AMPHOREUS_BOOT__?.nonce

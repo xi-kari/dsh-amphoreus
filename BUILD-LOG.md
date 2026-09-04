@@ -227,7 +227,7 @@
 - 偏离与理由：TB2 指定文件重写后，尚待 TB3 修改的 `webapi.ts` 仍导入旧 `WorkbenchStore`，故阶段性 `npm run typecheck` 仅报 `TS2305` 1 项（exit `2`）；TB2 自带验收未要求 typecheck。其运行态命令又依赖 TB3 才新增的 `/api/index` 路由，因此在 TB3 实现、构建、重启后回填实测结果。提交短 SHA按下一提交回填规则处理。
 - 遗留：仅上述 TB3 顺序依赖；无代码遗留。
 ## TB3 G8/G14/G16：索引路由、SSE、state 与 prefs — 2026-09-04 17:28
-- commit: PENDING-TB3
+- commit: a6ece87
 - 验收：
   - `npm run typecheck && npm test && npm run build` → typecheck 恢复；`tests 77; pass 76; fail 0; skipped 1; duration_ms 1332.5523`；client `70.22 kB`、host `147.46 kB` PASS（exit: `0`）
   - `GET /amphoreus/workbench/api/index` → `revision=1, sessions=13, sessionsWithCards=11, cards=19`；前 600 字含稳定 `sessionId/cards/userSeq/assistantSeq/toolCallIds`，`"text"` 与 `"arguments"` 计数均 `0` PASS
@@ -241,3 +241,15 @@
 - 人工断言：✓ 新 API 只暴露 seq 索引；✓ cold/live 会话均进入索引；✓ 旧正文路由 404；✓ SSE 先 snapshot 后 workbench-change；✓ prefs 合并不覆盖其他全局字段。
 - 偏离与理由：TB2 复核发现并发 hidden/global 写覆盖、后到子会话逃逸、冷重放游离、listener 反向破坏写结果与脏 ETag 风险；修复提交 `9b7150b` 引入全局串行 read-modify-write、hide 串行/祖先隐藏、冷任务 abort+await、观察者隔离，并在 GET 建立 flush 边界。TB3 提交短 SHA 按下一提交回填规则处理。
 - 遗留：无
+## TB4 G14：宿主页发送 `amphoreus:workspaces` — 2026-09-04 17:41
+- commit: PENDING-TB4
+- 验收：
+  - `npm run typecheck && npm test && npm run build` → `tests 77; pass 76; fail 0; skipped 1`；client `74.18 kB`、host `147.46 kB` PASS（exit: `0`）
+  - 静态：index `'uiConversation'` = `1`；workbench.tsx 发送 `amphoreus:workspaces` = `1`；组件 `ctx` = `0`；ui-chat 值导入 = `0` PASS
+  - iframe 安装消息监听并重发 `amphoreus:map-ready` → 捕获一帧 workspaces：`seats=13, sessions=12, assetsConfigured=true` PASS
+  - 首会话载荷 → `{id,title,parentId,cwd,running,blank,skillName:null,face:null}` 全字段存在；首席位载荷含 heroId/skillName/dir/职责/序号/四颜色/三类编码素材 URL PASS
+  - iframe 内新建并发送 TB4-PUSH 会话 → 增量帧最终 `sessions=13`，新增记录 `title=TB4-PUSH,cwd=…/deepseek-harness-dev,running=false,blank=false,skillName=null,face=null` PASS
+  - `git diff --check` → `无输出` PASS（exit: `0`）
+- 人工断言：✓ map-ready 后立即首发；✓ 会话从空白变非空后进入推送；✓ skillName/face 即使无绑定也显式为 null；✓ 席位/会话元数据只由宿主页状态源组装；✓ 组件未接触 ctx。
+- 偏离与理由：任务书把 `grep workbench/api/workspaces` 明确标为 TB6 后联合验收；当前 iframe 的旧轮询仍有 `3` 处并产生过渡期 404 红条，但独立监听确认 TB4 推送链已工作。新增会话使用工作台桥生成，未自动切换当前会话，符合既有 INV。提交短 SHA按下一提交回填规则处理。
+- 遗留：TB6 删除 iframe 旧轮询后清除过渡期 404；本任务无其他遗留。
