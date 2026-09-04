@@ -458,7 +458,7 @@
 - 偏离与理由：任务书 `SeatSchemeInput` 仅有当前 `base`，但 light ink 需要 `darkBase`、dark ink 需要 `lightBase`，数学上信息不足；新增 `oppositeBase` 精确表达反极性底色。`seatContrastReport(hero)` 无 alpha 参数，静态审计固定使用配置默认 `.22/.4` 并写明，运行时仍使用 live alpha。
 - 遗留：无。
 ## TD5：13 种共享 SVG 纹样与画布层 — 2026-09-04 23:39
-- commit: PENDING-TASK
+- commit: 5d584e3
 - 验收：
   - `node --test tests/shared-motifs.test.ts tests/workbench-motif.test.ts` → `tests 8; pass 8; fail 0; skipped 0; duration_ms 148.4768` PASS（exit: `0`）
   - 全量测试 → `tests 145; pass 144; fail 0; skipped 1` PASS（exit: `0`）；首次未用精简 PATH 的 `npm test` 复现工作区已知 `'node' is not recognized`（exit `1`），按 §0 固化 PATH 重跑通过
@@ -475,4 +475,19 @@
   - 最终服务 PID `57072` running、HTTP `200`、stderr=`0` bytes PASS
 - 人工断言：✓ 纹样以共享纯函数单源生成，不使用位图/外部 SVG/资源路由；✓ 载荷 URI 再做 data-URI prefix 门；✓ 合并后的 main-stage style 整体 escapeHtml；✓ 主题变化先原位更新 motif，再按 canReplaceView 受保护重绘/延后；✓ portal 不铺单席纹样；✓ 原卡牌艺术 ::after 保留。
 - 偏离与理由：任务书改动文件仍写已删除路由所在 `host/webapi.ts`，按其同段 J-4 裁决改实际 `client/workspaces-source.ts`；额外增加 workbench-motif 行为测试。浏览器通过宿主设置按钮切主题会按交互语义转移焦点，因此焦点不丢以无 DOM 重建的行为门验证，而真实浏览器同时验证草稿值完整保留。
+- 遗留：无。
+## TD6：系统字体阶梯单源 — 2026-09-04 23:43
+- commit: PENDING-TASK
+- 动手前核对：TD5 后 styles.css=`378` 行、settings.module.css=`313` 行；旧 display literal rules=`6`、mono literal rules=`3`；font asset/import refs=`0`；`src/client/typography.css` 不存在 PASS
+- 验收：
+  - workbench 字体变量 → display/body/mono 定义各=`1`，display 使用=`10`、body 使用=`2`、mono 使用=`3`；五个 `--amphoreus-type-*` 均含 `var(--amphoreus-font-*)`，缺 family=`0` PASS
+  - settings 字体变量 → display/body/mono 定义各=`1`，标题 display 使用=`1`；两文件三套 family 字面逐一完全一致 PASS
+  - 原 6 个 serif 与 3 个 mono literal 使用点全部归一到变量；字号、字重、行高、字距、布局均未改 PASS
+  - `@font-face|fonts.googleapis|.woff|@import url` → `0`；typography.css=`ABSENT` PASS
+  - Lightning CSS 对 workbench/styles.css 与 settings.module.css 均解析通过 PASS（exit: `0`）
+  - `npm run typecheck` → 无诊断；`npm test` → `tests 145; pass 144; fail 0; skipped 1; duration_ms 1709.86` PASS（各 exit: `0`）
+  - `npm run build` → client `108.12 kB`、host `152.02 kB` PASS（exit: `0`）
+  - `git diff --check` → 无空白错误 PASS（exit: `0`）
+- 人工断言：✓ 仅使用本机系统字体 fallback；✓ display/body/mono 三族与五级 type shorthand 单源；✓ CSS Modules 设置标题与 iframe 杂志标题采用同一 display 栈；✓ 不修改 DSH 内容字号 token。
+- 偏离与理由：无。
 - 遗留：无。
