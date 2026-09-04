@@ -68,6 +68,13 @@ export interface WorkbenchBoot {
   readonly workbench: WorkbenchPublicConfig
 }
 
+export interface ThemeTokensMessage {
+  readonly source: 'dsh-amphoreus'
+  readonly type: 'amphoreus:theme-tokens'
+  readonly tokens: Readonly<Record<string, string>>
+  readonly dark: boolean
+}
+
 export interface AmphoreusBoot {
   readonly revision: number
   readonly nonce: string

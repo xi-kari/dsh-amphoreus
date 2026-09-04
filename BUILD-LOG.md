@@ -392,7 +392,7 @@
 - 偏离与理由：任务书第 16 条字面要求真实 ≥30 轮会话；当前最长真实验收会话为 6 轮。为遵守 `.dsh-home/sessions` 权威日志勿动边界，未制造 24+ 次不可逆模型对话；采用同一路由、同一 per-record schema 的 70-position 真实 PUT/GET 与回滚证明容量，真实 UI 鼠标拖动链另由 TB7 单卡验收覆盖。
 - 遗留：无代码遗留；上述 30 轮字面场景记录为等价容量验收，不影响继续 D 章。
 ## TD1：共享 token 名录与颜色工具 — 2026-09-04 22:26
-- commit: PENDING-TASK
+- commit: 5113dee
 - 验收：
   - `node --test tests/shared-color.test.ts` → `tests 5; pass 5; fail 0; skipped 0; duration_ms 124.5168` PASS（exit: `0`）
   - token 字面量计数 → alias=`77`、specific=`10`、合计=`87`；去重后长度不变，全部匹配白名单正则 PASS
@@ -405,3 +405,15 @@
 - 人工断言：✓ 77/10 token 一行一项、固定字面量单源；✓ 不含异常 alias；✓ parse/mix/composite/rgba/rgb/luminance/contrast/ensureContrast 均为零依赖纯函数；✓ ensureContrast 每步从原 foreground 线性插值；✓ 未引入运行时 CSS 扫描与第三方颜色库。
 - 偏离与理由：无。
 - 遗留：无。
+## TD2 G2：宿主页向 iframe 桥接 87 个主题 token — 2026-09-04 22:35
+- commit: PENDING-TASK
+- 验收：
+  - `node --test tests/client-theme-bridge.test.ts` → `tests 3; pass 3; fail 0; skipped 0; duration_ms 115.5069` PASS（exit: `0`）
+  - `npm run typecheck` → 无诊断 PASS（exit: `0`）
+  - `npm test` → `tests 127; pass 126; fail 0; skipped 1; duration_ms 1590.629` PASS（exit: `0`）
+  - `npm run build` → client `91.92 kB`、host `152.02 kB` PASS（exit: `0`）
+  - 静态门 → `themeBridge` 声明=`1`、inject 引用=`1`、`amphoreus:theme-tokens` 构造=`1`、旧 `amphoreus:theme` 发送=`0`；指定五文件均只有一个 EOF newline PASS
+  - `git diff --check` → 无空白错误 PASS（exit: `0`）
+- 人工断言：✓ `readDswTokens` 只遍历 TD1 的 87-token 固定清单、从 `document.body` 计算样式读取、trim 并跳过空值；✓ `themeBridge` 在 apply 顶部一次性构造，slot inject 只引用稳定对象；✓ 初始订阅、theme/change、iframe onLoad、map-ready 共用同一 push；✓ 每次读取推迟两帧；✓ 卸载先置 inactive、退订并取消全部 pending rAF；✓ 不发送 static token 与旧布尔主题消息。
+- 偏离与理由：在任务书双 rAF 基础上增加 active fence 和逐帧取消集合，避免组件卸载或 theme 引用换代后向旧 iframe 发送过期 token。
+- 遗留：浏览器端 token 落根节点与 light/dark 同步验收依赖 TD3 接收端；TD3 完成后联合实测并回填。

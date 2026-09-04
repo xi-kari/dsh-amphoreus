@@ -10,11 +10,12 @@ import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type { ChatSnapshot } from '@deepseek-ai/dsh-client-ui-chat/client'
 import { useCallback, useEffect, useRef } from 'react'
-import type { AmphoreusState } from '../shared/api.ts'
+import type { AmphoreusState, ThemeTokensMessage } from '../shared/api.ts'
 import { promptWithDeferredActivation } from './activation-bridge.ts'
 import { feedFromChat, HARD_TEXT_CAP, liveTextOf } from './conversation-feed.ts'
 import { beginScrollRequest, safeOptionalInteger, scrollToTurn } from './scroll-to-turn.ts'
 import { rememberTab, WORKBENCH_VIEW_ID } from './tabmemory.ts'
+import type { BridgedTokens } from './theme.ts'
 import css from './workbench.module.css'
 import type { WorkspacesPayload } from './workspaces-source.ts'
 
@@ -39,6 +40,11 @@ export interface WorkbenchViewInjected {
   readonly conversationFeed: (sessionId: string) => ObservableSnapshot<ChatSnapshot | undefined> | undefined
   readonly sessionFace: (sessionId: string) => SessionFeedFace | undefined
   readonly config: ObservableSnapshot<{ state?: AmphoreusState }>
+  readonly theme: {
+    readonly read: () => BridgedTokens
+    readonly isDark: () => boolean
+    readonly subscribe: (listener: () => void) => () => void
+  }
   /** PUT a seat binding before the first prompt (host webapi, nonce-gated). */
   readonly bindSeat: (sessionId: string, skillName: string) => Promise<void>
   readonly seatSkillOf: (heroId: string) => string | undefined
@@ -68,6 +74,7 @@ export function WorkbenchView({
   conversationFeed,
   sessionFace,
   config,
+  theme,
   bindSeat,
   seatSkillOf,
   openView,
@@ -78,6 +85,7 @@ export function WorkbenchView({
   const revisionRef = useRef(0)
   const pushMessagesRef = useRef<() => void>(() => {})
   const pushLiveRef = useRef<() => void>(() => {})
+  const pushThemeTokensRef = useRef<() => void>(() => {})
   const deferredActivationsRef = useRef(new Set<string>())
   const reply = useCallback((payload: Record<string, unknown>): void => {
     frameRef.current?.contentWindow?.postMessage({ source: 'dsh-amphoreus', ...payload }, window.location.origin)
@@ -111,6 +119,44 @@ export function WorkbenchView({
   useEffect(() => workspaces.subscribe(pushWorkspaces), [workspaces, pushWorkspaces])
 
   useEffect(() => config.subscribe(pushConfig), [config, pushConfig])
+
+  useEffect(() => {
+    let active = true
+    const pendingFrames = new Set<number>()
+    const afterFrame = (callback: () => void): void => {
+      let frame = 0
+      frame = requestAnimationFrame(() => {
+        pendingFrames.delete(frame)
+        if (active) callback()
+      })
+      pendingFrames.add(frame)
+    }
+    const push = (): void => {
+      // ThemePresenter and this listener have no guaranteed ordering. Read the
+      // body projection two frames later, after its inline tokens have landed.
+      afterFrame(() => {
+        afterFrame(() => {
+          const message: ThemeTokensMessage = {
+            source: 'dsh-amphoreus',
+            type: 'amphoreus:theme-tokens',
+            tokens: theme.read(),
+            dark: theme.isDark(),
+          }
+          frameRef.current?.contentWindow?.postMessage(message, window.location.origin)
+        })
+      })
+    }
+    pushThemeTokensRef.current = push
+    push()
+    const unsubscribe = theme.subscribe(push)
+    return () => {
+      active = false
+      unsubscribe()
+      for (const frame of pendingFrames) cancelAnimationFrame(frame)
+      pendingFrames.clear()
+      if (pushThemeTokensRef.current === push) pushThemeTokensRef.current = () => {}
+    }
+  }, [theme])
 
   useEffect(() => {
     let followedId: string | undefined
@@ -242,6 +288,7 @@ export function WorkbenchView({
               pushConfig()
               pushMessagesRef.current()
               pushLiveRef.current()
+              pushThemeTokensRef.current()
               return
             case 'amphoreus:map-opened':
               return
@@ -381,7 +428,10 @@ export function WorkbenchView({
         className={css.frame}
         src="/amphoreus/workbench/"
         title="翁法罗斯工作台"
-        onLoad={() => reply({ type: 'amphoreus:map-opened' })}
+        onLoad={() => {
+          reply({ type: 'amphoreus:map-opened' })
+          pushThemeTokensRef.current()
+        }}
       />
     </div>
   )

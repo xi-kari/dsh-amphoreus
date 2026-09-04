@@ -1,9 +1,26 @@
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type { ThemeTokenOverrides } from '@deepseek-ai/dsh-client-ui-theme/client'
+import { DSW_BRIDGED_TOKENS } from '../shared/tokens.ts'
 import type { AmphoreusClientModel } from './state.ts'
 
 const LIGHT_BASE = [244, 242, 248] as const
 const DARK_BASE = [26, 22, 49] as const
+
+export type BridgedTokens = Record<string, string>
+
+/** Read the 87 bridged tokens from body computed styles, omitting empty values. */
+export function readDswTokens(read: (name: string) => string = defaultRead): BridgedTokens {
+  const out: BridgedTokens = {}
+  for (const name of DSW_BRIDGED_TOKENS) {
+    const value = read(name).trim()
+    if (value !== '') out[name] = value
+  }
+  return out
+}
+
+function defaultRead(name: string): string {
+  return getComputedStyle(document.body).getPropertyValue(name)
+}
 
 export function globalThemeTokens(lightAlpha = 0.22, darkAlpha = 0.4): ThemeTokenOverrides {
   const surface = { light: rgba(LIGHT_BASE, lightAlpha), dark: rgba(DARK_BASE, darkAlpha) }
