@@ -93,7 +93,7 @@ function fixtureConfig(): AmphoreusConfig {
     heroWorkspaceMode: 'seats', magazineMode: 'light', seatStyle: true,
     wallpaper: { enabled: true, global: 'fixed', globalIndex: 4, sidebarIndex: 5, perSeat: true, darkMask: 0.18, lightMask: 0.03, surfaceAlpha: { light: 0.22, dark: 0.4 } },
     autoInvoke: { enabled: true, sources: ['startup', 'clear'] }, receiptParsing: true, handoff: { enabled: true },
-    workbench: { enabled: true, defaultView: 'chat', cardTextLimit: 8000, autoProjection: true },
+    workbench: { enabled: true, host: 'iframe', defaultView: 'chat', cardTextLimit: 8000, autoProjection: true },
     suiteWatch: { mode: 'off', pollMs: 15000, debounceMs: 800 }, validate: { enabled: false, python: 'python' },
     sync: { source: 'fixture', ref: 'main', keepBackups: 3 }, trustedHosts: [],
   }

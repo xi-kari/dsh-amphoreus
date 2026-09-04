@@ -31,7 +31,7 @@ export interface AmphoreusConfig {
   autoInvoke: { enabled: boolean; sources: SessionStartSourceName[] }
   receiptParsing: boolean
   handoff: { enabled: boolean }
-  workbench: { enabled: boolean; defaultView: 'chat' | 'workbench'; cardTextLimit: number; autoProjection: boolean }
+  workbench: { enabled: boolean; host: 'iframe' | 'native'; defaultView: 'chat' | 'workbench'; cardTextLimit: number; autoProjection: boolean }
   suiteWatch: { mode: 'fs' | 'poll' | 'off'; pollMs: number; debounceMs: number }
   validate: { enabled: boolean; python: string }
   sync: { source: string; ref: string; keepBackups: number }
@@ -77,6 +77,7 @@ export const Config: z<AmphoreusConfig> = z.object({
   handoff: z.object({ enabled: z.boolean().default(true) }).default(EMPTY_OBJECT),
   workbench: z.object({
     enabled: z.boolean().default(true),
+    host: z.union(['iframe', 'native']).default('iframe'),
     defaultView: z.union(['chat', 'workbench']).default('chat'),
     cardTextLimit: z.natural().min(1000).max(32000).default(8000),
     autoProjection: z.boolean().default(true),
