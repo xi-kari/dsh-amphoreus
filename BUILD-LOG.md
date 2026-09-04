@@ -406,7 +406,7 @@
 - 偏离与理由：无。
 - 遗留：无。
 ## TC2：fork 子会话继承父席 — 2026-09-05 02:18
-- commit: PENDING-TASK
+- commit: 1e1a7fa
 - 动手前核对：`deepseek-harness-source/packages/core/session/src/index.ts` 的 `inheritedEventCount`=`445/446`、`firstLiveSeq`=`475`、`snapshotEvents`=`600-608`；本插件既有 `session/created` 监听位于 `src/index.ts:113` PASS
 - 验收：
   - `node --test tests/injector-inherit.test.ts` → `tests 10; pass 10; fail 0; skipped 0; duration_ms 162.7513` PASS（exit: `0`）
@@ -417,6 +417,18 @@
 - 人工断言：✓ `session/created` 只读元数据与继承 seed，不读父正文；✓ 不调用 `agent.inject`/`session.append`；✓ 以 `firstLiveSeq === inheritedEventCount` 排除 resume；✓ existing child binding 永不覆盖；✓ Path 1/2 原去重逻辑未改。
 - 偏离与理由：任务书最少要求 5 例，补为 10 例以覆盖真实写队列竞态、失败与释放；真实分支取父卡已经注入后的路径，故精确命中 `skipped/inherited-from-parent`。
 - 遗留：注入前 seq 的真实 `pending→done` 与旧无绑定子会话重开，由纯函数与监听集成回归覆盖，并在 TC4/TC9 联合浏览器流继续观察。
+## TC3：客户端席位模型纯函数与词典键 — 2026-09-05 02:25
+- commit: PENDING-TASK
+- 动手前核对：任务书 `1831-1887`；`src/client/state.ts:3` 的实际快照类型为 `AmphoreusClientSnapshot`；`HeroVisual/stickerAssetUrl/heroVisualOf/fallbackHue` 均按现有共享导出接入 PASS
+- 验收：
+  - `node --test tests/client-seat-model.test.ts tests/client-theme.test.ts` → `tests 7; pass 7; fail 0; skipped 0; duration_ms 163.533` PASS（exit: `0`）
+  - 全量 → `tests 203; pass 202; fail 0; skipped 1; duration_ms 2325.0942`；typecheck 无诊断；build derive/client/host=`28.87/123.26/187.04 kB`；diff 全通过 PASS
+  - 词典 → zh/en keys=`87/87`、集合相等；本任务新增固定键=`23×2`，`{n}` 两端均原样保留 PASS
+  - 纯函数边界 → React/document/window 命中=`0`；`GLOBAL_SEAT_HERO=cyrene`；unknown fixture hue=`161`，颜色=`hsl(161 45% 52%)/hsl(161 35% 30%)`；全体会议=`#8a681c/#37305e` PASS
+  - 合成门 → displayName/duty/order 精确使用规定来源；hidden/undeployed 均保留；重复 session binding 末项胜出；archived/gone 过滤；会话 updatedAt 降序并以 sessionId 决定同值顺序 PASS
+- 人工断言：✓ `seatColorOf` 成为席位回退色单源；✓ sticker 仅在素材已配置且 hero visual 存在时生成；✓ `seatViewsFrom` 对 state undefined 返回空；✓ 不硬编码席名。
+- 偏离与理由：最少验收项扩展为 5 个聚焦测试，额外锁定重复绑定、只在 `byId` 的会话、稳定 tie-break 与素材门。
+- 遗留：无。
 ## TD7：杂志档位 prefs 覆盖与 iframe 桥 — 2026-09-05 00:01
 - commit: 6f6bafa
 - 验收：
