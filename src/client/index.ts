@@ -21,7 +21,7 @@ import { SeatBrowser, type SeatBrowserInjected } from './seat-browser.tsx'
 import { AmphoreusSettings } from './settings.tsx'
 import { AmphoreusClientModel } from './state.ts'
 import { seedConversationView } from './tabmemory.ts'
-import { createSeatLayer, readDswTokens, registerGlobalTheme } from './theme.ts'
+import { createSeatLayer, readDswTokens, registerGlobalTheme, registerSeatTheme } from './theme.ts'
 import { WorkbenchView, type WorkbenchViewInjected } from './workbench.tsx'
 import { createWorkspacesSource } from './workspaces-source.ts'
 
@@ -46,7 +46,12 @@ export function apply(ctx: ClientContext): void {
     subscribe: (listener: () => void) => model.subscribe(listener),
   }
   const seatLayer = createSeatLayer(ctx, model)
-  const setSeat = seatLayer.apply.bind(seatLayer)
+  const seatTheme = registerSeatTheme(
+    ctx,
+    model,
+    ctx.sessions as unknown as Parameters<typeof registerSeatTheme>[2],
+    seatLayer,
+  )
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'amphoreus: dictionaries')
   const workspaces = createWorkspacesSource(
     ctx.sessions.list as unknown as Parameters<typeof createWorkspacesSource>[0],
@@ -61,6 +66,7 @@ export function apply(ctx: ClientContext): void {
   const workbenchEnabled = bootWorkbench?.enabled ?? true
   ctx.effect(() => registerGlobalTheme(ctx, model), 'amphoreus: global theme')
   ctx.effect(() => () => seatLayer.dispose(), 'amphoreus: seat theme')
+  ctx.effect(() => () => seatTheme.dispose(), 'amphoreus: seat wallpaper')
   ctx.effect(async () => {
     await model.start()
     return () => model.close()
@@ -163,7 +169,7 @@ export function apply(ctx: ClientContext): void {
         sessionFace: sessionId => sessionAdapter.binding(sessionId as SessionId)?.session,
         config: model,
         theme: themeBridge,
-        setSeat,
+        setSeat: seatTheme.hint,
         magazine: magazineBridge,
         startSeatSession: skillName => startSeatSession(seatDeps, skillName, { open: false }),
       }),

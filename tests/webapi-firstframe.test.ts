@@ -32,6 +32,29 @@ test('first-frame rows put boot data first and add wallpaper style/html/script o
   assert.equal(rows.some(row => row.kind === 'script' && row.text.includes('requestAnimationFrame(mountSidebarSurface)')), true)
   assert.equal(rows.some(row => row.kind === 'script' && row.text.includes('</script')), false)
 
+  const style = rows.find(row => row.kind === 'style')
+  const html = rows.find(row => row.kind === 'html')
+  const script = rows.find(row => row.kind === 'script')
+  assert.equal(style?.kind, 'style')
+  assert.equal(html?.kind, 'html')
+  assert.equal(script?.kind, 'script')
+  if (style?.kind === 'style') {
+    assert.equal(style.text.includes('#amphoreus-wallpaper::after'), true)
+    assert.equal(style.text.includes('--amphoreus-wallpaper-url: none'), true)
+    assert.equal(style.text.includes('data-amphoreus-seat="anaxa"'), true)
+    assert.equal(style.text.includes('data-amphoreus-seat="cyrene"'), false)
+    assert.equal(style.text.match(/data-amphoreus-seat="/g)?.length, 24)
+  }
+  if (html?.kind === 'html') {
+    assert.equal(html.html.split('class="amphoreus-seat-layer"').length, 3)
+    assert.equal(html.html.includes('data-slot="0"'), true)
+    assert.equal(html.html.includes('data-slot="1"'), true)
+  }
+  if (script?.kind === 'script') {
+    assert.equal(script.text.includes("startsWith('seat:')"), true)
+    assert.ok(script.text.indexOf("localStorage.getItem('dsh-amphoreus:last-seat')") < script.text.indexOf("layer.style.setProperty('--amphoreus-wallpaper-url'"))
+  }
+
   const disabled = createFirstFrameRows({ ...options, config: { ...config, wallpaper: { ...config.wallpaper, enabled: false } } })
   assert.deepEqual(disabled.map(row => row.kind), ['global'])
 })

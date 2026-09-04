@@ -459,7 +459,7 @@
 - 偏离与理由：任务书一处把 `L0` 写成“未识别”，与 parser 及既有设置页权威相反；按源事实使用 `L3`，避免完整套件错误显示 missing。为保持任务文件边界未新增 UI 测试文件，结构静态门与真实浏览器覆盖交互。
 - 遗留：主环境没有 undeployed/hidden fixture，相关分支由纯模型与静态结构覆盖；native picker error→prompt 仅以已核实 host 合同和错误传播路径覆盖，实机成功/取消两态已完成。
 ## TC6：会话头承办名牌 — 2026-09-05 03:04
-- commit: PENDING-TASK
+- commit: 84558fd
 - 动手前核对：任务书 `2092-2131`；`conversation.session.header.actions` 为 session-scope list slot；官方 agent-preset=`order:-10`；模型箭头订阅/快照、Binding 六态来源、TC3 色源与素材门均与预期一致 PASS
 - 验收：
   - `node --test tests/client-seat-model.test.ts` → `tests 5; pass 5; fail 0; skipped 0; duration_ms 128.0893`；全量 → `tests 210; pass 209; fail 0; skipped 1; duration_ms 2342.5489` PASS
@@ -472,6 +472,23 @@
 - 人工断言：✓ tooltip 才包含 skill/source/injection/reason/合法 face；✓ 正文仅运行时显示名+首职责；✓ 无点击/切席；✓ order −20 在 agent preset −10 前；✓ 名牌局部变量不复制 D token 层。
 - 偏离与理由：无。
 - 遗留：TE2 扩 Binding source 为 `dispatch` 时须同步补 zh/en `nameplate.source.dispatch`，否则当前穷举词典会缺键；本章预先记录，届时在 TE2 一并闭合。
+## TC7：当前席换装、首帧静态底色与双层壁纸 — 2026-09-05 03:31
+- commit: PENDING-TASK
+- 动手前核对：任务书 `2135-2250`；日历目录文件=`14`，13 个 `HERO_VISUALS.assets.calendar` 引用全部存在，额外仅 `2026阴历版本.jpeg`；`VolumeMode=light|mid|dark` 与 wallpaper 配置字段逐项一致 PASS
+- 验收：
+  - 聚焦 → `tests 22; pass 22; fail 0; skipped 0; duration_ms 362.507`；全量 → `tests 219; pass 218; fail 0; skipped 1; duration_ms 2421.1556` PASS
+  - typecheck/build/diff → 全部 exit `0`；build derive/client/host=`28.87/160.33/188.25 kB` PASS
+  - 静态 → theme/index `registerSeatTheme≥1`、`seatLayer.apply=3`、纯文件 token override=`0`、firstframe seat-layer=`5`/`::after=1`、`.decode()=1`、`260=1`、旧 direct setter=`0`、`setSeat:seatTheme.hint=1`、appendChild=`0` PASS
+  - 首帧 → 24 条非昔涟 light/dark 静态底色、两层预置 DOM、veil `::after`、legacy `seat:` 归一、last-seat 读取先于全局 inline URL；firstframe 结构测试全通过 PASS
+  - 实机先后暴露并修复两层竞态：① SeatLayer 的 loading→ready listener 曾提前删首帧 dataset，新增显式选席所有权；② model ready 早于 sessions.current 曾在 `229ms` 离席，新增受 current hydration 约束的 bootstrap hero intent。两项均有真实层/控制器回归测试 PASS
+  - 修复后 Playwright 时间线（key 预置 `aglaea`）→ DOM `54ms` seat/key=`aglaea` 且无全局 inline；`250ms` derived active opacity=`0.890377`、brand 仍全局；`400ms` opacity=`1`、brand 仍全局；`600ms` brand 才变 `rgb(169,137,74)`；全过程 dataset/key 无 null 间隙 PASS
+  - 稳态阿格莱雅 → active=`/amphoreus/derived/aglaea/cover-169.webp`、brand=`rgb(169,137,74)`、veil 为 `linear-gradient(...)`、mask dark/light=`0.234/0.039`；派生封面优先而非日历 PASS
+  - 无绑定 `TA6-S3` 与昔涟 → seat/key null、active=`0`、brand=`rgb(138,104,28)`、父层恢复 `/amphoreus/derived/_global/wallpaper-4.webp` PASS
+  - 快切那刻夏→阿格莱雅（间隔20ms）→ 最终 seat=`aglaea`、active=`1` 且为 aglaea derived、incoming=`0`；迟到任务未覆盖 PASS
+  - 服务终态 → PID `60676`、HTTP `200`、stderr=`0` bytes；13 个原日历素材未改 PASS
+- 人工断言：✓ binding 胜过 iframe hint；✓ hint 随 session 清空；✓ full key 覆盖配置/候选/派生版本但不含 revision；✓ derived 失败再试 calendar；✓ 无候选 token-only 不 warn；✓ 全失败只 warn 一次并退全局；✓ disposer 真实取消 decode/timer、退订并封住迟到写入。
+- 偏离与理由：D 章已先产出 `cover-169.webp`，正常路径按最终事实优先派生图并用 `lastDerive.at` query cache-bust，日历作为二级 decode fallback；因此任务书旧浏览器预期“直接看到8月日历”更新为派生封面。为封闭真实首帧竞态，对 D `createSeatLayer` 增加显式所有权语义，并同步更新必要的既有 D 测试。
+- 遗留：主环境未破坏 derived/calendar 文件来强制全失败；calendar fallback、全失败一次 warn、token-only 与 dispose 均由可控 DOM/Image integration fixture 实际执行。
 ## TD7：杂志档位 prefs 覆盖与 iframe 桥 — 2026-09-05 00:01
 - commit: 6f6bafa
 - 验收：

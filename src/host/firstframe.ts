@@ -1,9 +1,17 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { IndexInjection } from '@deepseek-ai/dsh-host-webserver'
-import { GLOBAL_WALLPAPERS } from '../shared/heroes.ts'
+import { GLOBAL_WALLPAPERS, HERO_VISUALS } from '../shared/heroes.ts'
 import type { AmphoreusBoot, WorkbenchPublicConfig } from '../shared/api.ts'
 import type { AmphoreusConfig } from './config.ts'
 import type { SuiteSnapshot } from './suite/types.ts'
+
+const SEAT_BASE_STYLES = HERO_VISUALS
+  .filter(hero => hero.heroId !== 'cyrene')
+  .flatMap(hero => [
+    `body[data-amphoreus-seat="${hero.heroId}"] #amphoreus-wallpaper { background-color: ${hero.palette.lightBase}; }`,
+    `body[data-ds-dark-theme][data-amphoreus-seat="${hero.heroId}"] #amphoreus-wallpaper { background-color: ${hero.palette.darkBase}; }`,
+  ])
+  .join('\n')
 
 const WALLPAPER_STYLE = `
 body:not([data-ds-dark-theme]) {
@@ -22,18 +30,38 @@ body[data-ds-dark-theme] {
   opacity: 1;
   overflow: hidden;
   background-color: #f4f2f8;
-  background-image:
-    linear-gradient(112deg,
-      rgba(var(--amphoreus-wallpaper-veil-rgb), calc(var(--amphoreus-wallpaper-mask) * .72)) 0%,
-      rgba(var(--amphoreus-wallpaper-veil-rgb), calc(var(--amphoreus-wallpaper-mask) * .22)) 58%,
-      rgba(var(--amphoreus-wallpaper-veil-rgb), calc(var(--amphoreus-wallpaper-mask) * .5)) 100%),
-    var(--amphoreus-wallpaper-url, radial-gradient(circle at 72% 18%, #d8d1e2 0, #8f82aa 44%, #37305e 100%));
-  background-position: center, center 42%;
+  background-image: var(--amphoreus-wallpaper-url, radial-gradient(circle at 72% 18%, #d8d1e2 0, #8f82aa 44%, #37305e 100%));
+  background-position: center 42%;
   background-repeat: no-repeat;
-  background-size: 100% 100%, cover;
-  transition: opacity 240ms ease, background-image 240ms ease;
+  background-size: cover;
+  transition: opacity 240ms ease;
 }
 body[data-ds-dark-theme] #amphoreus-wallpaper { background-color: #1a1631; }
+#amphoreus-wallpaper::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  background-image: linear-gradient(112deg,
+    rgba(var(--amphoreus-wallpaper-veil-rgb), calc(var(--amphoreus-wallpaper-mask) * .72)) 0%,
+    rgba(var(--amphoreus-wallpaper-veil-rgb), calc(var(--amphoreus-wallpaper-mask) * .22)) 58%,
+    rgba(var(--amphoreus-wallpaper-veil-rgb), calc(var(--amphoreus-wallpaper-mask) * .5)) 100%);
+  background-size: 100% 100%;
+}
+#amphoreus-wallpaper > .amphoreus-seat-layer {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  background-position: center 30%;
+  background-repeat: no-repeat;
+  background-size: cover;
+  transition: opacity 240ms ease;
+}
+#amphoreus-wallpaper > .amphoreus-seat-layer[data-active] { opacity: 1; z-index: 2; }
+#amphoreus-wallpaper > .amphoreus-seat-layer[data-incoming] { z-index: 3; }
+body[data-amphoreus-seat] #amphoreus-wallpaper { --amphoreus-wallpaper-url: none; }
+${SEAT_BASE_STYLES}
 [data-amphoreus-sidebar-surface] {
   background-color: #f4f2f8 !important;
   background-image:
@@ -53,7 +81,7 @@ body[data-amphoreus-wallpaper='off'] [data-amphoreus-sidebar-surface] {
 }
 body > #root { position: relative; z-index: 1; }
 @media (prefers-reduced-motion: reduce) {
-  #amphoreus-wallpaper, [data-amphoreus-sidebar-surface] { transition: none; }
+  #amphoreus-wallpaper, #amphoreus-wallpaper > .amphoreus-seat-layer, [data-amphoreus-sidebar-surface] { transition: none; }
 }
 `.trim()
 
@@ -64,7 +92,12 @@ const WALLPAPER_SCRIPT = `
   if (!boot || !layer) return;
   document.body.style.setProperty('--amphoreus-dark-mask', String(boot.wallpaper.darkMask));
   document.body.style.setProperty('--amphoreus-light-mask', String(boot.wallpaper.lightMask));
-  if (boot.wallpaper.url) layer.style.setProperty('--amphoreus-wallpaper-url', 'url("' + boot.wallpaper.url.replaceAll('"', '%22') + '")');
+  let seat = null;
+  try { seat = localStorage.getItem('dsh-amphoreus:last-seat'); } catch {}
+  if (seat && seat.startsWith('seat:')) seat = seat.slice(5);
+  if (seat === 'all' || seat === 'cyrene') seat = null;
+  if (seat) document.body.dataset.amphoreusSeat = seat;
+  if (boot.wallpaper.url && !seat) layer.style.setProperty('--amphoreus-wallpaper-url', 'url("' + boot.wallpaper.url.replaceAll('"', '%22') + '")');
   if (boot.wallpaper.sidebarUrl) document.body.style.setProperty('--amphoreus-sidebar-wallpaper-url', 'url("' + boot.wallpaper.sidebarUrl.replaceAll('"', '%22') + '")');
   const bindSidebarSurface = () => {
     const root = document.getElementById('root');
@@ -94,10 +127,6 @@ const WALLPAPER_SCRIPT = `
     observer.observe(root, { childList: true, subtree: true });
   };
   mountSidebarSurface();
-  try {
-    const seat = localStorage.getItem('dsh-amphoreus:last-seat');
-    if (seat) document.body.dataset.amphoreusSeat = seat;
-  } catch {}
 })();
 `.trim()
 
@@ -142,7 +171,7 @@ export function createFirstFrameRows(options: FirstFrameOptions): IndexInjection
   if (!options.config.wallpaper.enabled) return rows
   rows.push(
     { kind: 'style', text: WALLPAPER_STYLE },
-    { kind: 'html', placement: 'body', html: '<div id="amphoreus-wallpaper" aria-hidden="true"></div>' },
+    { kind: 'html', placement: 'body', html: '<div id="amphoreus-wallpaper" aria-hidden="true"><div class="amphoreus-seat-layer" data-slot="0"></div><div class="amphoreus-seat-layer" data-slot="1"></div></div>' },
     { kind: 'script', placement: 'body', text: WALLPAPER_SCRIPT },
   )
   return rows

@@ -159,6 +159,54 @@ test('seat layer atomically replaces relevant changes and preserves selected int
   }
 })
 
+test('seat layer preserves first-frame intent until an explicit selection takes ownership', () => {
+  const oldDocument = Object.getOwnPropertyDescriptor(globalThis, 'document')
+  const dataset: Record<string, string | undefined> = { amphoreusSeat: 'anaxa' }
+  Object.defineProperty(globalThis, 'document', {
+    configurable: true,
+    value: { body: { dataset } },
+  })
+  try {
+    const listeners = new Set<() => void>()
+    let snapshot: { state?: { effectiveConfig: { seatStyle: boolean; wallpaper: { surfaceAlpha: { light: number; dark: number } } } } } = {}
+    const model = {
+      getSnapshot: () => snapshot,
+      subscribe: (listener: () => void) => {
+        listeners.add(listener)
+        return () => listeners.delete(listener)
+      },
+    }
+    const ctx = {
+      theme: {
+        overrideTokens: () => () => {},
+      },
+    }
+    const layer = createSeatLayer(ctx as never, model as never)
+
+    snapshot = {
+      state: {
+        effectiveConfig: {
+          seatStyle: true,
+          wallpaper: { surfaceAlpha: { light: 0.22, dark: 0.4 } },
+        },
+      },
+    }
+    for (const listener of listeners) listener()
+    assert.equal(dataset.amphoreusSeat, 'anaxa', 'model readiness must not clear first-frame static-seat intent')
+
+    layer.apply(null)
+    assert.equal(dataset.amphoreusSeat, undefined, 'explicit global selection owns and clears first-frame intent')
+    layer.apply('aglaea')
+    assert.equal(dataset.amphoreusSeat, 'aglaea')
+    layer.dispose()
+    assert.equal(dataset.amphoreusSeat, undefined)
+    assert.equal(listeners.size, 0)
+  } finally {
+    if (oldDocument === undefined) Reflect.deleteProperty(globalThis, 'document')
+    else Object.defineProperty(globalThis, 'document', oldDocument)
+  }
+})
+
 test('seat bridge has exactly three iframe posts and one stable host injection', () => {
   const app = readFileSync(new URL('../workbench/app.js', import.meta.url), 'utf8')
   const workbench = readFileSync(new URL('../src/client/workbench.tsx', import.meta.url), 'utf8')
@@ -169,7 +217,8 @@ test('seat bridge has exactly three iframe posts and one stable host injection',
   assert.match(workbench, /heroId\?: string \| null/)
   assert.match(workbench, /case 'amphoreus:seat-changed':[\s\S]*setSeat\(typeof data\.heroId === 'string'/)
   assert.doesNotMatch(workbench, /setSeat\(null\)/)
-  assert.equal(client.match(/const setSeat = seatLayer\.apply\.bind\(seatLayer\)/g)?.length, 1)
-  assert.equal(client.match(/setSeat,/g)?.length, 1)
+  assert.equal(client.match(/const seatTheme = registerSeatTheme\(/g)?.length, 1)
+  assert.equal(client.match(/setSeat: seatTheme\.hint/g)?.length, 1)
+  assert.doesNotMatch(client, /seatLayer\.apply\.bind\(seatLayer\)/)
   assert.match(api, /interface SeatChangedMessage[\s\S]*type: 'amphoreus:seat-changed'[\s\S]*heroId: string \| null/)
 })

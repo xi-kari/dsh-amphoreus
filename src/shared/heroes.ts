@@ -130,6 +130,11 @@ export function stickerAssetUrl(fileName: string): string {
   return `/amphoreus/assets/${encodeURIComponent('表情包')}/${encodeURIComponent(fileName)}`
 }
 
+/** Original calendar artwork used when no derived wide cover is available. */
+export function seatWallpaperUrl(hero: HeroVisual): string {
+  return `/amphoreus/assets/${encodeURIComponent('翁法罗斯日历')}/${encodeURIComponent(hero.assets.calendar)}`
+}
+
 const BY_SKILL = new Map(HERO_VISUALS.map(h => [h.skill, h]))
 const BY_HERO = new Map<string, HeroVisual>(HERO_VISUALS.map(h => [h.heroId, h]))
 
