@@ -79,6 +79,7 @@ export const Config: z<AmphoreusConfig> = z.object({
     enabled: z.boolean().default(true),
     host: z.union(['iframe', 'native']).default('iframe'),
     defaultView: z.union(['chat', 'workbench']).default('chat'),
+    // 浏览器侧卡片截断字数（效果见 iframe）；详情正文不由宿主截断。
     cardTextLimit: z.natural().min(1000).max(32000).default(8000),
     autoProjection: z.boolean().default(true),
   }).default(EMPTY_OBJECT),

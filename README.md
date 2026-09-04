@@ -10,9 +10,9 @@
 - 建立 13 席黄金裔席位表与席位目录；席内新会话在首轮一次性注入对应技能卡。
 - 提供 `/amphoreus/*` Web API，并以进程级 nonce 与 Host 门保护写请求。
 - 提供首帧壁纸层、全局昔涟主题层、品牌三槽和设置区。
-- 提供工作台 Tab；其中 iframe 承载由 dsh-synapse 改造的 vendored 画布。
+- 提供工作台 Tab；其中 iframe 承载由 dsh-synapse 改造的 vendored 画布。会话结构由冷重放与实时事件共同维护，卡片正文只由当前浏览器会话控制器喂入。
 
-尚未完成的项目以 [AUDIT-2026-09-04.md](AUDIT-2026-09-04.md) 为准：`G1` 注入消息成卡、`G2` 画布主题 token、`G5` 卡片黄金裔身份、`G6/G8` 正文流式与落盘瘦身、`G7` fork 继承席位、`G11–G16`、`G19`、`G21`，以及 `M3` 全部能力。
+仍待后续章节兑现：`G2` 画布主题 token、`G5` 卡片黄金裔身份、`G7` fork 继承席位、`G13` 新会话归属原子化、`G15` 全局门户移动、`G21` 杂志重档，以及 `M3` 总空间派发能力。历史审计基线见 [AUDIT-2026-09-04.md](AUDIT-2026-09-04.md)。
 
 - 正文与会话列表不经宿主路由，宿主只保留 seq 索引（B 章）。
 
@@ -31,7 +31,7 @@
 | `workbench.enabled` | 控制工作台 Tab 与相关工作台能力是否启用。 |
 | `workbench.host` | 选择工作台承载方式；`native` 预留，当前按 `iframe` 处理。 |
 | `workbench.defaultView` | 选择会话默认进入 `chat` 或 `workbench`；页面加载时的首个会话通常不受该设置影响。 |
-| `workbench.cardTextLimit` | 设置当前宿主投影到工作台卡片的正文长度上限。 |
+| `workbench.cardTextLimit` | 设置浏览器侧工作台卡片的正文截断字数；详情仍保留当前会话控制器提供的全文。 |
 | `workbench.autoProjection` | 控制会话事件是否自动投影到工作台。 |
 | `suiteWatch.*` | 配置技能套件监听模式（`fs`、`poll`、`off`）、轮询间隔和防抖时间。 |
 | `trustedHosts` | 列出允许通过 Host 门访问插件 Web 路由的额外主机。 |
@@ -69,7 +69,6 @@ pnpm add "link:D:/DeepSeek Harness/deepseek插件开发/dsh-amphoreus"
 1. 首帧 nonce 每个进程随机生成；宿主重启后需刷新工作台。
 2. 页面加载时的首个会话通常不受 `workbench.defaultView` 影响。
 3. “记住 Tab”在插件热重载或会话回到空白态时可能被误记为“对话”；下次进入工作台 Tab 后会自愈。
-4. 卡片正文当前仍由宿主投影，待 `G8` 完成落盘瘦身。
 
 ## 边界
 

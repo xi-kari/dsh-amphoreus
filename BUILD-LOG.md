@@ -331,7 +331,7 @@
 - 偏离与理由：任务书伪码一次 await `loadThrough` 与 alpha.4 busy/no-op 契约冲突，改为受 8s 总截止约束的非阻塞重试；真实 ChatView 的初始自动到底会覆盖过早滚动，加入 120ms 稳定门和一次后帧复核；全局 DOM 查询增加 parent current 与模块级跨 remount 最新请求栅栏。
 - 遗留：真实 profile 当前没有已翻出初始窗口的超长会话；该分支由可控 busy/窗口外行为测试覆盖，当前与跨会话真实 DOM 定位均已通过。
 ## TB9 G19：旧 Synapse 位置一次性折入 — 2026-09-04 21:56
-- commit: PENDING-TASK
+- commit: 8bf6eb7
 - 验收：
   - `node --test tests/migrate-synapse.test.ts` → `tests 8; pass 8; fail 0; skipped 0` PASS（exit: `0`）
   - `node --test tests/*.test.ts` → `tests 119; pass 118; fail 0; skipped 1; duration_ms 1766.1452` PASS（exit: `0`）
@@ -345,4 +345,19 @@
   - 验收后逐字节恢复 `$DSH_HOME` 前态 → fixture synapse、marker、目标 TA6 canvas 均不存在；仅保留原 S2 canvas（x=`286`, y=`192`），quick phrases `[]/initialized=true`；服务运行、stderr `0` bytes PASS
 - 人工断言：✓ marker、源读取、existing 快照、逐条 PUT 与 marker 落盘以 stores.main 为键完整串行；✓ 后到调用进队列后重查 marker；✓ partial failure 不写 marker，重试只补缺失；✓ unsupported version 警告并记 marker；✓ ENOENT 静默；✓ 坐标有限性、严格 UUID、clamp/round 与去重闭合；✓ 启动先迁移后 ensureSeatDirs。
 - 偏离与理由：任务书正则 `/^session-[0-9a-f-]{36}$/i` 会接受错误连字符结构，采用与 Web API 一致的严格 UUID 分段正则；为防同一 stores 的并发启动重复迁移，除 global 字段级 RMW 队列外增加完整迁移事务队列。
+- 遗留：无
+## TB10：文档、类型与死代码收口 — 2026-09-04 22:15
+- commit: PENDING-TASK
+- 验收：
+  - `git grep -n -E 'WorkspaceSummary|WorkbenchThread|ThreadMessage|createSeatResolver|dshWorkspaces|messagesFromEvents|workspaceChoices|openWorkspace\(|openDshWorkspace|switchToChat|amphoreus:hydrate|amphoreus:workspaces.*sessionIds' -- src workbench tests` → `0 matches` PASS（grep exit: `1`，零匹配为预期）
+  - `npm run build` → typecheck、声明与 JS 构建全部通过；client `86.41 kB`、host `152.03 kB` PASS（exit: `0`）
+  - `node --test tests/*.test.ts` → `tests 119; pass 118; fail 0; skipped 1; duration_ms 1779.3246` PASS（exit: `0`）
+  - `grep -c 'workbench.json' lib/index.js` → `0` PASS（grep exit: `1`，零匹配为预期）
+  - NOTICE 中 `in-memory seq index` = `1`、`no session text` = `1`；MIT 原文与版权行未改 PASS
+  - README 现状只列 D/C/E 后续项，明确正文与会话列表不经宿主路由、宿主只保留 seq 索引；`cardTextLimit` 明确为浏览器卡片截断、详情保留全文 PASS
+  - HANDOFF §4 新增 ProjectionIndex 条目；§5 原 M2 计划整行保留并标 `[已失效]`，新增当前 `uiConversation.binding(sessionId).target('chat')` 实现说明 PASS
+  - `src/shared/api.ts` 已无旧 `WorkspaceSummary/WorkbenchThread/ThreadMessage` 声明；`tests/webapi-firstframe.test.ts` 已验证 index payload 无 fixture 正文、`text` 与 `arguments`，无需制造无语义改动 PASS
+  - `git diff --check` → 无空白错误 PASS（exit: `0`）
+- 人工断言：✓ 文档与 B 章现状一致；✓ 宿主只保留结构索引；✓ 会话正文从浏览器控制器送入；✓ 旧 API、轮询、hydrate 与未定义 Tab 注入符号均已收口；✓ 生成物不含 workbench.json。
+- 偏离与理由：总纲 §0.6.13 禁止删除 HANDOFF 原文，故未按 TB10 局部措辞物理删除旧 `useConversation` 短语，而是标 `[已失效]` 并另写当前实现；TB8 后新增的源码防倒退断言本身含禁词，改成更宽的 `switchTo[A-Z][A-Za-z]*` 正则以保留测试且满足死代码门。
 - 遗留：无

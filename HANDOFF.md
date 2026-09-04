@@ -90,6 +90,7 @@ dsh-amphoreus/
   src/css-modules.d.ts  *.module.css / *.css?inline 声明
   tests/platform-modules.test.ts  平台模块表防漂移（通过）
   workbench/app.js|styles.css|mark.svg  dsh-synapse v0.4.1 vendoring：路由 → /amphoreus/workbench/api、消息 synapse:* → amphoreus:*、source → 'dsh-amphoreus'、localStorage 键 → dsh-amphoreus:*；styles.css 仍是硬编码 hex（待 token 化）
+  src/host/workbench.ts  内存 seq 索引（ProjectionIndex），启动自 sessions.list() + sessionPersistence.list()/inspect() 重建，无正文、无 workbench.json
   reference/synapse-host-index.js  synapse 宿主半侧原件（H8 工作台投影的改造基底，不进包）
   reference/SYNAPSE-LICENSE.txt, reference/magazine-palette.json（13 册逐页明暗与色板实测 JSON，来自 06 附录脚本）
   LICENSE (MIT), NOTICE（synapse 署名、非官方声明、素材不随包）
@@ -109,7 +110,9 @@ dsh-amphoreus/
 8. 客户端 `theme.ts`：全局层 `overrideTokens('dsh-amphoreus/global', …)`（昔涟色板 + bg-base/sidebar-fill 带 alpha）；壁纸元素属性切换；`settings.tsx`：`settings.section` id `amphoreus` order 30；品牌三槽 priority −10。
 9. `/amphoreus-sync` 两步命令（可选，`ctx.inject(['commands'])`）。
 
-**M2** 席位侧栏（`sidebar.workspaces` priority −10，两组：黄金裔席位 / 我的目录，D-E 预绑定建会话）、逐席 token 层与封面切换（切换协议：预加载 → 240ms 淡入 → 再换 token；失败退全局）、`src/host/injector.ts` 一次性注入状态机（session-start 置 pending、首个 pre-step 追加、手敲同名则 skipped）、`observer.ts` 回执/移交行解析、名牌（`conversation.session.header.actions` order −20）、工作台 Tab（iframe 承载 `workbench/`，桥接 `amphoreus:*` + 新增 `amphoreus:theme-tokens`，正文由宿主页 `useConversation` 喂入）。
+[已失效] **M2** 席位侧栏（`sidebar.workspaces` priority −10，两组：黄金裔席位 / 我的目录，D-E 预绑定建会话）、逐席 token 层与封面切换（切换协议：预加载 → 240ms 淡入 → 再换 token；失败退全局）、`src/host/injector.ts` 一次性注入状态机（session-start 置 pending、首个 pre-step 追加、手敲同名则 skipped）、`observer.ts` 回执/移交行解析、名牌（`conversation.session.header.actions` order −20）、工作台 Tab（iframe 承载 `workbench/`，桥接 `amphoreus:*` + 新增 `amphoreus:theme-tokens`，正文由宿主页 `useConversation` 喂入）。
+
+**M2 当前状态** 工作台以 iframe 承载 `workbench/`，宿主只维护无正文的内存 seq 索引；当前会话正文经 `uiConversation.binding(sessionId).target('chat')` 从浏览器控制器喂入。席位侧栏、逐席 token、技能卡身份与回执观察仍按 D、C、E 章继续建设。
 **M3** 移交坞（`conversation.input.dock` order 20，点击才 fork）、站位轨、台账、评估 native 工作台。
 
 ## 6. 注意事项汇总

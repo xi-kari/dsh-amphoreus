@@ -23,7 +23,7 @@ test('all workbench open surfaces carry turn and use the single open-session con
   assert.match(bridgeSource, /rememberTab\(localStorage, 'chat'\)/)
   assert.match(bridgeSource, /const isLatestRequest = beginScrollRequest\(\)/)
   assert.match(bridgeSource, /scrollToTurn\([\s\S]*sessionFace,[\s\S]*conversationFeed,[\s\S]*sessions\.list\.getSnapshot\(\)\.current/)
-  assert.equal(bridgeSource.includes('switchToChat'), false)
+  assert.doesNotMatch(bridgeSource, /switchTo[A-Z][A-Za-z]*/u)
 })
 
 test('a later request from a remounted bridge invalidates the older instance', () => {
