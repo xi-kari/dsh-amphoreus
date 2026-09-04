@@ -12,6 +12,7 @@ import { reconcileSeats } from './host/seats.ts'
 import { openAmphoreusStores, type AmphoreusStores } from './host/store.ts'
 import { AmphoreusWebApi } from './host/webapi.ts'
 import { createSeatResolver, WorkbenchStore, type ProjectableEvent, type ProjectableSession } from './host/workbench.ts'
+import type { WorkbenchStatus } from './shared/api.ts'
 import { heroVisualOf } from './shared/heroes.ts'
 
 export { Config }
@@ -43,15 +44,22 @@ export function apply(ctx: Context, config: AmphoreusConfig): void {
 
     // Seat workspace folders (one per hero) + the seat-scoped workbench store.
     let seatDirs: EnsureSeatDirsResult | undefined
+    let seatDirsError: string | undefined
     try {
       seatDirs = await ensureSeatDirs(dataDir, bridge.resolver.current())
       ctx.logger.info(`amphoreus seat dirs ready at ${seatDirs.seatsRoot} (created=${seatDirs.created})`)
     } catch (error) {
-      ctx.logger.error(`amphoreus seat dirs unavailable: ${String(error)}`)
+      seatDirsError = String(error)
+      ctx.logger.error(`amphoreus seat dirs unavailable: ${seatDirsError}`)
     }
     let workbench: WorkbenchStore | undefined
+    let workbenchStatus: WorkbenchStatus = { kind: 'ready' }
     let disposeProjection = () => {}
-    if (config.workbench.enabled && stores !== undefined && seatDirs !== undefined) {
+    if (!config.workbench.enabled) {
+      workbenchStatus = { kind: 'disabled' }
+    } else if (seatDirs === undefined) {
+      workbenchStatus = { kind: 'unavailable', reason: `席位目录不可用：${seatDirsError ?? '未知错误'}` }
+    } else if (stores !== undefined) {
       const resolver = createSeatResolver({
         bindingSeat: sessionId => stores!.main.table('bindings').get(sessionId)?.skillName,
         heroIdOfSkill: skillName => heroVisualOf(skillName)?.heroId,
@@ -63,13 +71,20 @@ export function apply(ctx: Context, config: AmphoreusConfig): void {
         },
       })
       workbench = new WorkbenchStore(join(dataDir, 'workbench.json'), resolver)
+      void workbench.ready().catch(error => {
+        workbenchStatus = { kind: 'unavailable', reason: `workbench.json 读取失败：${String(error)}` }
+      })
       if (config.workbench.autoProjection) {
         const sessions = (ctx as Context & { sessions: { list(): ProjectableSession[] } }).sessions
         const replay = (session: ProjectableSession & { firstLiveSeq?: number; snapshotEvents?: () => readonly ProjectableEvent[] }): void => {
           const events = session.snapshotEvents?.() ?? session.events ?? []
           const replayFrom = session.header?.parentSession === undefined ? 0 : (session.firstLiveSeq ?? 0)
           void workbench!.projectSession({ ...session, events }, replayFrom)
-            .catch(error => ctx.logger.warn(`amphoreus workbench projection: ${String(error)}`))
+            .then(() => workbench!.clearUnprojectable(session.id))
+            .catch(error => {
+              ctx.logger.warn(`amphoreus workbench projection: ${String(error)}`)
+              workbench!.markUnprojectable(session, error)
+            })
         }
         // Coalesce a burst of turn events into one deferred write per session.
         const queue: { session: ProjectableSession; event: ProjectableEvent }[] = []
@@ -90,7 +105,11 @@ export function apply(ctx: Context, config: AmphoreusConfig): void {
             }
             for (const [, [session, events]] of bySession) {
               void workbench!.projectEvents(session, events)
-                .catch(error => ctx.logger.warn(`amphoreus workbench projection: ${String(error)}`))
+                .then(() => workbench!.clearUnprojectable(session.id))
+                .catch(error => {
+                  ctx.logger.warn(`amphoreus workbench projection: ${String(error)}`)
+                  workbench!.markUnprojectable(session, error)
+                })
             }
           })
         })
@@ -111,6 +130,7 @@ export function apply(ctx: Context, config: AmphoreusConfig): void {
           stores,
           resolver: bridge.resolver,
           nonce,
+          workbenchStatus: () => workbenchStatus,
           ...(workbench === undefined ? {} : { workbench }),
           ...(seatDirs === undefined ? {} : { seatDirs: seatDirs.dirs }),
         })

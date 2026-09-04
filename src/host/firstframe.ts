@@ -1,7 +1,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { IndexInjection } from '@deepseek-ai/dsh-host-webserver'
 import { GLOBAL_WALLPAPERS } from '../shared/heroes.ts'
-import type { AmphoreusBoot } from '../shared/api.ts'
+import type { AmphoreusBoot, WorkbenchPublicConfig } from '../shared/api.ts'
 import type { AmphoreusConfig } from './config.ts'
 import type { SuiteSnapshot } from './suite/types.ts'
 
@@ -120,6 +120,7 @@ export function createBootPayload(options: FirstFrameOptions): AmphoreusBoot {
     revision: snapshot?.generation ?? 0,
     nonce: options.nonce,
     level: snapshot?.level ?? 'loading',
+    workbench: publicWorkbench(options.config),
     wallpaper: {
       enabled: options.config.wallpaper.enabled,
       darkMask: options.config.wallpaper.darkMask,
@@ -149,4 +150,9 @@ export function registerFirstFrame(ctx: Context, options: FirstFrameOptions): ()
   return ctx.on('webserver/index-inject', table => {
     table.push(...createFirstFrameRows(options))
   })
+}
+
+export function publicWorkbench(config: AmphoreusConfig): WorkbenchPublicConfig {
+  const { enabled, host, defaultView, cardTextLimit, autoProjection } = config.workbench
+  return { enabled, host, defaultView, cardTextLimit, autoProjection }
 }

@@ -12,6 +12,7 @@
 import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { dirname, sep } from 'node:path'
+import type { UnprojectableRecord } from '../shared/api.ts'
 
 const MAX_TITLE_LENGTH = 120
 const MAX_NOTE_LENGTH = 4_000
@@ -118,6 +119,7 @@ export class WorkbenchStore {
   #state: WorkbenchState | undefined
   #serial: Promise<unknown> = Promise.resolve()
   readonly #ready: Promise<void>
+  readonly #unprojectable = new Map<string, UnprojectableRecord>()
   #dirty = false
   #flushTimer: NodeJS.Timeout | null = null
   #lastKnownMtime: number | null = null
@@ -128,6 +130,30 @@ export class WorkbenchStore {
     this.#dataFile = dataFile
     this.#resolver = resolver
     this.#ready = this.#load()
+    this.#ready.catch(() => {})
+  }
+
+  /** 首次加载完成；失败时 reject（原因即 workbench.json 不可读）。 */
+  ready(): Promise<void> {
+    return this.#ready
+  }
+
+  markUnprojectable(session: ProjectableSession, error: unknown): void {
+    this.#unprojectable.set(session.id, {
+      sessionId: session.id,
+      heroId: this.#resolver.seatOf(session),
+      title: typeof session.title === 'string' && session.title.trim() !== '' ? session.title.slice(0, 80) : null,
+      reason: error instanceof Error ? error.message : String(error),
+      at: Date.now(),
+    })
+  }
+
+  clearUnprojectable(sessionId: string): void {
+    this.#unprojectable.delete(sessionId)
+  }
+
+  unprojectable(): UnprojectableRecord[] {
+    return [...this.#unprojectable.values()].sort((a, b) => b.at - a.at)
   }
 
   async list(): Promise<WorkspaceSummary[]> {

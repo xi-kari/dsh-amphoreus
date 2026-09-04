@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import type { AmphoreusConfig } from '../src/host/config.ts'
 import { createBootPayload, createFirstFrameRows } from '../src/host/firstframe.ts'
 import { parseSuite, type SuiteTextFile } from '../src/host/suite/parse.ts'
-import { publicSuite, trustedHost } from '../src/host/webapi.ts'
+import { publicSuite, trustedHost, workbenchPage } from '../src/host/webapi.ts'
 import { GLOBAL_WALLPAPERS } from '../src/shared/heroes.ts'
 
 test('first-frame rows put boot data first and add wallpaper style/html/script only when enabled', () => {
@@ -14,6 +14,7 @@ test('first-frame rows put boot data first and add wallpaper style/html/script o
   assert.equal(boot.revision, snapshot.generation)
   assert.equal(boot.level, 'L0')
   assert.equal(boot.nonce, 'fixture-nonce')
+  assert.deepEqual(boot.workbench, { enabled: true, host: 'iframe', defaultView: 'chat', cardTextLimit: 8000, autoProjection: true })
   assert.equal(boot.wallpaper.url, undefined)
   assert.equal(boot.wallpaper.sidebarUrl, undefined)
 
@@ -31,6 +32,18 @@ test('first-frame rows put boot data first and add wallpaper style/html/script o
 
   const disabled = createFirstFrameRows({ ...options, config: { ...config, wallpaper: { ...config.wallpaper, enabled: false } } })
   assert.deepEqual(disabled.map(row => row.kind), ['global'])
+})
+
+test('workbench page escapes boot json and carries nonce + workbench config', () => {
+  const html = workbenchPage({
+    nonce: 'n<1',
+    revision: 3,
+    workbench: { enabled: true, host: 'iframe', defaultView: 'chat', cardTextLimit: 8000, autoProjection: true },
+  })
+  assert.equal(html.includes('globalThis.__AMPHOREUS_BOOT__='), true)
+  assert.equal(html.includes('"nonce":"n\\u003c1"'), true)
+  assert.equal(html.includes('n<1'), false)
+  assert.equal(html.includes('"cardTextLimit":8000'), true)
 })
 
 test('first-frame boot emits distinct main and sidebar wallpaper URLs when assetsRoot is configured', () => {

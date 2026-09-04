@@ -40,10 +40,39 @@ export interface PublicSuite {
   readonly diagnostics: readonly { readonly code: DiagnosticCode; readonly severity: 'info' | 'warn' | 'error'; readonly detail: string; readonly line?: number; readonly skill?: string }[]
 }
 
+export interface WorkbenchPublicConfig {
+  readonly enabled: boolean
+  readonly host: 'iframe' | 'native'
+  readonly defaultView: 'chat' | 'workbench'
+  readonly cardTextLimit: number
+  readonly autoProjection: boolean
+}
+
+export type WorkbenchStatus =
+  | { readonly kind: 'ready' }
+  | { readonly kind: 'disabled' }
+  | { readonly kind: 'unavailable'; readonly reason: string }
+
+export interface UnprojectableRecord {
+  readonly sessionId: string
+  readonly heroId: string | null
+  readonly title: string | null
+  readonly reason: string
+  readonly at: number
+}
+
+/** iframe 壳 <script> 注入的全局，形状比宿主页 __AMPHOREUS_BOOT__ 小。 */
+export interface WorkbenchBoot {
+  readonly nonce: string
+  readonly revision: number
+  readonly workbench: WorkbenchPublicConfig
+}
+
 export interface AmphoreusBoot {
   readonly revision: number
   readonly nonce: string
   readonly level: SuiteLevel | 'loading'
+  readonly workbench: WorkbenchPublicConfig
   readonly wallpaper: {
     readonly enabled: boolean
     readonly url?: string
@@ -63,12 +92,17 @@ export interface AmphoreusState {
   readonly observations: readonly ObservationRecord[]
   readonly suiteEvents: readonly SuiteEventRecord[]
   readonly canvas: readonly { readonly sessionId: string; readonly value: CanvasRecord }[]
+  readonly workbench: {
+    readonly status: WorkbenchStatus
+    readonly unprojectable: readonly UnprojectableRecord[]
+  }
   readonly effectiveConfig: {
     readonly wallpaper: { readonly enabled: boolean; readonly global: 'rotate' | 'fixed'; readonly globalIndex: number; readonly sidebarIndex: number; readonly perSeat: boolean; readonly darkMask: number; readonly lightMask: number; readonly surfaceAlpha: { readonly light: number; readonly dark: number } }
     readonly magazineMode: 'light' | 'full'
     readonly seatStyle: boolean
     readonly assetsConfigured: boolean
     readonly heroWorkspaceMode: 'seats' | 'off'
+    readonly workbench: WorkbenchPublicConfig
   }
 }
 

@@ -6,9 +6,10 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { z } from 'zod'
-import type { AmphoreusState, PublicSuite } from '../shared/api.ts'
+import type { AmphoreusState, PublicSuite, WorkbenchBoot, WorkbenchStatus } from '../shared/api.ts'
 import { GLOBAL_WALLPAPERS, heroVisualOf } from '../shared/heroes.ts'
 import type { AmphoreusConfig } from './config.ts'
+import { publicWorkbench } from './firstframe.ts'
 import { BindingSchema, CanvasSchema, MemorySchema, type AmphoreusStores } from './store.ts'
 import type { SuiteResolver } from './bridge.ts'
 import type { SuiteSnapshot } from './suite/types.ts'
@@ -44,6 +45,7 @@ export interface WebApiOptions {
   readonly nonce?: string
   readonly workbenchDir?: string
   readonly workbench?: WorkbenchStore
+  readonly workbenchStatus?: () => WorkbenchStatus
   readonly seatDirs?: readonly SeatDirRecord[]
 }
 
@@ -109,6 +111,7 @@ export class AmphoreusWebApi {
   readonly #resolver: SuiteResolver
   readonly #workbenchDir: string
   readonly #workbench: WorkbenchStore | undefined
+  readonly #workbenchStatus: () => WorkbenchStatus
   readonly #seatDirs: readonly SeatDirRecord[]
   readonly #sse = new SseHub()
 
@@ -119,6 +122,11 @@ export class AmphoreusWebApi {
     this.#resolver = options.resolver
     this.#workbenchDir = options.workbenchDir ?? WORKBENCH_DIR
     this.#workbench = options.workbench
+    this.#workbenchStatus = options.workbenchStatus ?? (() => (
+      this.#workbench === undefined
+        ? { kind: 'unavailable', reason: '工作台存储未初始化' }
+        : { kind: 'ready' }
+    ))
     this.#seatDirs = options.seatDirs ?? []
     this.nonce = options.nonce ?? randomBytes(24).toString('base64url')
   }
@@ -212,7 +220,11 @@ export class AmphoreusWebApi {
       }
       if (path === '/amphoreus/workbench/' || path === '/amphoreus/workbench/index.html') {
         if (!method(request, response, 'GET')) return
-        send(response, 200, 'text/html; charset=utf-8', workbenchPage(this.nonce))
+        send(response, 200, 'text/html; charset=utf-8', workbenchPage({
+          nonce: this.nonce,
+          revision: this.#resolver.current()?.generation ?? 0,
+          workbench: publicWorkbench(this.#config),
+        }))
         return
       }
       if (path.startsWith('/amphoreus/workbench/api/')) {
@@ -253,12 +265,17 @@ export class AmphoreusWebApi {
       observations: values(this.#stores.main.table('observations').entries()),
       suiteEvents: values(this.#stores.main.table('suite_events').entries()).sort((a, b) => b.at - a.at),
       canvas: [...this.#stores.canvas.table('canvas').entries()].map(([sessionId, value]) => ({ sessionId, value })),
+      workbench: {
+        status: this.#workbenchStatus(),
+        unprojectable: this.#workbench?.unprojectable() ?? [],
+      },
       effectiveConfig: {
         wallpaper: this.#config.wallpaper,
         magazineMode: this.#config.magazineMode,
         seatStyle: this.#config.seatStyle,
         assetsConfigured: this.#config.assetsRoot.trim() !== '',
         heroWorkspaceMode: this.#config.heroWorkspaceMode,
+        workbench: publicWorkbench(this.#config),
       },
     }
   }
@@ -346,9 +363,16 @@ export class AmphoreusWebApi {
    * to open, every route answers 503 so the iframe shows one clear error.
    */
   async #workbenchRoute(request: IncomingMessage, response: ServerResponse, path: string): Promise<void> {
+    const status = this.#workbenchStatus()
     const store = this.#workbench
-    if (store === undefined) {
-      json(response, 503, { error: '工作台存储不可用' })
+    if (status.kind !== 'ready' || store === undefined) {
+      json(response, 503, {
+        error: status.kind === 'disabled'
+          ? '工作台已在配置中关闭（workbench.enabled=false）'
+          : status.kind === 'unavailable'
+            ? status.reason
+            : '工作台存储不可用',
+      })
       return
     }
     try {
@@ -387,6 +411,7 @@ export class AmphoreusWebApi {
             }
           }).sort((left, right) => left.order - right.order),
           assetsConfigured,
+          unprojectable: store.unprojectable(),
         })
         return
       }
@@ -606,9 +631,9 @@ function contained(root: string, child: string): boolean {
   return rel === '' || (!rel.startsWith(`..${sep}`) && rel !== '..' && !isAbsolute(rel))
 }
 
-function workbenchPage(nonce: string): string {
-  const boot = JSON.stringify({ nonce }).replaceAll('<', '\\u003c')
-  return '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>翁法罗斯工作台</title><link rel="stylesheet" href="/amphoreus/workbench/styles.css"></head><body><div id="app"></div><script>globalThis.__AMPHOREUS_BOOT__=' + boot + '</script><script src="/amphoreus/workbench/app.js"></script></body></html>'
+export function workbenchPage(boot: WorkbenchBoot): string {
+  const serializedBoot = JSON.stringify(boot).replaceAll('<', '\\u003c')
+  return '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>翁法罗斯工作台</title><link rel="stylesheet" href="/amphoreus/workbench/styles.css"></head><body><div id="app"></div><script>globalThis.__AMPHOREUS_BOOT__=' + serializedBoot + '</script><script src="/amphoreus/workbench/app.js"></script></body></html>'
 }
 
 function redirect(response: ServerResponse, location: string): void {
