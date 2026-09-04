@@ -311,7 +311,7 @@
 - 偏离与理由：任务书用空数组同时表示“未初始化/用户清空”会丢合法空值，新增向后兼容 `quickPhrasesInitialized` sentinel；实机揭示 iframe remount 与 pagehide 可绕过 400ms timer，增加可等待串行 flush、keepalive revision header 与服务端本进程代次栅栏。64KiB 实测约容 864 条当前形状记录，不沿用“≥900”估算。提交短 SHA 按下一提交回填规则处理。
 - 遗留：无
 ## TB8 G12：「在 DSH 中打开」精确定位轮次 — 2026-09-04 21:38
-- commit: PENDING-TASK
+- commit: 9209aa9
 - 动手前契约核对：
   - `grep data-chat-anchor-key|data-chat-turn ChatNodeSeat.tsx` → `128:data-chat-anchor-key={routedNode.key}`、`131:data-chat-turn={turn}` PASS
   - `grep anchorSeq chat-nodes.ts` → `10:readonly anchorSeq: number`（另有 control/answer 字段）PASS
@@ -330,3 +330,19 @@
 - 人工断言：✓ turn 优先、anchor fallback；✓ 两类 selector 都排除 `[hidden]`；✓ 同/跨会话均保持官方 Tab 记忆语义；✓ 无高亮层、未改 ChatView；✓ canvas flush 先于 open-session；✓ 找不到目标与分页错误静默结束。
 - 偏离与理由：任务书伪码一次 await `loadThrough` 与 alpha.4 busy/no-op 契约冲突，改为受 8s 总截止约束的非阻塞重试；真实 ChatView 的初始自动到底会覆盖过早滚动，加入 120ms 稳定门和一次后帧复核；全局 DOM 查询增加 parent current 与模块级跨 remount 最新请求栅栏。
 - 遗留：真实 profile 当前没有已翻出初始窗口的超长会话；该分支由可控 busy/窗口外行为测试覆盖，当前与跨会话真实 DOM 定位均已通过。
+## TB9 G19：旧 Synapse 位置一次性折入 — 2026-09-04 21:56
+- commit: PENDING-TASK
+- 验收：
+  - `node --test tests/migrate-synapse.test.ts` → `tests 8; pass 8; fail 0; skipped 0` PASS（exit: `0`）
+  - `node --test tests/*.test.ts` → `tests 119; pass 118; fail 0; skipped 1; duration_ms 1766.1452` PASS（exit: `0`）
+  - `npm run typecheck && npm run build` → 无 TypeScript 诊断；client `86.41 kB`、host `152.03 kB` PASS（exit: `0`）
+  - `git diff --check -- . ':(exclude)BUILD-LOG.md'` → 无空白错误 PASS（exit: `0`）
+  - 独立只读终审与聚焦迁移/席位/全局并发测试 → `tests 25; pass 25; fail 0; skipped 0`；P0/P1/P2 均 `0`、可提交 PASS
+  - 真实 v4 夹具首次启动 → 目标画布出现 `session-…:turn-index:0`，输入 `(123.6,456.4)` 写为 `(124,456)`；仅 positions/collapsed/branchAnchors/updatedAt，无 messages/content；global `synapseMigratedFrom` 计数 `1`；stderr `0` bytes PASS
+  - 源文件身份 → SHA-256 `5C940B2BA5598ACDBA1652E50774C41D698BCE2CF3DA27B1176DF1CF64D03C4A`、mtime ticks `639241264244383445`，迁移前后完全不变；既有 S2 画布 SHA-256 `404B54A96B8D5FA71B1122605D99CE6614998C1C9CCAC9E0837F969DA453761F` 不变 PASS
+  - 第二次重启 → 目标画布 mtime ticks 保持 `639241264346978770`，没有重复写；浏览器 TA6 第一张卡位置 `left=124px, top=456px`，共 `6` 张卡 PASS
+  - 后续真实 Canvas 写 → legacy `turn-index:0` 与 canonical `turn:7` 均保留且变为 x=`144`，仍无正文；证明 TB7 hydrate/回写不丢迁移键 PASS
+  - 验收后逐字节恢复 `$DSH_HOME` 前态 → fixture synapse、marker、目标 TA6 canvas 均不存在；仅保留原 S2 canvas（x=`286`, y=`192`），quick phrases `[]/initialized=true`；服务运行、stderr `0` bytes PASS
+- 人工断言：✓ marker、源读取、existing 快照、逐条 PUT 与 marker 落盘以 stores.main 为键完整串行；✓ 后到调用进队列后重查 marker；✓ partial failure 不写 marker，重试只补缺失；✓ unsupported version 警告并记 marker；✓ ENOENT 静默；✓ 坐标有限性、严格 UUID、clamp/round 与去重闭合；✓ 启动先迁移后 ensureSeatDirs。
+- 偏离与理由：任务书正则 `/^session-[0-9a-f-]{36}$/i` 会接受错误连字符结构，采用与 Web API 一致的严格 UUID 分段正则；为防同一 stores 的并发启动重复迁移，除 global 字段级 RMW 队列外增加完整迁移事务队列。
+- 遗留：无
