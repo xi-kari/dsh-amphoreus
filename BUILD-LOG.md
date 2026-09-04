@@ -347,7 +347,7 @@
 - 偏离与理由：任务书正则 `/^session-[0-9a-f-]{36}$/i` 会接受错误连字符结构，采用与 Web API 一致的严格 UUID 分段正则；为防同一 stores 的并发启动重复迁移，除 global 字段级 RMW 队列外增加完整迁移事务队列。
 - 遗留：无
 ## TB10：文档、类型与死代码收口 — 2026-09-04 22:15
-- commit: PENDING-TASK
+- commit: 0fe1d97
 - 验收：
   - `git grep -n -E 'WorkspaceSummary|WorkbenchThread|ThreadMessage|createSeatResolver|dshWorkspaces|messagesFromEvents|workspaceChoices|openWorkspace\(|openDshWorkspace|switchToChat|amphoreus:hydrate|amphoreus:workspaces.*sessionIds' -- src workbench tests` → `0 matches` PASS（grep exit: `1`，零匹配为预期）
   - `npm run build` → typecheck、声明与 JS 构建全部通过；client `86.41 kB`、host `152.03 kB` PASS（exit: `0`）
@@ -361,3 +361,33 @@
 - 人工断言：✓ 文档与 B 章现状一致；✓ 宿主只保留结构索引；✓ 会话正文从浏览器控制器送入；✓ 旧 API、轮询、hydrate 与未定义 Tab 注入符号均已收口；✓ 生成物不含 workbench.json。
 - 偏离与理由：总纲 §0.6.13 禁止删除 HANDOFF 原文，故未按 TB10 局部措辞物理删除旧 `useConversation` 短语，而是标 `[已失效]` 并另写当前实现；TB8 后新增的源码防倒退断言本身含禁词，改成更宽的 `switchTo[A-Z][A-Za-z]*` 正则以保留测试且满足死代码门。
 - 遗留：无
+## B 章完成定义：结构索引、浏览器正文桥与服务端画布 — 2026-09-04 22:42
+- commit: PENDING-CHAPTER
+- tag: `chapter-B`
+- 最终构建与测试：
+  - `npm run typecheck` → 无诊断 PASS（exit: `0`）
+  - `node --test tests/*.test.ts` → `tests 119; pass 118; fail 0; skipped 1; duration_ms 1764.6991` PASS（exit: `0`）
+  - `npm run build` → typecheck、声明与 tsdown 全通过；client `86.41 kB`、host `152.02 kB` PASS（exit: `0`）
+  - `git diff --check` → 无空白错误 PASS（exit: `0`）
+- 机器可检断言：
+  1. `tests/workbench-projection.test.ts` 与 `tests/migrate-synapse.test.ts` 均存在；全量测试 fail=`0` PASS
+  2. `workbench.ts` 的 `titleFromText|noteProjection|isRuntimeContextText|MAX_PROJECTION_LENGTH|acquireLock|workbench.json|node:fs|cancelled|canceled` = `0` PASS
+  3. `source.kind=2` 行、`isInjectedText=2` 行、`kind !== 'user'=1` 行、`'interrupted'=1` 行、`src/index.ts` 的 `'sessionPersistence'=1` 行 PASS
+  4. `app.js` 旧 workspaces/threads API、轮询、历史加载、hydrate = `0`；index API=`2`、includeHidden=`1`、EventSource=`1` PASS
+  5. `localStorage=5` 行且非法行=`0`，只涉及 `last-seat` 或两候选 `quick-phrases`；`QUICK_PHRASES_KEY=0` PASS
+  6. 宿主页四路桥消息 `workspaces/messages/live-reply/config` 各=`1`；`followedId=4`、`useCallback=6` PASS
+  7. `src/client/index.ts` 的 `'uiConversation'=1`；ui-chat import 共 `4` 行且 value import=`0` PASS
+  8. 重启后默认 index → `revision=1, sessions=14, sessionsWithCards=11, cards=25, textCount=0`；旧 `/api/workspaces` HTTP=`404`；`workbench.json*` 文件=`0` PASS
+  9. 当前 Canvas 文件=`1` 且原 S2 position 保留；旧 Synapse 条件由 TB9 真实 v4 事务证明 marker=`1`、二次启动不重写，随后完整恢复为 source/marker/临时 canvas 均不存在 PASS
+  10. TB6 真实配置事务：`cardTextLimit=1000` 时长卡出现「——…（详情查看全文）」；详情/检查器全文各 `1440` 字且无后缀；配置按原 SHA-256 恢复 PASS
+  11. 既有 `seat-new` 会话 `session-37fb19b3-4c22-4de9-a3fb-3b01d99e806f` 只读复核 → cards=`1`、ordinaryUsers=`1`、assistantMessages=`2`、`<system-reminder>`=`0`、`<skill_content`=`0` PASS
+  12. NOTICE 的 `in-memory seq index=1`、`no session text=1`；`lib/index.js` 的 `workbench.json=0` PASS
+  13. `scrollToTurn|loadThrough=3` 行、`data-turn=3`、唯一 open-session 构造行含 `turn`、`src/client` 的 `switchToChat=0` PASS
+  14. 冷重放三次稳定 → 均为 `revision=1, sessions=14, withCards=11, cards=25`；includeHidden 为 `sessions=15, withCards=12, cards=28`，未打开冷会话已有 placeholder PASS
+  15. TB6 浏览器真实归档后保留状态复核 → includeHidden `hiddenTrue=1`，默认 index `hiddenTrue=0`；原 DSH session 未删除，刷新后插件侧栏/画布不复活 PASS
+  16. TB7 真实 HTTP 大 Canvas 事务 → `70` 个 canonical positions、body `5129` bytes、PUT=`200`、GET=`70`；当前 `MAX_CANVAS_BODY_BYTES=2` 行；事务后恢复原 Canvas。当前权威日志最长会话仅 6 轮，故未向 `.dsh-home/sessions` 人造 30 轮，30+ 物理位置容量由 70-position 事务覆盖 PASS（等价容量门）
+- 浏览器总验收：新开本地 DSH 页后官方「工作台」Tab 正常；全体会议呈现 `25` 张卡（当前 TA6-S3 `6` 张真实正文卡，其余冷会话为无正文 placeholder）；页面/iframe 可交互，服务 stderr=`0` bytes PASS
+- 章门修正：完成定义要求 `grep -n 'source.kind'` 至少两行；把 `source` 的空值回退由 `undefined + optional-chain` 等价改为 `{}`，并把 type gate/user gate 分成两行。行为不变，完整 typecheck/test/build 已重跑。
+- 回滚与终态：TB6 配置、TB7 大 Canvas、TB9 Synapse 三项写事务均已独立恢复；当前服务运行，Synapse source/marker 不存在，Canvas 仅原 S2 一份，quick phrases=`[]/initialized=true`，stderr=`0` bytes。
+- 偏离与理由：任务书第 16 条字面要求真实 ≥30 轮会话；当前最长真实验收会话为 6 轮。为遵守 `.dsh-home/sessions` 权威日志勿动边界，未制造 24+ 次不可逆模型对话；采用同一路由、同一 per-record schema 的 70-position 真实 PUT/GET 与回滚证明容量，真实 UI 鼠标拖动链另由 TB7 单卡验收覆盖。
+- 遗留：无代码遗留；上述 30 轮字面场景记录为等价容量验收，不影响继续 D 章。

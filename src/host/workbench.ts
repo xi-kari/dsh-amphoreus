@@ -301,8 +301,9 @@ export function projectableEvent(event: ProjectableEvent): { kind: ProjectionKin
   const data = event.data as Record<string, unknown> | undefined
   switch (event.type) {
     case 'user/message': {
-      const source = (data?.source ?? undefined) as { kind?: unknown } | undefined
-      if (typeof source?.kind === 'string' && source.kind !== 'user') return null
+      const source = (data?.source ?? {}) as { kind?: unknown }
+      if (typeof source.kind === 'string'
+        && source.kind !== 'user') return null
       const text = contentText(data?.content)
       if (isInjectedText(text)) return null
       return text.trim() === '' ? null : { kind: 'user' }
