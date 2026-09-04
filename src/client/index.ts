@@ -14,7 +14,7 @@ import { en, NS, zh, type AmphoreusKey } from './locales.ts'
 import { AmphoreusSettings } from './settings.tsx'
 import { AmphoreusClientModel } from './state.ts'
 import { seedConversationView } from './tabmemory.ts'
-import { readDswTokens, registerGlobalTheme } from './theme.ts'
+import { createSeatLayer, readDswTokens, registerGlobalTheme } from './theme.ts'
 import { WorkbenchView, type WorkbenchViewInjected } from './workbench.tsx'
 import { createWorkspacesSource } from './workspaces-source.ts'
 import { HERO_VISUALS } from '../shared/heroes.ts'
@@ -29,13 +29,15 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 export const inject = ['slots', 'locale', 'theme', 'sessions', 'uiConversation']
 
 export function apply(ctx: ClientContext): void {
+  const model = new AmphoreusClientModel()
   const themeBridge = {
     read: readDswTokens,
     isDark: () => ctx.theme.getTheme().active.colorScheme === 'dark',
     subscribe: (listener: () => void) => ctx.on('theme/change', () => listener()),
   }
+  const seatLayer = createSeatLayer(ctx, model)
+  const setSeat = seatLayer.apply.bind(seatLayer)
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'amphoreus: dictionaries')
-  const model = new AmphoreusClientModel()
   const workspaces = createWorkspacesSource(
     ctx.sessions.list as unknown as Parameters<typeof createWorkspacesSource>[0],
     model,
@@ -43,6 +45,7 @@ export function apply(ctx: ClientContext): void {
   const bootWorkbench = window.__AMPHOREUS_BOOT__?.workbench
   const workbenchEnabled = bootWorkbench?.enabled ?? true
   ctx.effect(() => registerGlobalTheme(ctx, model), 'amphoreus: global theme')
+  ctx.effect(() => () => seatLayer.dispose(), 'amphoreus: seat theme')
   ctx.effect(async () => {
     await model.start()
     return () => model.close()
@@ -117,6 +120,7 @@ export function apply(ctx: ClientContext): void {
         sessionFace: sessionId => sessionAdapter.binding(sessionId as SessionId)?.session,
         config: model,
         theme: themeBridge,
+        setSeat,
         seatSkillOf: heroId => skillByHero.get(heroId),
         bindSeat: async (sessionId, skillName) => {
           const nonce = model.getSnapshot().state?.nonce ?? window.__AMPHOREUS_BOOT__?.nonce

@@ -75,6 +75,12 @@ export interface ThemeTokensMessage {
   readonly dark: boolean
 }
 
+export interface SeatChangedMessage {
+  readonly source: 'dsh-amphoreus'
+  readonly type: 'amphoreus:seat-changed'
+  readonly heroId: string | null
+}
+
 export interface AmphoreusBoot {
   readonly revision: number
   readonly nonce: string

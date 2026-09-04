@@ -45,6 +45,7 @@ export interface WorkbenchViewInjected {
     readonly isDark: () => boolean
     readonly subscribe: (listener: () => void) => () => void
   }
+  readonly setSeat: (heroId: string | null) => void
   /** PUT a seat binding before the first prompt (host webapi, nonce-gated). */
   readonly bindSeat: (sessionId: string, skillName: string) => Promise<void>
   readonly seatSkillOf: (heroId: string) => string | undefined
@@ -63,6 +64,7 @@ interface BridgeMessage {
   seq?: number
   turn?: number
   seatHeroId?: string
+  heroId?: string | null
   defer?: boolean
   activate?: boolean
 }
@@ -75,6 +77,7 @@ export function WorkbenchView({
   sessionFace,
   config,
   theme,
+  setSeat,
   bindSeat,
   seatSkillOf,
   openView,
@@ -292,6 +295,9 @@ export function WorkbenchView({
               return
             case 'amphoreus:map-opened':
               return
+            case 'amphoreus:seat-changed':
+              setSeat(typeof data.heroId === 'string' && data.heroId !== '' ? data.heroId : null)
+              return
             case 'amphoreus:request-current': {
               const current = sessions.list.getSnapshot().current
               reply({ type: 'amphoreus:current-session', session: current === undefined ? null : summaryOf(current) })
@@ -392,6 +398,7 @@ export function WorkbenchView({
     sessions,
     bindSeat,
     seatSkillOf,
+    setSeat,
     openView,
     completeViewRequest,
     pushWorkspaces,

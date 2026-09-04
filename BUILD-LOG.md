@@ -418,7 +418,7 @@
 - 偏离与理由：在任务书双 rAF 基础上增加 active fence 和逐帧取消集合，避免组件卸载或 theme 引用换代后向旧 iframe 发送过期 token。
 - 联合回填（TD3）：浏览器 fresh load 已确认 iframe root 收到 token；light→dark→跟随系统/light 均与宿主 body 同值，TD2 浏览器依赖已闭合。
 ## TD3 G2：iframe 主题接收与画布颜色变量化 — 2026-09-04 23:02
-- commit: PENDING-TASK
+- commit: 0e0ab9d
 - 修改前基线：app.js SHA-256 `5E045B137AFFA87CF1ECF263235E544067A7132CA50DD2F1AC4473ADB66134B6`；styles.css SHA-256 `4CD52988C8BED0C2B5BA5F17891B830FC31A146B8C3BCECCA6556A860A9B440A`；CSS `534` 行、DSW var=`4`、dark selector occurrences=`187`（`162` 行）、`#3478f6=30`、blue fallback=`0`、raw hex=`518`、thread-color important=`1`；卡片 `310×276`。
 - 验收：
   - `node --check workbench/app.js` → 无输出 PASS（exit: `0`）
@@ -436,4 +436,24 @@
   - 点回原「跟随系统」后约 `180ms` → host 与 iframe 全部恢复上述 light 值；设置对话框关闭，原用户外观选择已恢复；服务 PID `67084` running、HTTP `200`、stderr=`0` bytes PASS
 - 人工断言：✓ theme-token 消息同时校 parent WindowProxy、同源与 source marker；✓ 只收 alias/specific 且 entries≤87；✓ 值先做字符/长度门，再拒绝 URL/var/image/gradient 并用 `CSS.supports('color', …)`；✓ malformed generation 保留上一代；✓ 只删除 receiver 自有 token；✓ 旧布尔 receiver 保留；✓ 所有 fallback 完整保留；✓ 暗色只由宿主 token 值驱动。
 - 偏离与理由：任务书给出的 CSS 文件头注释含内嵌 `*/`，改写为等义合法注释；接收器增加 parent、87-entry、纯 color 语义门；滚动条采用已桥接的专用 scrollbar token；这些收口不改变协议目标。
+- 遗留：无。
+## TD4：逐席 token 合成层与 104 项对比度门 — 2026-09-04 23:18
+- commit: PENDING-TASK
+- 验收：
+  - `node --test tests/seat-theme.test.ts` → `tests 5; pass 5; fail 0; skipped 0; duration_ms 124.6176` PASS（exit: `0`）
+  - `node scripts/check-contrast.ts` → 数据行=`104`（13×2×4）、FAIL=`0` PASS（exit: `0`）
+  - 四类最低实测 → primary/layer1=`11.786≥4.5`、secondary/layer1=`7.206≥4.5`、foreground/button=`4.634≥4.5`、brand/layer1=`3.005≥3.0` PASS
+  - 每席 light/dark 各生成同一组 `38` 个非空 token，全部属于 TD1 allowlist；state/scrollbar/toast/tooltip/mask/skeleton 禁止 token=`0` PASS
+  - `node --check workbench/app.js` 与 `npm run typecheck` → 无诊断 PASS（各 exit: `0`）
+  - `npm test` → `tests 137; pass 136; fail 0; skipped 1; duration_ms 1613.6602` PASS（exit: `0`）
+  - `npm run build` → client `101.85 kB`、host `152.02 kB` PASS（exit: `0`）
+  - 静态门 → `post('amphoreus:seat-changed'` 精确 `3` 处；setSeat 顶部 bind=`1`；生产 TD4 文件 `!important=0`；TD3 receiver 回归全通过；`git diff --check` 无空白错误 PASS
+- 浏览器验收：
+  - 门户全局层 → host `dataset.amphoreusSeat=null`、brand=`rgb(138, 104, 28)`、bg=`rgba(244, 242, 248, 0.22)` PASS
+  - 进「阿格莱雅」席/light → host 与 iframe 同为 brand=`rgb(169, 137, 74)`、bg=`rgba(246, 241, 227, 0.22)`、label=`rgb(25, 21, 14)`、sidebar=`rgba(246, 241, 227, 0.1)`；host dataset=`aglaea` PASS
+  - 席内切 DSH 深色 → host 与 iframe 同为 brand=`rgb(229, 197, 133)`、bg=`rgba(46, 38, 24, 0.4)`、label=`rgb(250, 247, 240)`；iframe theme=`dark` PASS
+  - 切回原「跟随系统」并回门户 → brand 恢复 `rgb(138, 104, 28)`、bg 恢复 `rgba(244, 242, 248, 0.22)`、dataset 删除；进「昔涟」席仍保持同一全局值且 dataset 为空 PASS
+  - 最终浏览器恢复「全体会议」与原系统外观；服务 PID `61248` running、HTTP `200`、stderr=`0` bytes PASS
+- 人工断言：✓ light/dark 合成方向按 palette mode；✓ 同 source 先 override 再调用旧 disposer，更新无全局色闪隙；✓ seatStyle 关闭只清 layer 并保留 selected intent，重新开启可恢复；✓ Cyrene/null/未知席只清层、不永久退订；✓ model 只有 seatStyle/surfaceAlpha 变化时重算；✓ iframe 只上报 heroId，不自行合成 token。
+- 偏离与理由：任务书 `SeatSchemeInput` 仅有当前 `base`，但 light ink 需要 `darkBase`、dark ink 需要 `lightBase`，数学上信息不足；新增 `oppositeBase` 精确表达反极性底色。`seatContrastReport(hero)` 无 alpha 参数，静态审计固定使用配置默认 `.22/.4` 并写明，运行时仍使用 live alpha。
 - 遗留：无。

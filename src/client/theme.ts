@@ -1,6 +1,8 @@
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type { ThemeTokenOverrides } from '@deepseek-ai/dsh-client-ui-theme/client'
+import { heroVisualById } from '../shared/heroes.ts'
 import { DSW_BRIDGED_TOKENS } from '../shared/tokens.ts'
+import { seatThemeTokens, shouldApplySeatLayer } from './seat-theme.ts'
 import type { AmphoreusClientModel } from './state.ts'
 
 const LIGHT_BASE = [244, 242, 248] as const
@@ -91,6 +93,84 @@ export function registerGlobalTheme(ctx: ClientContext, model: AmphoreusClientMo
     delete document.body.dataset.amphoreusSuite
     delete document.body.dataset.amphoreusWallpaper
   }
+}
+
+export interface SeatLayer {
+  apply(heroId: string | null): void
+  current(): string | null
+  dispose(): void
+}
+
+export function createSeatLayer(ctx: ClientContext, model: AmphoreusClientModel): SeatLayer {
+  let selectedHeroId: string | null = null
+  let appliedKey = ''
+  let disposeLayer = () => {}
+  let disposed = false
+
+  const clearLayer = (): void => {
+    disposeLayer()
+    disposeLayer = () => {}
+    appliedKey = ''
+    delete document.body.dataset.amphoreusSeat
+  }
+
+  const reconcile = (): void => {
+    if (disposed) return
+    const config = model.getSnapshot().state?.effectiveConfig
+    const heroId = selectedHeroId
+    if (config === undefined || heroId === null || !shouldApplySeatLayer(heroId, config.seatStyle)) {
+      clearLayer()
+      return
+    }
+    const visual = heroVisualById(heroId)
+    if (visual === undefined) {
+      clearLayer()
+      return
+    }
+    const { light, dark } = config.wallpaper.surfaceAlpha
+    const key = `${heroId}/${light}/${dark}`
+    if (key === appliedKey) {
+      document.body.dataset.amphoreusSeat = heroId
+      return
+    }
+    const nextDispose = ctx.theme.overrideTokens(
+      'dsh-amphoreus/seat',
+      seatThemeTokens(visual, { light, dark }),
+    )
+    const previousDispose = disposeLayer
+    disposeLayer = nextDispose
+    appliedKey = key
+    previousDispose()
+    document.body.dataset.amphoreusSeat = heroId
+  }
+
+  const configKey = (): string => {
+    const config = model.getSnapshot().state?.effectiveConfig
+    if (config === undefined) return 'loading'
+    return `${config.seatStyle}/${config.wallpaper.surfaceAlpha.light}/${config.wallpaper.surfaceAlpha.dark}`
+  }
+  let lastConfigKey = configKey()
+  const unsubscribe = model.subscribe(() => {
+    const nextConfigKey = configKey()
+    if (nextConfigKey === lastConfigKey) return
+    lastConfigKey = nextConfigKey
+    reconcile()
+  })
+
+  const apply = (heroId: string | null): void => {
+    if (disposed) return
+    selectedHeroId = heroId
+    reconcile()
+  }
+  const current = (): string | null => selectedHeroId
+  const dispose = (): void => {
+    if (disposed) return
+    disposed = true
+    unsubscribe()
+    selectedHeroId = null
+    clearLayer()
+  }
+  return { apply, current, dispose }
 }
 
 function rgba(rgb: readonly [number, number, number], alpha: number): string {

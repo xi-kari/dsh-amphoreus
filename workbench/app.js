@@ -1482,6 +1482,7 @@ async function enterSeat(workspaceId, sourceCard) {
   const flight = sourceCard instanceof HTMLElement ? beginCardFlight(sourceCard) : null
   state.cardFlightPending = flight !== null
   state.seatId = workspaceId
+  post('amphoreus:seat-changed', { heroId: workspaceId.startsWith('seat:') ? workspaceId.slice(5) : null })
   state.mode = 'canvas'
   state.activeId = null
   state.selectedCardId = null
@@ -1537,6 +1538,7 @@ function seatTitleOf(workspaceId) {
 function showPortal() {
   state.mode = 'portal'
   state.seatId = null
+  post('amphoreus:seat-changed', { heroId: null })
   state.workspace = null
   state.activeId = null
   state.selectedCardId = null
@@ -2121,6 +2123,7 @@ function completeMapOpen() {
   if (state.mode === 'thread') state.mode = 'canvas'
   render()
   void refreshIndex().catch(setError)
+  post('amphoreus:seat-changed', { heroId: typeof state.seatId === 'string' && state.seatId.startsWith('seat:') ? state.seatId.slice(5) : null })
   window.requestAnimationFrame(() => post('amphoreus:map-ready'))
   window.setTimeout(() => post('amphoreus:map-ready'), 240)
 }
