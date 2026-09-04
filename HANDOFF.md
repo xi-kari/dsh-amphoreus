@@ -122,3 +122,67 @@ dsh-amphoreus/
 - 素材：用户原图在 `../` 七个子目录（清单 `../设计底账/04`）；套件自带 webp 素材在 `D:\研究\amphoreus-skill-suite\assets\`（cards/layers/symbols/stickers/mag/meeting，英文 id 命名，可直接作 assetsRoot 的一部分）。杂志 zip 解包目录 `%TEMP%\amphoreus-mag\` 可能已丢，需要时按 06 附录重建。
 - `/tmp/refs/dsh-synapse` 克隆可能已丢；所需内容已在 `workbench/` 与 `reference/`。
 - 记忆文件 `C:\Users\cangm\.claude\projects\D--DeepSeek-Harness-deepseek----\memory\` 有工作区布局、构建坑、目标、硬约束、本次构建状态五条。
+
+## 7 M1 原样接入事后核对记录
+
+### 7.1 事实
+
+2026-09-04 对 profile `web` 的依赖清单与锁文件取证，原版 `dsh-synapse@0.4.1` 未安装过：
+
+```text
+D:/DeepSeek Harness/.dsh-home/profiles/web/package.json:0
+D:/DeepSeek Harness/.dsh-home/profiles/web/pnpm-lock.yaml:0
+```
+
+M1「原样接入验证」没有执行；2026-09-03 的建设直接以 vendoring 取代了该步骤。Vendoring 的来源文件与去向见 §4 和 [NOTICE](NOTICE)。
+
+### 7.2 替代验证（2026-09-04 实测）
+
+Vendoring 版 `/amphoreus/workbench/` 返回 200；iframe 在 `conversation.view` 内加载；门户渲染 13 张卡片；进席以及画布、详情视图、检查器均可用。依据见 [AUDIT-2026-09-04.md](AUDIT-2026-09-04.md) §2 的 WB-04／WB-06／WB-08／WB-51 和 §5「浏览器实测」。
+
+### 7.3 消息对照表
+
+#### iframe → 宿主
+
+| 原 `synapse:*` 名 | `amphoreus:*` 名 | 状态 |
+|---|---|---|
+| `synapse:map-ready` | `amphoreus:map-ready` | 工作 |
+| `synapse:request-current` | `amphoreus:request-current` | 工作 |
+| `synapse:create-session` | `amphoreus:create-session` | 工作 |
+| `synapse:send-message` | `amphoreus:send-message` | 工作 |
+| `synapse:fork-session` | `amphoreus:fork-session` | 工作 |
+| `synapse:open-session` | `amphoreus:open-session` | 本章修复 |
+| `synapse:activate-session` | `amphoreus:activate-session` | 工作 |
+| `synapse:close` | `amphoreus:close` | 本章修复 |
+
+- `amphoreus:create-session` 使用字段 `seatHeroId`；D-E 顺序待 G13 章。
+- `amphoreus:open-session` 的本章修复让同一会话切回「对话」Tab；`seq` 定位待 G12 章。
+- `amphoreus:close` 的本章修复由宿主调用 `openView('chat')`。
+
+#### 宿主 → iframe
+
+| 原 `synapse:*` 名 | `amphoreus:*` 名 | 状态 |
+|---|---|---|
+| `synapse:current-session` | `amphoreus:current-session` | 工作 |
+| `synapse:map-opened` | `amphoreus:map-opened` | 工作 |
+| `synapse:created-session` | `amphoreus:created-session` | 工作 |
+| `synapse:forked-session` | `amphoreus:forked-session` | 工作 |
+| `synapse:message-sent` | `amphoreus:message-sent` | 工作 |
+| `synapse:bridge-error` | `amphoreus:bridge-error` | 工作 |
+| `synapse:workspaces` | `amphoreus:workspaces` | 未接线 |
+| `synapse:live-reply` | `amphoreus:live-reply` | 未接线 |
+| `synapse:theme` | `amphoreus:theme` | 未接线 |
+
+- `amphoreus:workspaces` 的宿主端从不发送，`workbench/app.js` 接收端是死代码。
+- `amphoreus:live-reply` 待 G6 章接线；`amphoreus:theme` 待 G2 章接线。
+
+#### 已删除的原接口
+
+- `POST /synapse/api/sessions/sync`
+- `/synapse/api/messages`
+
+替代物见 [AUDIT-2026-09-04.md](AUDIT-2026-09-04.md) G8／G14。
+
+### 7.4 结论
+
+基底可运行已由 vendoring 版实证；不回头重装原包。

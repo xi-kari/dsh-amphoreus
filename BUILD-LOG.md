@@ -114,7 +114,7 @@
 - 遗留：无
 
 ## TA9 README 真实化 + HANDOFF 顶部过时声明 — 2026-09-04 16:32
-- commit: PENDING-TA9
+- commit: b1eac50
 - 验收：
   - `grep -c '骨架阶段' README.md` → `0` PASS（exit: `1`，零匹配为预期）
   - `grep -c 'workbench.host\|host' README.md` → `1` PASS（exit: `0`）
@@ -126,4 +126,18 @@
   - `git diff --cached --check` → `无输出` PASS（exit: `0`）；HANDOFF diff 仅新增第 3–4 行，原文零删除。
 - 人工断言：✓ README 反映 A 章当时真实能力与未完成 G 项；✓ 开发/安装/边界/致谢结构完整；✓ HANDOFF 旧内容全部保留，新引用块与原引用块以空行隔开。
 - 偏离与理由：实现先在含 TA8 的隔离 worktree 完成，再以 `cherry-pick --no-commit` 合入主线；提交短 SHA 按下一提交回填规则处理。
+- 遗留：无
+
+## TA10 G20：HANDOFF §7 M1 原样接入事后核对 — 2026-09-04 16:33
+- commit: PENDING-TA10
+- 验收：
+  - `grep -c dsh-synapse profile/web/package.json profile/web/pnpm-lock.yaml` → 两行均 `:0` PASS（grep exit: `1`，零匹配为预期）
+  - iframe 消息取证 → `activate-session 3; bridge-error 1; create-session 1; created-session 1; current-session 3; fork-session 1; forked-session 1; live-reply 1; map-opened 1; map-ready 1; message-sent 1; open-session 2; request-current 1; send-message 3; theme 1; workspaces 1`（空名忽略）PASS
+  - 宿主页消息取证 → `activate-session 1; bridge-error 1; close 2; create-session 2; created-session 1; current-session 2; fork-session 1; forked-session 1; map-opened 2; map-ready 1; message-sent 1; open-session 2; request-current 1; send-message 1` PASS
+  - `grep -c '^## 7' HANDOFF.md` → `1`；`synapse:close|amphoreus:close` 行数 → `2` PASS
+  - 消息对照表 → `17` 行；状态白名单外 → `0`；五个 localStorage 键误入 → `0` PASS
+  - `git diff --cached --check` → `无输出` PASS（exit: `0`）；`reference/` 零改动。
+  - 替代运行态证据：`/amphoreus/workbench/` 已返回 `200`；浏览器 `conversation.view` 内 iframe 加载、门户 `13` 席、画布/详情/检查器均可用 PASS
+- 人工断言：✓ §7 明确记录原版未装、M1 被 vendoring 替代；✓ 工作/未接线/本章修复/后续章口径按实时 grep 填；✓ 结论不要求回装原包。
+- 偏离与理由：TA10 先在隔离 worktree取证并成稿，再以 `cherry-pick --no-commit` 合入含 TA9 顶部引用的主线后重新跑实时取证；提交短 SHA 按下一提交回填规则处理。
 - 遗留：无
