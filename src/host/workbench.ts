@@ -70,6 +70,7 @@ export class ProjectionIndex {
   readonly #listeners = new Set<(sessionIds: readonly string[]) => void>()
   readonly #currentTurns = new Map<string, number>()
   readonly #unprojectable = new Map<string, UnprojectableRecord>()
+  #hideSerial: Promise<void> = Promise.resolve()
   #dirty = new Set<string>()
   #timer: NodeJS.Timeout | null = null
   #revision = 0
@@ -94,6 +95,12 @@ export class ProjectionIndex {
   }
 
   async hide(sessionId: string): Promise<{ hidden: string[]; revision: number }> {
+    const operation = this.#hideSerial.then(() => this.#hideNow(sessionId))
+    this.#hideSerial = operation.then(() => {}, () => {})
+    return operation
+  }
+
+  async #hideNow(sessionId: string): Promise<{ hidden: string[]; revision: number }> {
     if (!this.#entries.has(sessionId)) throw new NotFoundError('会话不在索引中')
     const hidden = [sessionId]
     const seen = new Set(hidden)
@@ -167,7 +174,23 @@ export class ProjectionIndex {
 
   #ensure(session: ProjectableSession): IndexEntry {
     const current = this.#entries.get(session.id)
-    if (current !== undefined) return current
+    if (current !== undefined) {
+      let changed = false
+      if (session.header?.parentSession !== undefined && current.parentSessionId !== session.header.parentSession) {
+        current.parentSessionId = session.header.parentSession
+        changed = true
+      }
+      if (session.header?.cwd !== undefined && current.cwd !== session.header.cwd) {
+        current.cwd = session.header.cwd
+        changed = true
+      }
+      if (session.inheritedEventCount !== undefined && current.inheritedCount !== session.inheritedEventCount) {
+        current.inheritedCount = session.inheritedEventCount
+        changed = true
+      }
+      if (changed) this.#markDirty(session.id)
+      return current
+    }
     const entry: IndexEntry = {
       sessionId: session.id,
       title: null,
@@ -243,7 +266,9 @@ export class ProjectionIndex {
     const sessionIds = [...this.#dirty]
     this.#dirty = new Set()
     this.#revision++
-    for (const listener of this.#listeners) listener(sessionIds)
+    for (const listener of this.#listeners) {
+      try { listener(sessionIds) } catch { /* Observers cannot reverse a completed index mutation. */ }
+    }
   }
 
   #view(entry: IndexEntry, hidden: ReadonlySet<string>): SessionIndex {
@@ -254,8 +279,19 @@ export class ProjectionIndex {
       forks: [...this.#entries.values()]
         .filter(candidate => candidate.parentSessionId === entry.sessionId)
         .map(candidate => ({ childSessionId: candidate.sessionId, atSeq: candidate.inheritedCount - 1 })),
-      hidden: hidden.has(entry.sessionId),
+      hidden: this.#isHidden(entry, hidden),
     }
+  }
+
+  #isHidden(entry: IndexEntry, hidden: ReadonlySet<string>): boolean {
+    let sessionId: string | null = entry.sessionId
+    const seen = new Set<string>()
+    while (sessionId !== null && !seen.has(sessionId)) {
+      if (hidden.has(sessionId)) return true
+      seen.add(sessionId)
+      sessionId = this.#entries.get(sessionId)?.parentSessionId ?? null
+    }
+    return false
   }
 }
 

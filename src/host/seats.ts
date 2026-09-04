@@ -1,5 +1,5 @@
 import { heroVisualOf } from '../shared/heroes.ts'
-import type { AmphoreusDomain, AmphoreusGlobal, SeatRecord, SuiteEventRecord } from './store.ts'
+import { updateAmphoreusGlobal, type AmphoreusDomain, type AmphoreusGlobal, type SeatRecord, type SuiteEventRecord } from './store.ts'
 import type { CardName, SuiteSnapshot } from './suite/types.ts'
 
 export interface RenameHint {
@@ -147,7 +147,14 @@ export async function reconcileSeats(
     await seats.put(put.key, put.value)
     counts[put.change]++
   }
-  if (plan.globalChanged) await domain.global.set(plan.global)
+  if (plan.globalChanged) {
+    await updateAmphoreusGlobal(domain, current => ({
+      ...current,
+      dataVersion: plan.global.dataVersion,
+      seeded: current.seeded || plan.global.seeded,
+      suite: plan.global.suite,
+    }))
+  }
   const events = domain.table('suite_events')
   let sequence = 0
   for (const event of plan.events) {

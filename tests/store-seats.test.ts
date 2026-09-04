@@ -8,6 +8,8 @@ import {
   CanvasSchema,
   INITIAL_GLOBAL,
   SeatSchema,
+  updateAmphoreusGlobal,
+  type AmphoreusDomain,
   type SeatRecord,
 } from '../src/host/store.ts'
 import { parseSuite, type SuiteTextFile } from '../src/host/suite/parse.ts'
@@ -28,6 +30,27 @@ test('storage domains expose the required single and per-record table layouts', 
   }).success, true)
   assert.equal(CanvasSchema.safeParse({ positions: {}, collapsed: [], branchAnchors: {}, updatedAt: 1 }).success, true)
   assert.deepEqual(INITIAL_GLOBAL.workbench, { hiddenSessionIds: [] })
+})
+
+test('global updates serialize read-modify-write across independent fields', async () => {
+  let current = structuredClone(INITIAL_GLOBAL)
+  const domain = {
+    global: {
+      get: () => current,
+      set: async (next: typeof current) => {
+        await new Promise(resolve => setTimeout(resolve, 5))
+        current = next
+      },
+    },
+  } as unknown as AmphoreusDomain
+
+  await Promise.all([
+    updateAmphoreusGlobal(domain, global => ({ ...global, workbench: { hiddenSessionIds: ['session-a'] } })),
+    updateAmphoreusGlobal(domain, global => ({ ...global, prefs: { ...global.prefs, lastSeat: 'aglaea' } })),
+  ])
+
+  assert.deepEqual(current.workbench.hiddenSessionIds, ['session-a'])
+  assert.equal(current.prefs.lastSeat, 'aglaea')
 })
 
 test('seat reconciliation creates every fictional card once with deterministic unknown-card order', () => {

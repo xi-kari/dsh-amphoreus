@@ -166,6 +166,39 @@ test('projection index coalesces change notifications for 800ms', async () => {
   dispose()
 })
 
+test('concurrent hides are serialized and hidden ancestors suppress later descendants', async () => {
+  const hidden = new DelayedHiddenStore()
+  const index = new ProjectionIndex(hidden)
+  index.replay({ id: 'session-a', events: ROOT_EVENTS })
+  index.replay({ id: 'session-z', events: ROOT_EVENTS })
+  index.flush()
+
+  await Promise.all([index.hide('session-a'), index.hide('session-z')])
+  assert.deepEqual([...hidden.get()].sort(), ['session-a', 'session-z'])
+
+  index.replay({
+    id: 'session-child',
+    header: { parentSession: 'session-a' },
+    inheritedEventCount: 8,
+    ownEvents: () => CHILD_EVENTS,
+  })
+  assert.equal(index.get('session-child')?.hidden, true)
+  assert.equal(index.list().some(session => session.sessionId === 'session-child'), false)
+  index.flush()
+})
+
+test('observer exceptions do not reverse an index mutation', async () => {
+  const index = new ProjectionIndex(new MemoryHiddenStore())
+  let observed = 0
+  index.subscribe(() => { throw new Error('subscriber exploded') })
+  index.subscribe(() => { observed++ })
+  index.replay({ id: 'session-a', events: ROOT_EVENTS })
+  index.flush()
+  assert.equal(observed, 1)
+  await assert.doesNotReject(index.hide('session-a'))
+  assert.equal(observed, 2)
+})
+
 class MemoryHiddenStore implements HiddenStore {
   #ids: string[] = []
 
@@ -174,6 +207,19 @@ class MemoryHiddenStore implements HiddenStore {
   }
 
   async set(ids: readonly string[]): Promise<void> {
+    this.#ids = [...ids]
+  }
+}
+
+class DelayedHiddenStore implements HiddenStore {
+  #ids: string[] = []
+
+  get(): readonly string[] {
+    return this.#ids
+  }
+
+  async set(ids: readonly string[]): Promise<void> {
+    await new Promise(resolve => setTimeout(resolve, 5))
     this.#ids = [...ids]
   }
 }

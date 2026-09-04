@@ -147,6 +147,23 @@ export const amphoreusCanvasDomain = defineDomain({
 export type AmphoreusDomain = Domain<typeof amphoreusDomain>
 export type AmphoreusCanvasDomain = Domain<typeof amphoreusCanvasDomain>
 
+const globalUpdateQueues = new WeakMap<AmphoreusDomain, Promise<void>>()
+
+/** Serialize global read-modify-write operations so independent features cannot overwrite each other. */
+export async function updateAmphoreusGlobal(
+  domain: AmphoreusDomain,
+  transform: (current: AmphoreusGlobal) => AmphoreusGlobal,
+): Promise<AmphoreusGlobal> {
+  const previous = globalUpdateQueues.get(domain) ?? Promise.resolve()
+  const task = previous.catch(() => {}).then(async () => {
+    const next = transform(domain.global.get())
+    await domain.global.set(next)
+    return next
+  })
+  globalUpdateQueues.set(domain, task.then(() => {}, () => {}))
+  return task
+}
+
 export interface AmphoreusStores {
   readonly main: AmphoreusDomain
   readonly canvas: AmphoreusCanvasDomain

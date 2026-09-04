@@ -9,7 +9,7 @@ import { registerFirstFrame } from './host/firstframe.ts'
 import { registerInjector } from './host/injector.ts'
 import { ensureSeatDirs, type EnsureSeatDirsResult } from './host/seatdirs.ts'
 import { reconcileSeats } from './host/seats.ts'
-import { openAmphoreusStores, type AmphoreusStores } from './host/store.ts'
+import { openAmphoreusStores, updateAmphoreusGlobal, type AmphoreusStores } from './host/store.ts'
 import { AmphoreusWebApi } from './host/webapi.ts'
 import { ProjectionIndex, type ProjectableEvent, type ProjectableSession } from './host/workbench.ts'
 import type { WorkbenchStatus } from './shared/api.ts'
@@ -54,6 +54,9 @@ export function apply(ctx: Context, config: AmphoreusConfig): void {
     let workbenchStatus: WorkbenchStatus = { kind: 'ready' }
     let disposeProjection = () => {}
     let startColdReplay = () => {}
+    const coldReplayAbort = new AbortController()
+    let coldReplayTask: Promise<void> = Promise.resolve()
+    let projectionDisposed = false
     if (!config.workbench.enabled) {
       workbenchStatus = { kind: 'disabled' }
     } else if (stores === undefined) {
@@ -62,10 +65,12 @@ export function apply(ctx: Context, config: AmphoreusConfig): void {
       const main = stores.main
       workbench = new ProjectionIndex({
         get: () => main.global.get().workbench.hiddenSessionIds,
-        set: ids => main.global.set({
-          ...main.global.get(),
-          workbench: { hiddenSessionIds: [...ids] },
-        }),
+        set: async ids => {
+          await updateAmphoreusGlobal(main, global => ({
+            ...global,
+            workbench: { hiddenSessionIds: [...new Set([...global.workbench.hiddenSessionIds, ...ids])] },
+          }))
+        },
       })
       workbenchStatus = { kind: 'unavailable', reason: '工作台正在初始化' }
       void workbench.ready()
@@ -80,8 +85,8 @@ export function apply(ctx: Context, config: AmphoreusConfig): void {
         }).sessions
         const persistence = (ctx as Context & {
           sessionPersistence: {
-            list(): Promise<ColdHeader[]>
-            inspect(id: string): Promise<{
+            list(signal?: AbortSignal): Promise<ColdHeader[]>
+            inspect(id: string, signal?: AbortSignal): Promise<{
               meta: ColdHeader
               inheritedEventCount: number
               events: readonly ProjectableEvent[]
@@ -107,6 +112,10 @@ export function apply(ctx: Context, config: AmphoreusConfig): void {
           scheduled = true
           queueMicrotask(() => {
             scheduled = false
+            if (projectionDisposed) {
+              queue.length = 0
+              return
+            }
             const batch = queue.splice(0)
             const bySession = new Map<string, [ProjectableSession, ProjectableEvent[]]>()
             for (const item of batch) {
@@ -129,13 +138,20 @@ export function apply(ctx: Context, config: AmphoreusConfig): void {
 
         const COLD_REPLAY_CONCURRENCY = 4
         startColdReplay = () => {
-          void (async () => {
-            const headers = await persistence.list()
+          const signal = coldReplayAbort.signal
+          coldReplayTask = (async () => {
+            const headers = await persistence.list(signal)
+            if (signal.aborted) return
             const cold = headers.filter(header => header.cwd !== undefined && sessions.get(header.id) === undefined)
+            // Register the complete parent graph before any asynchronous inspect finishes,
+            // so hidden ancestors also suppress descendants loaded out of order.
+            for (const header of cold) workbench!.replay({ id: header.id, header, events: [] })
             for (let index = 0; index < cold.length; index += COLD_REPLAY_CONCURRENCY) {
+              if (signal.aborted) return
               await Promise.all(cold.slice(index, index + COLD_REPLAY_CONCURRENCY).map(async header => {
                 try {
-                  const inspection = await persistence.inspect(header.id)
+                  const inspection = await persistence.inspect(header.id, signal)
+                  if (signal.aborted || projectionDisposed) return
                   replay({
                     id: header.id,
                     header: inspection.meta,
@@ -143,13 +159,16 @@ export function apply(ctx: Context, config: AmphoreusConfig): void {
                     events: inspection.events,
                   })
                 } catch (error) {
-                  ctx.logger.warn(`amphoreus workbench cold replay ${header.id}: ${String(error)}`)
+                  if (!signal.aborted) ctx.logger.warn(`amphoreus workbench cold replay ${header.id}: ${String(error)}`)
                 }
               }))
             }
-          })().catch(error => ctx.logger.warn(`amphoreus workbench cold replay: ${String(error)}`))
+          })().catch(error => {
+            if (!signal.aborted) ctx.logger.warn(`amphoreus workbench cold replay: ${String(error)}`)
+          })
         }
         disposeProjection = () => {
+          projectionDisposed = true
           disposeCreated()
           disposeEvent()
         }
@@ -183,6 +202,8 @@ export function apply(ctx: Context, config: AmphoreusConfig): void {
       disposeWebApi()
       disposeProjection()
       detach()
+      coldReplayAbort.abort()
+      await coldReplayTask
       workbench?.flush()
       await bridge.close()
       await stores?.close()
