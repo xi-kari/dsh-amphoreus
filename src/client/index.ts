@@ -11,6 +11,7 @@ import { installGarnish } from './garnish.ts'
 import { en, NS, zh, type AmphoreusKey } from './locales.ts'
 import { AmphoreusSettings } from './settings.tsx'
 import { AmphoreusClientModel } from './state.ts'
+import { seedConversationView } from './tabmemory.ts'
 import { registerGlobalTheme } from './theme.ts'
 import { WorkbenchView, type WorkbenchViewInjected } from './workbench.tsx'
 import { HERO_VISUALS } from '../shared/heroes.ts'
@@ -33,6 +34,23 @@ export function apply(ctx: ClientContext): void {
     await model.start()
     return () => model.close()
   }, 'amphoreus: state channel')
+  ctx.effect(() => {
+    const defaultViewOf = (): 'chat' | 'workbench' =>
+      model.getSnapshot().state?.effectiveConfig.workbench.defaultView
+        ?? window.__AMPHOREUS_BOOT__?.workbench.defaultView ?? 'chat'
+    const list = ctx.sessions.list as unknown as {
+      getSnapshot(): { current: string | undefined }
+      subscribe(fn: () => void): () => void
+    }
+    let last = list.getSnapshot().current
+    if (last !== undefined) seedConversationView(localStorage, last, defaultViewOf())
+    return list.subscribe(() => {
+      const current = list.getSnapshot().current
+      if (current === last) return
+      last = current
+      if (current !== undefined) seedConversationView(localStorage, current, defaultViewOf())
+    })
+  }, 'amphoreus: workbench default view')
 
   const assetsConfigured = (): boolean =>
     model.getSnapshot().state?.effectiveConfig.assetsConfigured

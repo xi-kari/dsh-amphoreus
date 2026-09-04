@@ -8,6 +8,7 @@
  */
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { useEffect, useRef } from 'react'
+import { rememberTab, WORKBENCH_VIEW_ID } from './tabmemory.ts'
 import css from './workbench.module.css'
 
 interface SessionsFace {
@@ -27,10 +28,6 @@ export interface WorkbenchViewInjected {
 
 export type WorkbenchViewProps = PropsRuntime<'conversation.view'> & PropsLocale<'amphoreus'> & WorkbenchViewInjected
 
-const WORKBENCH_VIEW_ID = 'amphoreus-workbench'
-
-function rememberWorkbenchTab(_view: string): void {}
-
 interface BridgeMessage {
   source?: string
   type?: string
@@ -45,6 +42,14 @@ interface BridgeMessage {
 
 export function WorkbenchView({ sessionId, sessions, bindSeat, seatSkillOf, openView, completeViewRequest, viewRequest }: WorkbenchViewProps) {
   const frameRef = useRef<HTMLIFrameElement>(null)
+
+  useEffect(() => {
+    rememberTab(localStorage, WORKBENCH_VIEW_ID)
+    return () => {
+      // 仍是同一会话却卸载 ≈ 用户点了别的 Tab；会话切换导致的卸载不改记忆。
+      if (sessions.list.getSnapshot().current === sessionId) rememberTab(localStorage, 'chat')
+    }
+  }, [sessionId, sessions])
 
   useEffect(() => {
     const reply = (payload: Record<string, unknown>): void => {
@@ -105,7 +110,7 @@ export function WorkbenchView({ sessionId, sessions, bindSeat, seatSkillOf, open
             }
             case 'amphoreus:open-session': {
               if (typeof data.sessionId !== 'string') return
-              rememberWorkbenchTab('chat')
+              rememberTab(localStorage, 'chat')
               if (data.sessionId === sessionId) {
                 openView('chat', 'amphoreus:open-session')
                 completeViewRequest()
@@ -118,7 +123,7 @@ export function WorkbenchView({ sessionId, sessions, bindSeat, seatSkillOf, open
               if (typeof data.sessionId === 'string') sessions.open(data.sessionId)
               return
             case 'amphoreus:close':
-              rememberWorkbenchTab('chat')
+              rememberTab(localStorage, 'chat')
               openView('chat', 'amphoreus:close')
               completeViewRequest()
               return
