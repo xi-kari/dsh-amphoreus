@@ -114,10 +114,18 @@ function resetCanvasCamera() {
   state.canvasCamera = { x: 0, y: 0 }
 }
 
+const BOOT = (typeof globalThis.__AMPHOREUS_BOOT__ === 'object' && globalThis.__AMPHOREUS_BOOT__ !== null) ? globalThis.__AMPHOREUS_BOOT__ : {}
+const WORKBENCH_CONFIG = BOOT.workbench ?? { enabled: true, host: 'iframe', defaultView: 'chat', cardTextLimit: 8000, autoProjection: true }
 async function api(path, options = {}) {
-  const response = await fetch(path, { ...options, headers: { 'content-type': 'application/json', ...(options.headers ?? {}) } })
+  const method = String(options.method ?? 'GET').toUpperCase()
+  const write = method !== 'GET' && method !== 'HEAD'
+  const nonceHeader = write && typeof BOOT.nonce === 'string' ? { 'x-amphoreus-nonce': BOOT.nonce } : {}
+  const response = await fetch(path, { ...options, credentials: 'same-origin', headers: { 'content-type': 'application/json', ...nonceHeader, ...(options.headers ?? {}) } })
   const body = await response.json().catch(() => ({}))
-  if (!response.ok) throw new Error(body.error ?? '请求失败')
+  if (!response.ok) {
+    if (response.status === 403 && body.error === 'invalid amphoreus nonce') throw new Error('工作台令牌已失效（宿主已重启），请刷新页面')
+    throw new Error(body.error ?? '请求失败')
+  }
   return body
 }
 
