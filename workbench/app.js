@@ -49,6 +49,16 @@ const savedCollapsedCards = (() => {
     return Array.isArray(value) ? value.filter(item => typeof item === 'string') : []
   } catch { return [] }
 })()
+function storedSeat(value) {
+  try { return value === undefined ? localStorage.getItem('dsh-amphoreus:last-seat') : (localStorage.setItem('dsh-amphoreus:last-seat', value), value) } catch { return null }
+}
+const restoredSeatId = (() => {
+  const value = storedSeat()
+  const heroId = typeof value === 'string' && value.startsWith('seat:') ? value.slice(5) : null
+  return value === 'all' || heroId !== null && heroId !== 'null' && /^[a-z0-9][a-z0-9-]*$/.test(heroId) ? value : null
+})()
+const BOOT = (typeof globalThis.__AMPHOREUS_BOOT__ === 'object' && globalThis.__AMPHOREUS_BOOT__ !== null) ? globalThis.__AMPHOREUS_BOOT__ : {}
+const WORKBENCH_CONFIG = BOOT.workbench ?? { enabled: true, host: 'iframe', defaultView: 'chat', cardTextLimit: 8000, autoProjection: true }
 const CARD_WIDTH = 310
 const CARD_HEIGHT = 276
 const CARD_GAP_Y = 42
@@ -59,13 +69,12 @@ const CAMERA_INSET_Y = 56
 // so panning never flashes empty space.
 const VIEWPORT_MARGIN = 1400
 const state = {
-  summaries: [], workspace: null, activeId: null, selectedCardId: null, mode: 'portal', zoom: 1, currentDsh: null, sidebarCollapsed: false,
-  dshWorkspaces: [], selectedDshWorkspaceId: null,
+  index: new Map(), indexRevision: 0, indexRequest: 0, eventSource: null, workspace: null, activeId: null, selectedCardId: null, mode: restoredSeatId === null ? 'portal' : 'canvas', zoom: 1, currentDsh: null, currentSessionId: null, sidebarCollapsed: false,
   // Seat portal: hero seats from the host (chronicle art, palette, folder).
-  seats: [], assetsConfigured: false, seatId: null, cardFlightPending: false,
+  seats: [], sessionsById: new Map(), assetsConfigured: false, seatId: restoredSeatId, cardFlightPending: false, cardTextLimit: WORKBENCH_CONFIG.cardTextLimit,
   unprojectable: new Map(),
-  historyBySession: new Map(), historyRequests: new Map(), pendingReplies: new Map(), pendingRpc: new Map(), liveReplies: new Map(),
-  draft: null, error: '', workspaceLoad: 0, branchAnchors: new Map(savedBranchAnchors), cardPositions: new Map(savedCardPositions), collapsedCardIds: new Set(savedCollapsedCards), quickPhrases: savedQuickPhrases, quickPhraseEditorOpen: false,
+  historyBySession: new Map(), historyRevisionBySession: new Map(), historyCompleteBySession: new Map(), pendingReplies: new Map(), pendingRpc: new Map(), liveReplies: new Map(),
+  draft: null, error: '', branchAnchors: new Map(savedBranchAnchors), cardPositions: new Map(savedCardPositions), collapsedCardIds: new Set(savedCollapsedCards), quickPhrases: savedQuickPhrases, quickPhraseEditorOpen: false,
   dragging: false, canvasGesture: false, canvasRefreshAfter: 0, canvasViewInitialized: false, canvasCamera: { x: 0, y: 0 }, mapCardSessionSwitches: new Set(),
   expandedMessageIds: new Set(),
   canvasCards: undefined, canvasCardsById: undefined, canvasGraph: undefined, mountedCardIds: new Set(), canvasNeedsCenter: false,
@@ -115,8 +124,6 @@ function resetCanvasCamera() {
   state.canvasCamera = { x: 0, y: 0 }
 }
 
-const BOOT = (typeof globalThis.__AMPHOREUS_BOOT__ === 'object' && globalThis.__AMPHOREUS_BOOT__ !== null) ? globalThis.__AMPHOREUS_BOOT__ : {}
-const WORKBENCH_CONFIG = BOOT.workbench ?? { enabled: true, host: 'iframe', defaultView: 'chat', cardTextLimit: 8000, autoProjection: true }
 async function api(path, options = {}) {
   const method = String(options.method ?? 'GET').toUpperCase()
   const write = method !== 'GET' && method !== 'HEAD'
@@ -158,19 +165,6 @@ function settleRpc(requestId, value, error) {
 
 function setError(error = '') { state.error = error instanceof Error ? error.message : error; render() }
 
-function messagesFromEvents(events) {
-  if (!Array.isArray(events)) return []
-  return events.flatMap(event => {
-    const content = event?.data?.message?.content ?? event?.data?.content
-    const text = Array.isArray(content) ? content.filter(block => block?.type === 'text').map(block => block.text).filter(Boolean).join('\n') : ''
-    if (event?.type === 'user/message' && text && !text.startsWith('Current runtime context. This snapshot supersedes earlier runtime-context snapshots.')) return [{ kind: 'user', text, at: event.time, sourceSeq: event.seq }]
-    if (event?.type === 'assistant/message' && text) return [{ kind: 'assistant', text, at: event.time, sourceSeq: event.seq }]
-    return []
-  })
-}
-
-async function loadThreadHistory() {}
-
 function canReplaceView() {
   return state.draft === null && !state.dragging && !state.canvasGesture && Date.now() >= state.canvasRefreshAfter && !document.activeElement?.matches('textarea')
 }
@@ -179,101 +173,109 @@ function deferCanvasRefresh(delay = 700) {
   state.canvasRefreshAfter = Math.max(state.canvasRefreshAfter, Date.now() + delay)
 }
 
-function currentDshWorkspace() {
-  const id = state.currentDsh?.id
-  return typeof id === 'string' ? state.dshWorkspaces.find(workspace => workspace.sessionIds.includes(id)) : undefined
-}
-
-function selectedDshWorkspace() {
-  return state.dshWorkspaces.find(workspace => workspace.id === state.selectedDshWorkspaceId)
-}
-
 function currentDshThread(threads = state.workspace?.threads ?? []) {
-  const id = state.currentDsh?.id
+  const id = state.currentSessionId
   return typeof id === 'string' ? threads.find(thread => thread.dshSessionId === id) : undefined
 }
 
-function workspaceChoices() {
-  if (state.dshWorkspaces.length > 0) return state.dshWorkspaces.map(workspace => ({ ...workspace, source: 'dsh' }))
-  return state.summaries.map(workspace => ({ id: workspace.id, title: workspace.title, path: workspace.cwd, sessionIds: [], source: 'projection' }))
+function normalizeDir(value) {
+  return typeof value === 'string' && value !== '' ? value.toLowerCase().replaceAll('/', '\\').replace(/\\+$/, '') : null
 }
 
-async function threadsForDshWorkspace(workspace) {
-  if (workspace.sessionIds.length === 0) return []
-  const requested = new Set(workspace.sessionIds)
-  const projections = await Promise.all(state.summaries.map(summary => api(`/amphoreus/workbench/api/workspaces/${summary.id}`)))
-  return projections.flatMap(projection => projection.workspace.threads.filter(thread => requested.has(thread.dshSessionId)))
-}
-
-async function openDshWorkspace(id, { renderAfter = true, preserveCanvasCamera = false } = {}) {
-  const workspace = state.dshWorkspaces.find(item => item.id === id)
-  if (workspace === undefined) return false
-  const load = ++state.workspaceLoad
-  state.selectedDshWorkspaceId = id
-  const threads = await threadsForDshWorkspace(workspace)
-  if (load !== state.workspaceLoad) return true
-  const nextWorkspaceId = `dsh:${workspace.id}`
-  if (state.workspace?.id !== nextWorkspaceId && !preserveCanvasCamera) resetCanvasCamera()
-  state.workspace = { id: nextWorkspaceId, title: workspace.title, cwd: workspace.path, threads }
-  const currentThread = currentDshThread(state.workspace.threads)
-  state.activeId = currentThread?.id ?? (state.workspace.threads.some(thread => thread.id === state.activeId) ? state.activeId : state.workspace.threads[0]?.id ?? null)
-  if (currentThread !== undefined) revealConversationThread(conversationCards(state.workspace.threads), currentThread.id)
-  if (renderAfter && canReplaceView()) render()
-  await Promise.all(state.workspace.threads.map(thread => loadThreadHistory(thread, false)))
-  if (renderAfter && load === state.workspaceLoad && canReplaceView()) render()
-  return true
-}
-
-async function openCurrentWorkspace({ preserveCanvasCamera = false } = {}) {
-  const workspace = currentDshWorkspace()
-  if (workspace === undefined || workspace.id === state.selectedDshWorkspaceId) return false
-  return openDshWorkspace(workspace.id, { preserveCanvasCamera })
-}
-
-async function refreshSummaries({ renderAfter = true } = {}) {
-  const before = JSON.stringify(state.summaries) + JSON.stringify(state.seats) + JSON.stringify([...state.unprojectable.keys()])
-  const body = await api('/amphoreus/workbench/api/workspaces')
-  state.summaries = body.workspaces
-  state.seats = Array.isArray(body.seats) ? body.seats : []
-  state.assetsConfigured = body.assetsConfigured === true
-  state.unprojectable = new Map(Array.isArray(body.unprojectable) ? body.unprojectable.map(item => [item.sessionId, item]) : [])
-  const changed = before !== JSON.stringify(state.summaries) + JSON.stringify(state.seats) + JSON.stringify([...state.unprojectable.keys()])
-  const current = state.workspace?.id
-  if (current !== null && state.workspace !== null && !state.summaries.some(item => item.id === current)) {
-    // The open seat workspace vanished from the projection (e.g. archive-all);
-    // fall back to the portal instead of a dead canvas.
-    if (state.mode !== 'portal') { state.workspace = null }
+function heroIdOf(session) {
+  if (session === undefined || session === null) return null
+  if (typeof session.skillName === 'string') {
+    const seatBySkill = state.seats.find(seat => seat.skillName === session.skillName)
+    if (typeof seatBySkill?.heroId === 'string' && seatBySkill.heroId !== '') return seatBySkill.heroId
   }
-  // Seat mode: reload the open seat workspace when the projection changed.
-  if (state.seatId !== null && (changed || state.workspace === null)) {
-    const summary = state.summaries.find(item => item.id === state.seatId)
-    if (summary !== undefined) await openWorkspace(summary.id, { renderAfter })
-    else if (renderAfter && canReplaceView()) render()
-  }
-  else if (renderAfter && changed && canReplaceView()) render()
-  return changed
+  const cwd = normalizeDir(session.cwd)
+  if (cwd === null) return null
+  const seatByDir = state.seats.find(seat => {
+    const dir = normalizeDir(seat.dir)
+    return dir !== null && (cwd === dir || cwd.startsWith(`${dir}\\`))
+  })
+  return typeof seatByDir?.heroId === 'string' && seatByDir.heroId !== '' ? seatByDir.heroId : null
 }
 
-async function openWorkspace(id, { renderAfter = true } = {}) {
-  const load = ++state.workspaceLoad
-  const body = await api(`/amphoreus/workbench/api/workspaces/${id}`)
-  if (load !== state.workspaceLoad) return
-  if (state.workspace?.id !== body.workspace.id) resetCanvasCamera()
-  state.workspace = body.workspace
-  state.activeId = state.workspace.threads.some(thread => thread.id === state.activeId) ? state.activeId : state.workspace.threads[0]?.id ?? null
-  if (renderAfter && canReplaceView()) render()
-  await Promise.all(state.workspace.threads.map(thread => loadThreadHistory(thread, false)))
-  if (renderAfter && load === state.workspaceLoad && canReplaceView()) render()
+function seatKeyOf(seatId) { return seatId === 'all' ? 'all' : typeof seatId === 'string' && seatId.startsWith('seat:') ? seatId.slice(5) : 'all' }
+function isHidden(sessionId) { return state.index.get(sessionId)?.hidden === true }
+function sameSeat(sessionId, seatKey) {
+  const session = state.sessionsById.get(sessionId)
+  return session !== undefined && (heroIdOf(session) ?? 'all') === seatKey
+}
+function seatSessionCount(heroId) {
+  const key = heroId ?? 'all'
+  return [...state.sessionsById.values()].filter(session => (heroIdOf(session) ?? 'all') === key && !isHidden(session.id)).length
 }
 
-async function refreshProjection() {
-  const summariesChanged = await refreshSummaries({ renderAfter: false })
-  if (state.mode === 'portal') {
-    if (summariesChanged && canReplaceView()) render()
-    return summariesChanged
+function rebuildWorkspace() {
+  const seatId = state.seatId
+  if (seatId === null) return
+  const seatKey = seatKeyOf(seatId)
+  const threads = [...state.sessionsById.values()]
+    .filter(session => (heroIdOf(session) ?? 'all') === seatKey && !isHidden(session.id))
+    .map(session => {
+      const indexed = state.index.get(session.id)
+      return {
+        id: session.id,
+        dshSessionId: session.id,
+        title: session.title,
+        dshSessionTitle: indexed?.title ?? session.title,
+        parentId: session.parentId !== null && sameSeat(session.parentId, seatKey) && !isHidden(session.parentId) ? session.parentId : null,
+        sourceParentSessionId: session.parentId,
+        sourceSeedLength: indexed?.inheritedCount ?? null,
+        cards: indexed?.cards ?? [],
+        skillName: session.skillName,
+        face: session.face,
+        running: session.running,
+      }
+    })
+  state.workspace = { id: seatId, title: seatTitleOf(seatId), threads }
+  state.activeId = threads.some(thread => thread.id === state.activeId)
+    ? state.activeId
+    : currentDshThread(threads)?.id ?? threads[0]?.id ?? null
+}
+
+function applyWorkspaces(data) {
+  state.seats = (Array.isArray(data.seats) ? data.seats : []).filter(seat => seat !== null && typeof seat === 'object')
+  state.assetsConfigured = data.assetsConfigured === true
+  state.sessionsById = new Map((Array.isArray(data.sessions) ? data.sessions : []).filter(session => typeof session?.id === 'string').map(session => [session.id, session]))
+  if (state.seatId?.startsWith('seat:') && state.seats.length > 0 && !state.seats.some(seat => seat.heroId === state.seatId.slice(5))) {
+    state.seatId = null
+    state.mode = 'portal'
+    state.workspace = null
   }
-  if (!summariesChanged || state.workspace === null || !canReplaceView()) return summariesChanged
-  await openWorkspace(state.workspace.id)
+  rebuildWorkspace()
+  scheduleViewRefresh()
+}
+
+let deferredViewTimer = 0
+function scheduleViewRefresh() {
+  if (canReplaceView()) {
+    if (deferredViewTimer !== 0) window.clearTimeout(deferredViewTimer)
+    deferredViewTimer = 0
+    render()
+    return
+  }
+  if (deferredViewTimer !== 0) return
+  deferredViewTimer = window.setTimeout(() => {
+    deferredViewTimer = 0
+    scheduleViewRefresh()
+  }, 120)
+}
+
+async function refreshIndex() {
+  if (document.hidden) return false
+  const request = ++state.indexRequest
+  const body = await api('/amphoreus/workbench/api/index?includeHidden=1')
+  const revision = Number(body.revision)
+  if (request < state.indexRequest && revision <= state.indexRevision) return false
+  if (revision < state.indexRevision) return false
+  state.index = new Map((Array.isArray(body.sessions) ? body.sessions : []).filter(session => typeof session?.sessionId === 'string').map(session => [session.sessionId, session]))
+  state.indexRevision = Number.isSafeInteger(revision) ? revision : state.indexRevision
+  state.unprojectable = new Map((Array.isArray(body.unprojectable) ? body.unprojectable : []).filter(item => typeof item?.sessionId === 'string').map(item => [item.sessionId, item]))
+  if (state.seatId !== null) rebuildWorkspace()
+  if (canReplaceView()) render()
   return true
 }
 
@@ -294,41 +296,34 @@ function openNewSession() {
 
 async function archiveThread(thread) {
   if (!window.confirm(`归档画布中的「${thread.title}」及其分支？DSH 原会话会保留，可在 DSH 内继续查看。`)) return
-  await api(`/amphoreus/workbench/api/threads/${thread.id}`, { method: 'DELETE' })
-  state.historyBySession.delete(thread.dshSessionId)
-  state.detailScrollByThread.delete(thread.id)
-  state.detailTargetCardId = state.detailThreadId === thread.id ? null : state.detailTargetCardId
-  if (state.workspace !== null) {
-    const removed = new Set([thread.id])
-    for (let changed = true; changed;) {
-      changed = false
-      for (const item of state.workspace.threads) {
-        if (item.parentId !== null && removed.has(item.parentId) && !removed.has(item.id)) {
-          removed.add(item.id)
-          changed = true
-        }
-      }
-    }
-    state.workspace.threads = state.workspace.threads.filter(item => !removed.has(item.id))
-    for (const key of [...state.cardPositions.keys()]) {
-      if ([...removed].some(id => key.startsWith(`${id}:`))) state.cardPositions.delete(key)
-    }
-    let collapsedChanged = false
-    for (const key of [...state.collapsedCardIds]) {
-      if ([...removed].some(id => key.startsWith(`${id}:`))) {
-        state.collapsedCardIds.delete(key)
-        collapsedChanged = true
-      }
-    }
-    if (collapsedChanged) persistCollapsedCards()
-    state.activeId = state.activeId !== null && state.workspace.threads.some(item => item.id === state.activeId)
-      ? state.activeId
-      : state.workspace.threads[0]?.id ?? null
-    render()
-  } else {
-    state.activeId = null
+  const result = await api(`/amphoreus/workbench/api/index/${thread.dshSessionId}`, { method: 'DELETE' })
+  const hidden = Array.isArray(result.hidden) ? result.hidden.filter(id => typeof id === 'string') : []
+  for (const sessionId of hidden) {
+    const indexed = state.index.get(sessionId)
+    state.index.set(sessionId, indexed === undefined
+      ? { sessionId, hidden: true, cards: [] }
+      : { ...indexed, hidden: true })
+    state.historyBySession.delete(sessionId)
+    state.historyRevisionBySession.delete(sessionId)
+    state.historyCompleteBySession.delete(sessionId)
+    state.liveReplies.delete(sessionId)
+    state.pendingReplies.delete(sessionId)
+    state.detailScrollByThread.delete(sessionId)
+    if (state.detailThreadId === sessionId) state.detailTargetCardId = null
   }
-  await refreshSummaries()
+  if (Number.isSafeInteger(result.revision)) state.indexRevision = result.revision
+  for (const key of [...state.cardPositions.keys()]) {
+    if (hidden.some(sessionId => key.startsWith(`${sessionId}:`))) state.cardPositions.delete(key)
+  }
+  let collapsedChanged = false
+  for (const key of [...state.collapsedCardIds]) {
+    if (!hidden.some(sessionId => key.startsWith(`${sessionId}:`))) continue
+    state.collapsedCardIds.delete(key)
+    collapsedChanged = true
+  }
+  if (collapsedChanged) persistCollapsedCards()
+  rebuildWorkspace()
+  render()
 }
 
 function focusDraftInput() {
@@ -363,8 +358,9 @@ async function sendMessage(thread, text) {
   state.error = ''
   render()
   try {
-    await dshRpc('amphoreus:send-message', { sessionId: thread.dshSessionId, text })
-    void loadThreadHistory(thread)
+    const activate = thread.dshSessionId !== state.currentSessionId
+    if (activate) post('amphoreus:activate-session', { sessionId: thread.dshSessionId, defer: true })
+    await dshRpc('amphoreus:send-message', { sessionId: thread.dshSessionId, text, activate })
   } catch (error) {
     state.pendingReplies.delete(thread.dshSessionId)
     render()
@@ -376,7 +372,6 @@ async function submitDraft() {
   const draft = state.draft
   const text = draft?.text.trim()
   if (draft === null || !text) return
-  const branchPosition = draft.kind === 'branch' && state.workspace !== null ? draftPlacement(conversationCards(state.workspace.threads))?.position : undefined
   draft.sending = true
   state.error = ''
   render()
@@ -388,12 +383,14 @@ async function submitDraft() {
       // makes the host injector seed the hero's skill card.
       const seatHeroId = state.seatId !== null && state.seatId.startsWith('seat:') ? state.seatId.slice(5) : undefined
       const seatDir = seatHeroId !== undefined ? state.seats.find(item => item.heroId === seatHeroId)?.dir : undefined
-      const session = await dshRpc('amphoreus:create-session', { cwd: seatDir ?? state.currentDsh?.cwd, seatHeroId })
-      await dshRpc('amphoreus:send-message', { sessionId: session.id, text })
+      const currentCwd = state.currentSessionId === null ? undefined : state.sessionsById.get(state.currentSessionId)?.cwd ?? undefined
+      const session = await dshRpc('amphoreus:create-session', { cwd: seatDir ?? currentCwd, seatHeroId })
+      post('amphoreus:activate-session', { sessionId: session.id, defer: true })
+      await dshRpc('amphoreus:send-message', { sessionId: session.id, text, activate: true })
       state.draft = null
       render()
       window.setTimeout(() => {
-        void refreshProjection().catch(() => {})
+        void refreshIndex().catch(() => {})
       }, 150)
       return
     }
@@ -406,15 +403,24 @@ async function submitDraft() {
     }
     const session = await dshRpc('amphoreus:fork-session', { sessionId: parent.dshSessionId, atSeq: draft.atSeq })
     if (draft.anchorId !== undefined) rememberBranchAnchor(session.id, draft.anchorId)
-    const result = await api(`/amphoreus/workbench/api/threads/${parent.id}/branch`, { method: 'POST', body: JSON.stringify({ title: text.slice(0, 42), dshSessionId: session.id, dshSessionTitle: session.title, position: branchPosition }) })
-    if (state.workspace !== null && !state.workspace.threads.some(thread => thread.id === result.thread.id || thread.dshSessionId === result.thread.dshSessionId)) state.workspace.threads.push(result.thread)
-    state.activeId = result.thread.id
+    const child = {
+      id: session.id,
+      dshSessionId: session.id,
+      title: text.slice(0, 42),
+      dshSessionTitle: session.title,
+      parentId: parent.id,
+      sourceParentSessionId: parent.dshSessionId,
+      sourceSeedLength: null,
+      cards: [],
+    }
+    if (state.workspace !== null && !state.workspace.threads.some(thread => thread.id === child.id || thread.dshSessionId === child.dshSessionId)) state.workspace.threads.push(child)
+    state.activeId = child.id
     state.draft = null
-    state.pendingReplies.set(result.thread.dshSessionId, { text, at: Date.now() })
+    state.pendingReplies.set(child.dshSessionId, { text, at: Date.now() })
     render()
-    await dshRpc('amphoreus:send-message', { sessionId: result.thread.dshSessionId, text })
-    void loadThreadHistory(result.thread)
-    await refreshProjection()
+    post('amphoreus:activate-session', { sessionId: child.dshSessionId, defer: true })
+    await dshRpc('amphoreus:send-message', { sessionId: child.dshSessionId, text, activate: true })
+    await refreshIndex()
   } catch (error) {
     if (draft.kind === 'branch') {
       state.pendingReplies.delete(state.workspace?.threads.find(thread => thread.id === state.activeId)?.dshSessionId)
@@ -427,7 +433,33 @@ async function submitDraft() {
 }
 
 function threadsById() { return new Map((state.workspace?.threads ?? []).map(thread => [thread.id, thread])) }
-function persistedMessagesFor(thread) { return state.historyBySession.get(thread.dshSessionId) ?? thread.messages ?? [] }
+function placeholderMessages(thread) {
+  return (Array.isArray(thread.cards) ? thread.cards : []).flatMap(card => [
+    { kind: 'user', text: '', sourceSeq: card.userSeq, at: 0, placeholder: true, turn: card.turn },
+    ...(card.assistantSeq === null ? [] : [{
+      kind: 'assistant',
+      text: '',
+      sourceSeq: card.assistantSeq,
+      at: 0,
+      placeholder: true,
+      turn: card.turn,
+      process: (Array.isArray(card.toolCallIds) ? card.toolCallIds : []).map(callId => ({ callId, name: '工具调用', arguments: null, result: null, error: null })),
+    }]),
+    ...(card.errorSeq === null ? [] : [{ kind: 'error', text: '本轮失败', sourceSeq: card.errorSeq, at: 0, placeholder: true, turn: card.turn }]),
+  ])
+}
+function persistedMessagesFor(thread) {
+  const history = state.historyBySession.get(thread.dshSessionId)
+  if (history === undefined) return placeholderMessages(thread)
+  if (state.historyCompleteBySession.get(thread.dshSessionId) === true) return history
+  const bySeq = new Map()
+  const withoutSeq = []
+  for (const message of [...placeholderMessages(thread), ...history]) {
+    if (Number.isInteger(message.sourceSeq)) bySeq.set(message.sourceSeq, message)
+    else withoutSeq.push(message)
+  }
+  return [...bySeq.values()].sort((left, right) => left.sourceSeq - right.sourceSeq).concat(withoutSeq)
+}
 
 function pendingUserIndex(messages, pending) {
   return messages.findLastIndex(message => message.kind === 'user' && message.text === pending.text && new Date(message.at).getTime() >= pending.at - 2_000)
@@ -437,22 +469,17 @@ function settlePendingReply(thread, messages) {
   const pending = state.pendingReplies.get(thread.dshSessionId)
   if (pending === undefined) return false
   const userIndex = pendingUserIndex(messages, pending)
-  if (userIndex === -1 || !messages.slice(userIndex + 1).some(message => message.kind === 'assistant')) return false
+  if (userIndex === -1 || !messages.slice(userIndex + 1).some(message => message.kind === 'assistant' || message.kind === 'error')) return false
   state.pendingReplies.delete(thread.dshSessionId)
+  state.liveReplies.delete(thread.dshSessionId)
   return true
 }
 
 function messagesFor(thread) {
-  // A runtime-context snapshot is internal DSH state, never a user turn.
-  // Filter here as well as during persistence so existing saved workspaces
-  // immediately render one question and its answer as one card.
-  const messages = persistedMessagesFor(thread).filter(message => !(message.kind === 'user' && typeof message.text === 'string' && message.text.trimStart().startsWith('Current runtime context. This snapshot supersedes earlier runtime-context snapshots.')))
+  const messages = persistedMessagesFor(thread)
   const pending = state.pendingReplies.get(thread.dshSessionId)
   if (pending === undefined) return messages
-  if (settlePendingReply(thread, messages)) {
-    state.liveReplies.delete(thread.dshSessionId)
-    return messages
-  }
+  if (settlePendingReply(thread, messages)) return messages
   const liveReply = state.liveReplies.get(thread.dshSessionId)
   const liveAssistant = liveReply?.running ? { kind: 'assistant', text: liveReply.text, pending: true, at: new Date().toISOString() } : { kind: 'assistant', text: '', pending: true, at: new Date().toISOString() }
   const userIndex = pendingUserIndex(messages, pending)
@@ -547,6 +574,8 @@ function renderMarkdown(text) {
   markdownCache.set(key, rendered)
   return rendered
 }
+
+const clampCardText = text => text.length <= state.cardTextLimit ? text : `${text.slice(0, state.cardTextLimit)}\n——…（详情查看全文）`
 
 function overlapsCard(position, other) {
   return position.x < other.x + CARD_WIDTH && position.x + CARD_WIDTH > other.x
@@ -716,6 +745,8 @@ function conversationCards(threads) {
       const answer = replies.at(-1) ?? null
       const error = errors.at(-1) ?? null
       const turnIndex = turns.length
+      const placeholder = question.placeholder === true
+      const indexedCard = state.index.get(thread.dshSessionId)?.cards?.find(card => card.userSeq === question.sourceSeq)
       const id = `${thread.id}:turn:${question.sourceSeq ?? messageIndex}`
       const previous = turns.at(-1)
       const positionKey = `${thread.id}:turn-index:${turnIndex}`
@@ -734,15 +765,20 @@ function conversationCards(threads) {
         naturalPosition,
         position,
         positionLocked,
-        question: question.text,
+        question: placeholder ? (turnIndex === 0 ? (thread.dshSessionTitle ?? thread.title) : `第 ${turnIndex + 1} 轮`) : question.text,
         answer,
         error,
         processCount,
+        placeholder,
+        turn: question.turn ?? answer?.turn ?? error?.turn ?? indexedCard?.turn ?? null,
       })
     }
     const liveReply = state.liveReplies.get(thread.dshSessionId)
     const latestTurn = turns.at(-1)
-    if (liveReply?.running && latestTurn !== undefined && (latestTurn.answer === null || latestTurn.answer.pending === true)) latestTurn.answer = { kind: 'assistant', text: liveReply.text, pending: true, at: new Date().toISOString() }
+    if (liveReply?.running && latestTurn !== undefined && (latestTurn.placeholder === true || latestTurn.answer === null || latestTurn.answer.pending === true)) {
+      latestTurn.answer = { kind: 'assistant', text: liveReply.text, pending: true, at: new Date().toISOString(), turn: latestTurn.turn }
+      latestTurn.placeholder = false
+    }
     if (turns.length === 0) {
       const id = `${thread.id}:turn:empty`
       const positionKey = `${thread.id}:turn-index:0`
@@ -764,6 +800,8 @@ function conversationCards(threads) {
       answer: null,
       error: null,
       processCount: 0,
+      placeholder: false,
+      turn: null,
       })
     }
     turns.at(-1).canContinue = true
@@ -926,12 +964,12 @@ function conversationCard(card, graph) {
   const foldLabel = collapsed ? '展开后续对话' : '折叠后续对话'
   const foldButton = childCount === 0 || card.canContinue === true ? '' : `<button class="graph-fold-button${collapsed ? ' collapsed' : ''}" data-action="toggle-card-children" data-card="${escapeHtml(card.id)}" aria-expanded="${collapsed ? 'false' : 'true'}" aria-label="${foldLabel}" title="${foldLabel}"><svg aria-hidden="true" viewBox="0 0 16 16"><path d="M3.5 8h9"/>${collapsed ? '<path d="M8 3.5v9"/>' : ''}</svg></button>`
   const branchButton = childCount === 0 || card.canContinue === true || !Number.isInteger(card.answer?.sourceSeq) ? '' : `<button class="graph-branch-button" data-action="open-branch" data-thread="${card.dshThreadId}" data-card="${escapeHtml(card.id)}" data-seq="${card.answer.sourceSeq}" aria-label="在新对话中分支" title="在新对话中分支"><svg aria-hidden="true" viewBox="0 0 16 16"><path fill-rule="evenodd" clip-rule="evenodd" d="M13.0762 1.37207C14.0846 1.37228 14.9021 2.19077 14.9023 3.19922C14.9022 4.20772 14.0847 5.02518 13.0762 5.02539C12.2967 5.02539 11.6325 4.53691 11.3701 3.84961H4.35547C4.79397 4.26458 5.15861 4.7644 5.41699 5.33496L7.10645 9.06738C7.88526 10.7875 9.55104 11.9228 11.4189 12.0371C11.7085 11.4109 12.3411 10.9756 13.0762 10.9756C14.0843 10.9759 14.9023 11.7936 14.9023 12.8018C14.9023 13.81 14.0843 14.6277 13.0762 14.6279C12.2534 14.6279 11.5574 14.0832 11.3291 13.335C8.9868 13.1879 6.89981 11.7612 5.92285 9.60352L4.23242 5.87109C3.67503 4.64033 2.44878 3.84961 1.09766 3.84961V2.54883C1.10665 2.54883 1.11601 2.54975 1.125 2.5498L11.3701 2.54883C11.6326 1.86151 12.2969 1.37207 13.0762 1.37207ZM13.0762 12.2764C12.7858 12.2764 12.5508 12.5114 12.5508 12.8018C12.5508 13.0921 12.7858 13.3281 13.0762 13.3281C13.3664 13.3279 13.6025 13.092 13.6025 12.8018C13.6025 12.5115 13.3664 12.2766 13.0762 12.2764ZM13.0762 2.67285C12.7855 2.67285 12.55 2.90861 12.5498 3.19922C12.5499 3.48987 12.7855 3.72559 13.0762 3.72559C13.3667 3.72538 13.6024 3.48975 13.6025 3.19922C13.6023 2.90874 13.3666 2.67306 13.0762 2.67285Z" fill="currentColor"/></svg></button>`
-  return `<article class="thread-card ${selected}" data-card-id="${escapeHtml(card.id)}" data-position-key="${escapeHtml(card.positionKey)}" data-thread="${card.dshThreadId}" style="left:${card.position.x}px;top:${card.position.y}px;--thread-color:#3478f6">
+  return `<article class="thread-card ${selected} ${card.placeholder ? 'placeholder' : ''}" data-card-id="${escapeHtml(card.id)}" data-position-key="${escapeHtml(card.positionKey)}" data-thread="${card.dshThreadId}" style="left:${card.position.x}px;top:${card.position.y}px;--thread-color:#3478f6">
     <button class="node-handle" data-drag-card="${card.id}" aria-label="拖动 ${escapeHtml(card.question)}" title="拖动卡片"></button>
     ${continueButton}${foldButton}${branchButton}
     <div class="thread-card-head"><span class="topic-dot"></span><button class="thread-title" data-action="show-thread" data-thread="${card.dshThreadId}" data-card="${escapeHtml(card.id)}" title="查看完整会话：${escapeHtml(card.question)}">${escapeHtml(card.question)}</button></div>
     <div class="thread-meta"><span>${source}</span><span>第 ${card.turnIndex + 1} 轮</span>${card.error === null ? '' : '<span class="card-error-status">失败</span>'}${unprojectableBadge}${card.processCount > 0 ? `<span class="card-process-count">工具 ${card.processCount}</span>` : ''}</div>
-    <div class="thread-answer">${card.answer === null ? (card.error === null ? '<p class="thread-answer-empty">等待助手回复</p>' : '') : card.answer.pending && card.answer.text === '' ? '<p class="thread-answer-pending">正在回复</p>' : `${renderMarkdown(card.answer.text)}${card.answer.pending ? '<p class="thread-answer-pending">正在回复</p>' : ''}`}${card.error === null ? '' : `<p class="thread-answer-error" title="${escapeHtml(card.error.text)}">本轮失败：${escapeHtml(card.error.text)}</p>`}</div>
+    <div class="thread-answer">${card.placeholder ? '<p class="thread-answer-empty">选中此会话后加载正文</p>' : card.answer === null ? (card.error === null ? '<p class="thread-answer-empty">等待助手回复</p>' : '') : card.answer.pending && card.answer.text === '' ? '<p class="thread-answer-pending">正在回复</p>' : `${renderMarkdown(clampCardText(card.answer.text))}${card.answer.pending ? '<p class="thread-answer-pending">正在回复</p>' : ''}`}${card.error === null ? '' : `<p class="thread-answer-error" title="${escapeHtml(card.error.text)}">本轮失败：${escapeHtml(card.error.text)}</p>`}</div>
     <footer><button data-action="show-thread" data-thread="${card.dshThreadId}" data-card="${escapeHtml(card.id)}" title="查看完整会话" aria-label="查看完整会话"><svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="M2 8.5 8 2.5l6 6V13.5a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5Z"/><path d="M6.2 14v-3.6a1.8 1.8 0 0 1 3.6 0V14" /></svg>详情</button><button data-action="open-dsh" data-thread="${card.dshThreadId}" data-seq="${Number.isInteger(card.sourceSeq) ? card.sourceSeq : ''}" title="在 DSH 中打开" aria-label="在 DSH 中打开"><svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3.5H4.5A1.5 1.5 0 0 0 3 5v6.5A1.5 1.5 0 0 0 4.5 13H11a1.5 1.5 0 0 0 1.5-1.5V9"/><path d="M9.5 3.5h3v3M12.4 3.6 7.5 8.5"/></svg>DSH</button><button data-action="archive-thread" data-thread="${card.dshThreadId}" title="归档此会话" aria-label="归档此会话"><svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 5h11M5.5 7v5.5a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1V7"/><path d="M4 5 5 2.8a.7.7 0 0 1 .6-.4h4.8a.7.7 0 0 1 .6.4L12 5M6 9.5h4"/></svg>归档</button></footer>
   </article>`
 }
@@ -1206,14 +1244,6 @@ function renderThread() {
 
 // ---- Seat portal（英雄纪卡牌门户） --------------------------------------------
 
-function seatWorkspaceSummary(seat) {
-  return state.summaries.find(item => item.id === `seat:${seat.heroId}`)
-}
-
-function allWorkspaceSummary() {
-  return state.summaries.find(item => item.id === 'all')
-}
-
 async function enterSeat(workspaceId, sourceCard) {
   // FLIP hand-off: clone the clicked chronicle card at its viewport rect and
   // fly it to the seat view's sidebar card slot after render.
@@ -1224,14 +1254,9 @@ async function enterSeat(workspaceId, sourceCard) {
   state.activeId = null
   state.selectedCardId = null
   resetCanvasCamera()
-  try { localStorage.setItem('dsh-amphoreus:last-seat', workspaceId) } catch { /* Private browsing. */ }
-  const summary = state.summaries.find(item => item.id === workspaceId)
-  if (summary !== undefined) await openWorkspace(workspaceId)
-  else {
-    // Seat has no projected sessions yet: show an empty canvas shell.
-    state.workspace = { id: workspaceId, title: seatTitleOf(workspaceId), threads: [] }
-    render()
-  }
+  storedSeat(workspaceId)
+  rebuildWorkspace()
+  render()
   if (flight !== null) window.requestAnimationFrame(() => flight.land())
 }
 
@@ -1272,9 +1297,9 @@ function beginCardFlight(sourceCard) {
 
 function seatTitleOf(workspaceId) {
   if (workspaceId === 'all') return '全体会议'
-  const heroId = workspaceId.startsWith('seat:') ? workspaceId.slice(5) : workspaceId
+  const heroId = typeof workspaceId === 'string' && workspaceId.startsWith('seat:') ? workspaceId.slice(5) : ''
   const seat = state.seats.find(item => item.heroId === heroId)
-  return seat?.displayName ?? heroId
+  return (seat?.displayName ?? heroId) || '全体会议'
 }
 
 function showPortal() {
@@ -1288,9 +1313,9 @@ function showPortal() {
 }
 
 function renderPortal() {
-  const seatCards = state.seats.map((seat, index) => {
-    const summary = seatWorkspaceSummary(seat)
-    const count = summary?.threadCount ?? 0
+  const visibleSeats = state.seats.filter(seat => typeof seat.heroId === 'string' && seat.heroId !== '')
+  const seatCards = visibleSeats.map((seat, index) => {
+    const count = seatSessionCount(seat.heroId)
     const art = seat.chronicleUrl
       ? `<img class="portal-art" src="${escapeHtml(seat.chronicleUrl)}" alt="" loading="lazy" decoding="async">`
       : `<div class="portal-art portal-art-fallback" style="--seat-accent:${escapeHtml(seat.accent ?? '#8a681c')};--seat-accent2:${escapeHtml(seat.accent2 ?? '#37305e')}"></div>`
@@ -1309,8 +1334,7 @@ function renderPortal() {
       </span>
     </button>`
   }).join('')
-  const all = allWorkspaceSummary()
-  const allCount = all?.threadCount ?? 0
+  const allCount = seatSessionCount(null)
   return `<section class="portal" aria-label="黄金裔工作台">
     <header class="portal-head">
       <p class="portal-kicker">CHRYSOS · CONCILIUM</p>
@@ -1376,7 +1400,7 @@ function render() {
     : ''
   const seatHero = state.seatId?.startsWith('seat:') ? state.seatId.slice(5) : null
   const orphanUnprojectable = [...state.unprojectable.values()].filter(item =>
-    (seatHero === null ? item.heroId === null : item.heroId === seatHero) && !threads.some(thread => thread.dshSessionId === item.sessionId))
+    (heroIdOf(state.sessionsById.get(item.sessionId)) ?? null) === seatHero && !threads.some(thread => thread.dshSessionId === item.sessionId))
   const unprojectableList = orphanUnprojectable.length === 0 ? '' :
     `<div class="sidebar-heading"><span>不可投影</span></div><ul class="unprojectable-list">${orphanUnprojectable.map(item => `<li title="${escapeHtml(item.reason)}"><span>${escapeHtml(item.title ?? item.sessionId)}</span><i>${escapeHtml(item.reason)}</i></li>`).join('')}</ul>`
   app.innerHTML = `<main class="synapse-shell ${state.sidebarCollapsed ? 'sidebar-collapsed' : ''}"><aside class="sidebar"><div class="sidebar-brand-row">${seatBrand}<button class="sidebar-toggle" type="button" data-action="toggle-sidebar" aria-label="${state.sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}" title="${state.sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.75" y="1.75" width="12.5" height="12.5" rx="2.25"/><path d="M6 2v12"/></svg></button></div><button class="back-portal" type="button" data-action="show-portal"><svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5 5.5 8 10 12.5"/></svg><span>全部角色</span></button>${seatCardSlot}<button class="new-workspace" type="button" data-action="create-session" ${state.draft !== null ? 'disabled' : ''}><svg class="new-session-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.25"/><path d="M8 4.75v6.5M4.75 8h6.5"/></svg><span>新会话</span></button><div class="sidebar-heading"><span>会话</span></div><nav class="thread-tree">${threads.map(thread => `<button class="tree-row ${thread.id === state.activeId ? 'active' : ''}" data-action="select-thread" data-thread="${thread.id}" style="--thread-color:${escapeHtml(seat?.accent ?? '#374151')}"><span class="tree-dot"></span><span>${escapeHtml(threadListTitle(thread))}</span>${thread.parentId === null ? '' : '<i>分支</i>'}</button>`).join('') || '<p class="tree-empty">暂未同步会话</p>'}</nav>${unprojectableList}</aside><header class="topbar">${canvasControls}</header><section class="main-stage" ${seat?.cardUrl ? `style="--seat-stage-art:url('${escapeHtml(seat.cardUrl)}')"` : ''}>${state.error ? `<div class="status-message" role="alert"><span>${escapeHtml(state.error)}</span><button data-action="dismiss-error" aria-label="关闭" title="关闭">×</button></div>` : ''}${canvasTabs}${view}${selectionFollowupButton()}</section></main>`
@@ -1723,7 +1747,6 @@ app.addEventListener('click', async event => {
     openCardInspector(cardId)
     state.error = ''
     render()
-    void loadThreadHistory(thread)
     // Bidirectional current-session sync: switch DSH's current session
     // without closing the map; the client confirms via amphoreus:current-session.
     if (thread.dshSessionId !== null) {
@@ -1777,12 +1800,17 @@ app.addEventListener('click', async event => {
       state.error = ''
       if (state.workspace !== null) revealConversationThread(conversationCards(state.workspace.threads), thread.id)
       render()
-      void loadThreadHistory(thread)
       // Bidirectional current-session sync: switch DSH's current session
       // without closing the map; the client confirms via amphoreus:current-session.
       if (thread.dshSessionId !== null) post('amphoreus:activate-session', { sessionId: thread.dshSessionId })
     }
-    if (button.dataset.action === 'show-thread' && thread !== undefined) { state.activeId = thread.id; state.mode = 'thread'; state.detailTargetCardId = button.dataset.card ?? null; render(); void loadThreadHistory(thread) }
+    if (button.dataset.action === 'show-thread' && thread !== undefined) {
+      state.activeId = thread.id
+      state.mode = 'thread'
+      state.detailTargetCardId = button.dataset.card ?? null
+      if (thread.dshSessionId !== null && thread.dshSessionId !== state.currentSessionId) post('amphoreus:activate-session', { sessionId: thread.dshSessionId })
+      render()
+    }
     if (button.dataset.action === 'show-canvas') { state.mode = 'canvas'; render() }
     if (button.dataset.action === 'toggle-card-children' && button.dataset.card !== undefined) {
       const cardId = button.dataset.card
@@ -1828,26 +1856,7 @@ app.addEventListener('change', event => {
   const quickPhrase = event.target instanceof Element ? event.target.closest('[data-quick-phrase-index]') : null
   if (quickPhrase instanceof HTMLInputElement) {
     updateQuickPhrase(Number(quickPhrase.dataset.quickPhraseIndex), quickPhrase.value)
-    return
   }
-  const select = event.target.closest('[data-action="select-workspace"]')
-  if (!(select instanceof HTMLSelectElement)) return
-  const choice = workspaceChoices().find(item => item.id === select.value)
-  state.inspectorCardId = null
-  state.inspectorOpening = false
-  if (choice?.source === 'dsh') {
-    // Map → native sync: switching workspaces moves DSH's current session to
-    // the workspace's most recently updated session, keeping both sides in step.
-    void openDshWorkspace(choice.id).then(opened => {
-      if (!opened) return
-      const threads = state.workspace?.threads ?? []
-      const latest = threads
-        .filter(thread => thread.dshSessionId !== null)
-        .sort((a, b) => String(b.updatedAt ?? '').localeCompare(String(a.updatedAt ?? '')))[0]
-      const sessionId = latest?.dshSessionId ?? choice.sessionIds[0]
-      if (sessionId !== undefined) post('amphoreus:activate-session', { sessionId })
-    }).catch(setError)
-  } else if (choice !== undefined) { state.selectedDshWorkspaceId = null; void openWorkspace(choice.id).catch(setError) }
 })
 app.addEventListener('input', event => { const input = event.target; if (input instanceof HTMLTextAreaElement && input.closest('[data-draft]') && state.draft !== null) state.draft.text = input.value })
 app.addEventListener('submit', event => {
@@ -1867,23 +1876,24 @@ window.addEventListener('message', event => {
   if (event.origin !== window.location.origin || event.data?.source !== 'dsh-amphoreus') return
   const data = event.data
   if (data.type === 'amphoreus:map-opened') {
-    // Reopening keeps whatever surface the user was on; a fresh load starts
-    // at the seat portal (state.mode's initial value).
+    // Reopening keeps the current surface; remounts restore the last valid
+    // seat before the parent bridge sends this handshake.
     if (state.mode === 'thread') state.mode = 'canvas'
     render()
+    void refreshIndex().catch(setError)
     window.requestAnimationFrame(() => post('amphoreus:map-ready'))
+    window.setTimeout(() => post('amphoreus:map-ready'), 240)
   }
   if (data.type === 'amphoreus:theme') {
     document.documentElement.dataset.theme = data.dark === true ? 'dark' : 'light'
   }
   if (data.type === 'amphoreus:workspaces') {
-    // Seat-portal design: DSH directory workspaces only feed create-session
-    // cwd fallbacks; they never replace the seat canvas.
-    state.dshWorkspaces = Array.isArray(data.workspaces) ? data.workspaces.filter(workspace => typeof workspace?.id === 'string' && typeof workspace.title === 'string' && Array.isArray(workspace.sessionIds)) : []
+    applyWorkspaces(data)
   }
   if (data.type === 'amphoreus:current-session') {
     const previousId = state.currentDsh?.id
     state.currentDsh = data.session
+    state.currentSessionId = typeof data.session?.id === 'string' ? data.session.id : null
     const preserveCanvasCamera = previousId !== data.session?.id && state.mapCardSessionSwitches.delete(data.session?.id)
     if (state.mode === 'portal') return
     const thread = currentDshThread()
@@ -1904,7 +1914,33 @@ window.addEventListener('message', event => {
     }
     if (canReplaceView()) render()
   }
-  if (data.type === 'amphoreus:live-reply' && typeof data.sessionId === 'string') {
+  if (data.type === 'amphoreus:messages' && typeof data.sessionId === 'string' && !isHidden(data.sessionId) && Array.isArray(data.messages)) {
+    const revision = Number.isSafeInteger(data.revision) ? data.revision : 0
+    const previousRevision = state.historyRevisionBySession.get(data.sessionId) ?? -1
+    if (revision > previousRevision) {
+      state.historyRevisionBySession.set(data.sessionId, revision)
+      state.historyCompleteBySession.set(data.sessionId, data.complete === true)
+      const messages = data.messages.map(message => ({
+        kind: message.kind,
+        text: message.text,
+        at: message.time,
+        sourceSeq: message.seq,
+        turn: message.turn,
+        step: message.step,
+        process: message.process,
+        anchorKey: message.anchorKey,
+      }))
+      state.historyBySession.set(data.sessionId, messages)
+      const thread = state.workspace?.threads.find(item => item.dshSessionId === data.sessionId)
+      if (thread !== undefined) settlePendingReply(thread, messages)
+      if (canReplaceView()) renderPreservingDetailScroll()
+    }
+  }
+  if (data.type === 'amphoreus:config' && Number.isSafeInteger(data.cardTextLimit) && data.cardTextLimit > 0) {
+    state.cardTextLimit = data.cardTextLimit
+    scheduleViewRefresh()
+  }
+  if (data.type === 'amphoreus:live-reply' && typeof data.sessionId === 'string' && !isHidden(data.sessionId)) {
     const thread = state.workspace?.threads.find(item => item.dshSessionId === data.sessionId)
     if (thread !== undefined) {
       if (data.running === true) {
@@ -1925,9 +1961,6 @@ window.addEventListener('message', event => {
   if (data.type === 'amphoreus:bridge-error') { settleRpc(data.requestId, undefined, new Error(data.message)); if (data.requestId === undefined) setError(data.message) }
 })
 
-post('amphoreus:request-current')
-refreshSummaries().catch(setError)
-let polling = false
 let liveRenderTimer = 0
 let liveCardFrame = 0
 let liveCardSessionId = null
@@ -1957,7 +1990,7 @@ function applyLiveReplyToCard(sessionId) {
   if (!(card instanceof HTMLElement)) return
   const answer = card.querySelector('.thread-answer')
   if (!(answer instanceof HTMLElement)) return
-  const text = live.text
+  const text = clampCardText(live.text)
   answer.innerHTML = text.trim() === ''
     ? '<p class="thread-answer-pending">正在回复</p>'
     : `${renderMarkdown(text)}<p class="thread-answer-pending">正在回复</p>`
@@ -1969,11 +2002,33 @@ function scheduleLiveRender() {
     if (canReplaceView()) renderPreservingDetailScroll()
   }, 120)
 }
-async function pollProjection() {
-  if (polling || document.hidden || !canReplaceView()) return
-  polling = true
-  try {
-    await refreshProjection()
-  } finally { polling = false }
+
+let indexRefreshTimer = 0
+function scheduleIndexRefresh() {
+  if (document.hidden || indexRefreshTimer !== 0) return
+  indexRefreshTimer = window.setTimeout(() => {
+    indexRefreshTimer = 0
+    if (!document.hidden) void refreshIndex().catch(setError)
+  }, 120)
 }
-window.setInterval(() => { void pollProjection() }, 1_000)
+
+function connectEvents() {
+  if (state.eventSource !== null) return
+  const es = new EventSource('/amphoreus/api/events')
+  state.eventSource = es
+  es.addEventListener('workbench-change', scheduleIndexRefresh)
+  es.addEventListener('snapshot', () => { /* Seats and sessions arrive through the parent bridge. */ })
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      if (indexRefreshTimer !== 0) window.clearTimeout(indexRefreshTimer)
+      indexRefreshTimer = 0
+      return
+    }
+    void refreshIndex().catch(setError)
+  })
+}
+
+post('amphoreus:request-current')
+post('amphoreus:request-config')
+void refreshIndex().catch(setError)
+connectEvents()

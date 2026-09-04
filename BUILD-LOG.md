@@ -254,7 +254,7 @@
 - 偏离与理由：任务书把 `grep workbench/api/workspaces` 明确标为 TB6 后联合验收；当前 iframe 的旧轮询仍有 `3` 处并产生过渡期 404 红条，但独立监听确认 TB4 推送链已工作。新增会话使用工作台桥生成，未自动切换当前会话，符合既有 INV。提交短 SHA按下一提交回填规则处理。
 - 遗留：TB6 删除 iframe 旧轮询后清除过渡期 404；本任务无其他遗留。
 ## TB5 G6/G8：宿主页喂入正文与 live 文本 — 2026-09-04 18:03
-- commit: PENDING-TASK
+- commit: 8bb7f19
 - 动手前契约核对：
   - `sed -n '60,105p' client/ui-chat/src/client/contract/snapshot.ts` → `ChatSnapshot.legacy={nodes,turnTimings,turnEnds,partial,runningCalls}` 且 `nodes: ChatNodeStore` PASS
   - `grep -n 'interface PartialAssistant' -A 6 …/records.ts` → `{turn,step,blocks}` PASS
@@ -272,3 +272,22 @@
 - 人工断言：✓ 只订阅当前会话 target；✓ 未调用 `session.open()`；✓ map-ready 弥合首帧竞态；✓ 正文、工具字段与 live 各自硬截 32,000；✓ partial reasoning 不进入 live；✓ 所有浏览器监听器与两个测试标签已清理。
 - 偏离与理由：任务书原伪码以节点长度/尾 seq 判重，改用 `legacy.nodes` 引用与 `hasMore` 联合判重，避免同长度节点替换漏发；真实 alpha.4 节点名采用 `model-retry`/`turn-max-tokens`。提交短 SHA 按下一提交回填规则处理。
 - 遗留：iframe 旧 workspaces/threads 轮询仍显示过渡期 404，由 TB6 按任务书整体删除。
+## TB6 G8/G14：iframe 索引、正文喂入与占位卡数据层 — 2026-09-04 19:22
+- commit: PENDING-TASK
+- 验收：
+  - `node --check workbench/app.js` → 无输出 PASS（exit: `0`）
+  - `npm run typecheck && npm test && npm run build` → `tests 90; pass 89; fail 0; skipped 1; duration_ms 1408.6957`；client `82.77 kB`、host `147.46 kB` PASS（各 exit: `0`）
+  - `git diff --check` → 无空白错误 PASS（exit: `0`）
+  - 禁止项 `workbench/api/workspaces|workbench/api/threads|pollProjection|setInterval|loadThreadHistory|Current runtime context|messagesFromEvents|workspaceChoices|openWorkspace(|openDshWorkspace|select-workspace|amphoreus:hydrate` → 全部 `0`；index 命中 `2`，`includeHidden=1` 命中 `1`，EventSource 构造 `1`，nonce 总实现 `1` PASS
+  - 初次新页 → 1.2s 内门户显示全体会议 `12` 段、13 席；无 404 红条；进入全体会议后冷索引直接生成 `10` 张 placeholder，含多轮未点开旧会话 PASS
+  - 冷卡跨 session 点击初测使 conversation view remount 回门户，正文未填 FAIL；加入有效 last-seat 恢复与 240ms map-ready 补发后复测 → 新 iframe 保持 all 画布，目标 `cardCount=2`、placeholder=`0`，从点击到正文可见 `261.19999999552965 ms`（≤1s）PASS
+  - 非当前发送初测 outgoing 已是 activate→send（间隔 `0.2 ms`），但 activate 先卸载 listener，12s 后无新卡 FAIL；引入一次性 defer intent 与 parent-authoritative `prompt→reply→open` 后复测 → stale-current 无意图返回 `bridge-error: 缺少延迟激活意图` 且 current 不变；真实 S2 outgoing `activate(defer:true)→send(activate:true)`，原生对话出现 `FINAL-TB6`，回工作台 `cardCount=2,pending=false` PASS
+  - 独立终审 → 初次发现 `complete` 零消费会在 `hasMore=true` 吃掉旧卡、terminal error 不结算 pending；修复后 VM 回归确认 incomplete feed 按 seq 合并最新 placeholders、真实正文覆盖同 seq、index 后增卡可见、complete 后仅真实 history，user→error 清 pending/live；最终阻断 `0` PASS
+  - 空闲资源计数 → index GET `3`，等待 `2200 ms` 后仍为 `3`，无 1s 网络轮询；源码只持有一条 EventSource PASS
+  - 浏览器归档 `TB4-PUSH` → `DELETE /amphoreus/workbench/api/index/<session>` HTTP `200`，body `{"hidden":[…],"revision":21}`；画布与 iframe 侧栏立即归零，刷新后仍不出现；DSH 页面标题/会话仍保留 PASS
+  - API 归档复核 → 默认 index `14` 会话且 archived 命中 `0`；`includeHidden=1` 为 `15`、archived 命中 `1` 且 `hidden=true`；`"text"=0`、`"arguments"=0` PASS
+  - 临时把 `workbench.cardTextLimit` 设 `1000` 并重启 → 长回答卡显示截断后缀「——…（详情查看全文）」；详情与检查器全文各 `1440` 字且后缀均 false PASS
+  - 配置回滚 → `cordis.patch.yml` SHA-256 从原 `DB10860ACCBAB96252A33C5F62106E7834D8102F8D2543B0BFB1837CB8F7C6BC` 临时变为 `644D00747F4B4F208F8999D866CE8EA8B24CB7BDBA3AE6E3AD7E52A7C2C052A9`，恢复后逐字节回到原 hash；备份已删除；重启后 state `cardTextLimit=8000,status=ready`、stderr `0` bytes PASS
+- 人工断言：✓ Index 只含结构；✓ 正文唯一来自 current conversation feed；✓ hidden/旧 revision/迟到 feed 均不复活归档；✓ cardTextLimit 只裁卡片/live，详情/检查器全文；✓ 非当前发送先表达激活意图且 prompt admission 失败不切会话；✓ remount 后恢复原席位；✓ 服务终态运行且配置完全恢复。
+- 偏离与理由：真实 React session 切换会销毁 iframe，任务书单纯“activate 后 send”会丢第二条消息；新增 `activation-bridge.ts` 以一次性 deferred intent 保持旧 listener，parent 以实际 current 裁决并先完成 prompt admission，随后 reply/open。为闭合实机路径，TB6 跨改 `src/client/workbench.tsx` 并新增行为测试；未改变外部消息顺序。提交短 SHA 按下一提交回填规则处理。
+- 遗留：index 首响应前 hidden 会话可能短暂闪现；统一 unsafe-render dirty flush、branch prompt 失败后的 fork/draft 恢复与浏览器旧 canvas 状态清理由 TB7/TB10 后续收口。

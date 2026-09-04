@@ -528,3 +528,7 @@ button.primary:hover { border-color: #000; background: #000; color: #fff; }
 .card-flight { border: 1px solid rgba(150,114,31,.42); border-radius: 14px; overflow: hidden; box-shadow: 0 26px 52px rgba(59,45,107,.28); background: #edeaf3; }
 .sidebar-collapsed .seat-card-slot { display: none; }
 [data-theme="dark"] .seat-card-slot { border-color: rgba(217,178,88,.4); background: #241d36; }
+
+.thread-card.placeholder { opacity: .78; }
+.thread-card.placeholder .thread-title { font-style: italic; }
+.thread-card.placeholder .thread-answer-empty::before { content: '◌ '; }

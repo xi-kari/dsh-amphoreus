@@ -4,13 +4,14 @@
  * open-session / activate-session) with the injected session service, so the
  * canvas can create seat sessions, prompt them, and fork branches. All skill
  * binding stays host-side (the binding PUT below + the injector); the iframe
- * never sees session text beyond the host projection.
+ * receives only the bounded browser conversation feed for the active session.
  */
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type { ChatSnapshot } from '@deepseek-ai/dsh-client-ui-chat/client'
 import { useCallback, useEffect, useRef } from 'react'
 import type { AmphoreusState } from '../shared/api.ts'
+import { promptWithDeferredActivation } from './activation-bridge.ts'
 import { feedFromChat, HARD_TEXT_CAP, liveTextOf } from './conversation-feed.ts'
 import { rememberTab, WORKBENCH_VIEW_ID } from './tabmemory.ts'
 import css from './workbench.module.css'
@@ -54,6 +55,8 @@ interface BridgeMessage {
   text?: string
   seq?: number
   seatHeroId?: string
+  defer?: boolean
+  activate?: boolean
 }
 
 export function WorkbenchView({
@@ -73,6 +76,7 @@ export function WorkbenchView({
   const revisionRef = useRef(0)
   const pushMessagesRef = useRef<() => void>(() => {})
   const pushLiveRef = useRef<() => void>(() => {})
+  const deferredActivationsRef = useRef(new Set<string>())
   const reply = useCallback((payload: Record<string, unknown>): void => {
     frameRef.current?.contentWindow?.postMessage({ source: 'dsh-amphoreus', ...payload }, window.location.origin)
   }, [])
@@ -260,11 +264,17 @@ export function WorkbenchView({
             }
             case 'amphoreus:send-message': {
               if (typeof data.sessionId !== 'string' || typeof data.text !== 'string') throw new Error('缺少会话或文本')
-              const binding = sessions.binding(data.sessionId)
-              if (binding === undefined) throw new Error('会话不可用')
-              const result = await binding.session.prompt([{ type: 'text', text: data.text }], 'queue')
-              if (!result.ok) throw new Error(result.error?.message ?? '发送失败')
-              reply({ type: 'amphoreus:message-sent', requestId: data.requestId, session: summaryOf(data.sessionId) })
+              const targetId = data.sessionId
+              await promptWithDeferredActivation({
+                sessionId: targetId,
+                text: data.text,
+                requestedActivation: data.activate === true,
+                deferredActivations: deferredActivationsRef.current,
+                currentSession: () => sessions.list.getSnapshot().current,
+                binding: id => sessions.binding(id),
+                reply: () => reply({ type: 'amphoreus:message-sent', requestId: data.requestId, session: summaryOf(targetId) }),
+                open: id => sessions.open(id),
+              })
               return
             }
             case 'amphoreus:fork-session': {
@@ -289,7 +299,13 @@ export function WorkbenchView({
               return
             }
             case 'amphoreus:activate-session':
-              if (typeof data.sessionId === 'string') sessions.open(data.sessionId)
+              if (typeof data.sessionId !== 'string') return
+              if (data.defer === true) {
+                deferredActivationsRef.current.add(data.sessionId)
+                return
+              }
+              deferredActivationsRef.current.delete(data.sessionId)
+              sessions.open(data.sessionId)
               return
             case 'amphoreus:close':
               rememberTab(localStorage, 'chat')
