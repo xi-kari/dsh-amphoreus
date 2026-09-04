@@ -242,7 +242,7 @@
 - 偏离与理由：TB2 复核发现并发 hidden/global 写覆盖、后到子会话逃逸、冷重放游离、listener 反向破坏写结果与脏 ETag 风险；修复提交 `9b7150b` 引入全局串行 read-modify-write、hide 串行/祖先隐藏、冷任务 abort+await、观察者隔离，并在 GET 建立 flush 边界。TB3 提交短 SHA 按下一提交回填规则处理。
 - 遗留：无
 ## TB4 G14：宿主页发送 `amphoreus:workspaces` — 2026-09-04 17:41
-- commit: PENDING-TB4
+- commit: 0cb4a3c
 - 验收：
   - `npm run typecheck && npm test && npm run build` → `tests 77; pass 76; fail 0; skipped 1`；client `74.18 kB`、host `147.46 kB` PASS（exit: `0`）
   - 静态：index `'uiConversation'` = `1`；workbench.tsx 发送 `amphoreus:workspaces` = `1`；组件 `ctx` = `0`；ui-chat 值导入 = `0` PASS
@@ -253,3 +253,22 @@
 - 人工断言：✓ map-ready 后立即首发；✓ 会话从空白变非空后进入推送；✓ skillName/face 即使无绑定也显式为 null；✓ 席位/会话元数据只由宿主页状态源组装；✓ 组件未接触 ctx。
 - 偏离与理由：任务书把 `grep workbench/api/workspaces` 明确标为 TB6 后联合验收；当前 iframe 的旧轮询仍有 `3` 处并产生过渡期 404 红条，但独立监听确认 TB4 推送链已工作。新增会话使用工作台桥生成，未自动切换当前会话，符合既有 INV。提交短 SHA按下一提交回填规则处理。
 - 遗留：TB6 删除 iframe 旧轮询后清除过渡期 404；本任务无其他遗留。
+## TB5 G6/G8：宿主页喂入正文与 live 文本 — 2026-09-04 18:03
+- commit: PENDING-TASK
+- 动手前契约核对：
+  - `sed -n '60,105p' client/ui-chat/src/client/contract/snapshot.ts` → `ChatSnapshot.legacy={nodes,turnTimings,turnEnds,partial,runningCalls}` 且 `nodes: ChatNodeStore` PASS
+  - `grep -n 'interface PartialAssistant' -A 6 …/records.ts` → `{turn,step,blocks}` PASS
+  - `sed -n '40,110p' …/records.ts` 与 ToolResult/TurnError grep → user/assistant/context/steering 字段匹配；实际控制节点名为 `model-retry`、`turn-max-tokens`；ToolResult 字段为 `callId/call/callTime/content/isError/error/subCalls` PASS
+  - `sed -n '24,41p' …/assembly.ts` 与 `sed -n '65,88p' …/snapshot.ts` → target 返回 ObservableSnapshot，SessionSnapshot 有 `running/openState/hasMore` PASS
+- 验收：
+  - `npm run typecheck && npm test && npm run build` → `tests 82; pass 81; fail 0; skipped 1; duration_ms 1445.6969`；client `81.60 kB`、host `147.46 kB` PASS（各 exit: `0`）
+  - `node --test tests/conversation-feed.test.ts` → `tests 5; pass 5; fail 0` PASS（exit: `0`）
+  - `git diff --check` → 无空白错误 PASS（exit: `0`）
+  - 独立只读评审 → P0/P1 `0`；确认 current-only 订阅、nodes 引用+hasMore 判重、切换清 timer/rAF、`complete=!hasMore`、实际控制节点过滤、工具结果回填、32K 上限及 exactOptional 均闭合 PASS
+  - iframe 安装监听后主动发 `amphoreus:map-ready` → 依次收到 `workspaces(seats=13,sessions=13)`、`current-session`、`config(cardTextLimit=8000)`、`messages(6)`、`live-reply(running=false,textLen=0)` 五路快照 PASS
+  - 当前会话发送 30 行流式夹具 → `liveCount=57`，其中 `running:true=56`（≥5），长度逐帧从 `0→447` 增长，最后一帧 `running:false,textLen=0` PASS
+  - 回合终态 → 最后 messages 含 `8` 条 user/assistant；messages 相对最后 live false 延迟 `6.299999997019768 ms`（≤200ms）；`kind:context=false`、`<skill_content=false`、reasoning=false PASS
+  - 第二浏览器标签让非当前 `TB4-PUSH` 会话完整流式回复；当前会话标签收到 workspaces 高频更新 `8` 次，但 `amphoreus:messages=0`、`live-reply=0`（≤1）PASS
+- 人工断言：✓ 只订阅当前会话 target；✓ 未调用 `session.open()`；✓ map-ready 弥合首帧竞态；✓ 正文、工具字段与 live 各自硬截 32,000；✓ partial reasoning 不进入 live；✓ 所有浏览器监听器与两个测试标签已清理。
+- 偏离与理由：任务书原伪码以节点长度/尾 seq 判重，改用 `legacy.nodes` 引用与 `hasMore` 联合判重，避免同长度节点替换漏发；真实 alpha.4 节点名采用 `model-retry`/`turn-max-tokens`。提交短 SHA 按下一提交回填规则处理。
+- 遗留：iframe 旧 workspaces/threads 轮询仍显示过渡期 404，由 TB6 按任务书整体删除。

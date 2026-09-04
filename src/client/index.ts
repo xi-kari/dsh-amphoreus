@@ -7,6 +7,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type {} from '@deepseek-ai/dsh-client-ui-theme/client'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { HeroBrandMark, SidebarBrandMark, SidebarBrandName } from './brand.tsx'
 import { installGarnish } from './garnish.ts'
 import { en, NS, zh, type AmphoreusKey } from './locales.ts'
@@ -88,6 +89,10 @@ export function apply(ctx: ClientContext): void {
   if (workbenchEnabled) {
     // Workbench as a second conversation view (id/order shape mirrors ui-trajectory).
     const skillByHero = new Map<string, string>(HERO_VISUALS.map(hero => [hero.heroId, hero.skill]))
+    type SessionFeed = Exclude<ReturnType<WorkbenchViewInjected['sessionFace']>, undefined>
+    const sessionAdapter = ctx.sessions as unknown as {
+      binding(id: SessionId): { session: SessionFeed } | undefined
+    }
     ctx.slots.inject('conversation.view', () => ctx.slots.register({
       name: 'conversation.view',
       id: 'amphoreus-workbench',
@@ -97,6 +102,15 @@ export function apply(ctx: ClientContext): void {
       inject: (): WorkbenchViewInjected => ({
         sessions: ctx.sessions as unknown as WorkbenchViewInjected['sessions'],
         workspaces,
+        conversationFeed: (sessionId) => {
+          try {
+            return ctx.uiConversation.binding(sessionId as SessionId).target('chat')
+          } catch {
+            return undefined
+          }
+        },
+        sessionFace: sessionId => sessionAdapter.binding(sessionId as SessionId)?.session,
+        config: model,
         seatSkillOf: heroId => skillByHero.get(heroId),
         bindSeat: async (sessionId, skillName) => {
           const nonce = model.getSnapshot().state?.nonce ?? window.__AMPHOREUS_BOOT__?.nonce

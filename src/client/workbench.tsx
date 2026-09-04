@@ -8,22 +8,35 @@
  */
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
+import type { ChatSnapshot } from '@deepseek-ai/dsh-client-ui-chat/client'
 import { useCallback, useEffect, useRef } from 'react'
+import type { AmphoreusState } from '../shared/api.ts'
+import { feedFromChat, HARD_TEXT_CAP, liveTextOf } from './conversation-feed.ts'
 import { rememberTab, WORKBENCH_VIEW_ID } from './tabmemory.ts'
 import css from './workbench.module.css'
 import type { WorkspacesPayload } from './workspaces-source.ts'
+
+interface SessionFeedFace {
+  prompt(content: { type: 'text'; text: string }[], mode: 'queue' | 'steer'): Promise<{ ok: boolean; error?: { message?: string } }>
+  loadThrough(seq: number): Promise<void>
+  getSnapshot(): { running: boolean; openState: 'cold' | 'loading' | 'open' | 'error'; hasMore: boolean }
+  subscribe(listener: () => void): () => void
+}
 
 interface SessionsFace {
   create(opts: { cwd?: string; sessionId?: string }): Promise<string>
   fork(opts: { sessionId: string; atSeq?: number; increaseTitle?: boolean }): Promise<string>
   open(id: string): void
-  binding(id: string): { session: { prompt(content: { type: 'text'; text: string }[], mode: 'queue' | 'steer'): Promise<{ ok: boolean; error?: { message?: string } }> } } | undefined
+  binding(id: string): { session: SessionFeedFace } | undefined
   readonly list: { getSnapshot(): { byId: Record<string, { title?: string; displayTitle: string } | undefined>; current: string | undefined } }
 }
 
 export interface WorkbenchViewInjected {
   readonly sessions: SessionsFace
   readonly workspaces: ObservableSnapshot<WorkspacesPayload>
+  readonly conversationFeed: (sessionId: string) => ObservableSnapshot<ChatSnapshot | undefined> | undefined
+  readonly sessionFace: (sessionId: string) => SessionFeedFace | undefined
+  readonly config: ObservableSnapshot<{ state?: AmphoreusState }>
   /** PUT a seat binding before the first prompt (host webapi, nonce-gated). */
   readonly bindSeat: (sessionId: string, skillName: string) => Promise<void>
   readonly seatSkillOf: (heroId: string) => string | undefined
@@ -43,14 +56,43 @@ interface BridgeMessage {
   seatHeroId?: string
 }
 
-export function WorkbenchView({ sessionId, sessions, workspaces, bindSeat, seatSkillOf, openView, completeViewRequest, viewRequest }: WorkbenchViewProps) {
+export function WorkbenchView({
+  sessionId,
+  sessions,
+  workspaces,
+  conversationFeed,
+  sessionFace,
+  config,
+  bindSeat,
+  seatSkillOf,
+  openView,
+  completeViewRequest,
+  viewRequest,
+}: WorkbenchViewProps) {
   const frameRef = useRef<HTMLIFrameElement>(null)
+  const revisionRef = useRef(0)
+  const pushMessagesRef = useRef<() => void>(() => {})
+  const pushLiveRef = useRef<() => void>(() => {})
   const reply = useCallback((payload: Record<string, unknown>): void => {
     frameRef.current?.contentWindow?.postMessage({ source: 'dsh-amphoreus', ...payload }, window.location.origin)
   }, [])
+  const summaryOf = useCallback((id: string): { id: string; title: string } => {
+    const summary = sessions.list.getSnapshot().byId[id]
+    return { id, title: summary?.title ?? summary?.displayTitle ?? id }
+  }, [sessions])
   const pushWorkspaces = useCallback((): void => {
     reply({ type: 'amphoreus:workspaces', ...workspaces.getSnapshot() })
   }, [reply, workspaces])
+  const pushCurrent = useCallback((): void => {
+    const current = sessions.list.getSnapshot().current
+    reply({ type: 'amphoreus:current-session', session: current === undefined ? null : summaryOf(current) })
+  }, [reply, sessions, summaryOf])
+  const pushConfig = useCallback((): void => {
+    reply({
+      type: 'amphoreus:config',
+      cardTextLimit: config.getSnapshot().state?.effectiveConfig.workbench.cardTextLimit ?? 8000,
+    })
+  }, [config, reply])
 
   useEffect(() => {
     rememberTab(localStorage, WORKBENCH_VIEW_ID)
@@ -62,13 +104,123 @@ export function WorkbenchView({ sessionId, sessions, workspaces, bindSeat, seatS
 
   useEffect(() => workspaces.subscribe(pushWorkspaces), [workspaces, pushWorkspaces])
 
+  useEffect(() => config.subscribe(pushConfig), [config, pushConfig])
+
+  useEffect(() => {
+    let followedId: string | undefined
+    let lastNodes: ChatSnapshot['legacy']['nodes'] | undefined
+    let lastHasMore: boolean | undefined
+    let lastRunning: boolean | undefined
+    let lastLive = ''
+    let messageTimer: number | undefined
+    let liveFrame: number | undefined
+    let stopFeed = (): void => {}
+    let stopFace = (): void => {}
+    let resendMessages: (() => void) | undefined
+    let resendLive: (() => void) | undefined
+
+    const clearScheduled = (): void => {
+      if (messageTimer !== undefined) window.clearTimeout(messageTimer)
+      if (liveFrame !== undefined) cancelAnimationFrame(liveFrame)
+      messageTimer = undefined
+      liveFrame = undefined
+    }
+    const detach = (): void => {
+      stopFeed()
+      stopFace()
+      stopFeed = () => {}
+      stopFace = () => {}
+      clearScheduled()
+      if (resendMessages !== undefined && pushMessagesRef.current === resendMessages) {
+        pushMessagesRef.current = () => {}
+      }
+      if (resendLive !== undefined && pushLiveRef.current === resendLive) {
+        pushLiveRef.current = () => {}
+      }
+      resendMessages = undefined
+      resendLive = undefined
+    }
+    const follow = (): void => {
+      const id = sessions.list.getSnapshot().current
+      if (id === followedId) return
+
+      detach()
+      followedId = undefined
+      lastNodes = undefined
+      lastHasMore = undefined
+      lastRunning = undefined
+      lastLive = ''
+      if (id === undefined) return
+
+      const feed = conversationFeed(id)
+      const face = sessionFace(id)
+      if (feed === undefined || face === undefined) return
+
+      const postMessages = (force = false): void => {
+        const chat = feed.getSnapshot()
+        if (chat === undefined) return
+        const nodes = chat.legacy.nodes
+        const hasMore = face.getSnapshot().hasMore
+        if (!force && nodes === lastNodes && hasMore === lastHasMore) return
+        lastNodes = nodes
+        lastHasMore = hasMore
+        reply({
+          type: 'amphoreus:messages',
+          ...feedFromChat(id, chat, ++revisionRef.current, hasMore),
+        })
+      }
+      const postLive = (force = false): void => {
+        const running = face.getSnapshot().running
+        const text = liveTextOf(feed.getSnapshot())
+        if (!force && running === lastRunning && text === lastLive) return
+        lastRunning = running
+        lastLive = text
+        reply({
+          type: 'amphoreus:live-reply',
+          sessionId: id,
+          running,
+          text: text.slice(0, HARD_TEXT_CAP),
+        })
+      }
+      const onFeedChange = (): void => {
+        if (messageTimer === undefined) {
+          messageTimer = window.setTimeout(() => {
+            messageTimer = undefined
+            postMessages()
+          }, 120)
+        }
+        if (liveFrame === undefined) {
+          liveFrame = requestAnimationFrame(() => {
+            liveFrame = undefined
+            postLive()
+          })
+        }
+      }
+
+      stopFeed = feed.subscribe(onFeedChange)
+      stopFace = face.subscribe(onFeedChange)
+      followedId = id
+      resendMessages = () => postMessages(true)
+      resendLive = () => postLive(true)
+      pushMessagesRef.current = resendMessages
+      pushLiveRef.current = resendLive
+      postMessages()
+      postLive()
+    }
+
+    const stopList = (sessions.list as unknown as {
+      subscribe(listener: () => void): () => void
+    }).subscribe(follow)
+    follow()
+    return () => {
+      stopList()
+      detach()
+    }
+  }, [conversationFeed, reply, sessionFace, sessions])
+
   useEffect(() => {
     const fail = (requestId: string | undefined, error: unknown): void => {
       reply({ type: 'amphoreus:bridge-error', requestId, message: error instanceof Error ? error.message : String(error) })
-    }
-    const summaryOf = (sessionId: string): { id: string; title: string | undefined } => {
-      const summary = sessions.list.getSnapshot().byId[sessionId]
-      return { id: sessionId, title: summary?.title ?? summary?.displayTitle }
     }
     const onMessage = (event: MessageEvent<BridgeMessage>): void => {
       if (event.origin !== window.location.origin) return
@@ -80,6 +232,10 @@ export function WorkbenchView({ sessionId, sessions, workspaces, bindSeat, seatS
           switch (data.type) {
             case 'amphoreus:map-ready':
               pushWorkspaces()
+              pushCurrent()
+              pushConfig()
+              pushMessagesRef.current()
+              pushLiveRef.current()
               return
             case 'amphoreus:map-opened':
               return
@@ -88,6 +244,9 @@ export function WorkbenchView({ sessionId, sessions, workspaces, bindSeat, seatS
               reply({ type: 'amphoreus:current-session', session: current === undefined ? null : summaryOf(current) })
               return
             }
+            case 'amphoreus:request-config':
+              pushConfig()
+              return
             case 'amphoreus:create-session': {
               const sessionId = await sessions.create(typeof data.cwd === 'string' && data.cwd !== '' ? { cwd: data.cwd } : {})
               // Seat binding must land before the first prompt so the host
@@ -147,7 +306,19 @@ export function WorkbenchView({ sessionId, sessions, workspaces, bindSeat, seatS
     }
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
-  }, [sessionId, sessions, bindSeat, seatSkillOf, openView, completeViewRequest, pushWorkspaces, reply])
+  }, [
+    sessionId,
+    sessions,
+    bindSeat,
+    seatSkillOf,
+    openView,
+    completeViewRequest,
+    pushWorkspaces,
+    pushCurrent,
+    pushConfig,
+    reply,
+    summaryOf,
+  ])
 
   // Keep the iframe informed about the current session so its canvas
   // highlights the active card.
@@ -157,12 +328,11 @@ export function WorkbenchView({ sessionId, sessions, workspaces, bindSeat, seatS
       const current = sessions.list.getSnapshot().current
       if (current === last) return
       last = current
-      const summary = current === undefined ? null : { id: current, title: sessions.list.getSnapshot().byId[current]?.displayTitle }
-      reply({ type: 'amphoreus:current-session', session: summary })
+      pushCurrent()
     }
     const dispose = (sessions.list as unknown as { subscribe(listener: () => void): () => void }).subscribe(push)
     return dispose
-  }, [sessions, reply])
+  }, [sessions, pushCurrent])
 
   useEffect(() => {
     if (viewRequest?.view === WORKBENCH_VIEW_ID) completeViewRequest()
