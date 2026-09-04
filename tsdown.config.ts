@@ -183,4 +183,10 @@ const clientConfig: UserConfig = {
   },
 }
 
-export default [hostConfig, clientConfig]
+const deriveConfig: UserConfig = {
+  ...hostConfig,
+  name: `${ID}-derive`,
+  entry: { derive: 'src/host/derive.ts' },
+}
+
+export default [hostConfig, clientConfig, deriveConfig]

@@ -22,7 +22,10 @@
     "lib/index.js.map",
     "lib/client.js",
     "lib/client.js.map",
+    "lib/derive.js",
+    "lib/derive.js.map",
     "lib/types/**/*.d.ts",
+    "scripts/derive-assets.mjs",
     "cordis.patch.yml",
     "workbench/**",
     "LICENSE",
@@ -35,6 +38,7 @@
     "build:types": "node node_modules/typescript/bin/tsc -p tsconfig.json --emitDeclarationOnly",
     "build:js": "node node_modules/tsdown/dist/run.mjs",
     "build": "npm run typecheck && npm run build:types && npm run build:js",
+    "derive": "node scripts/derive-assets.mjs",
     "watch": "node node_modules/tsdown/dist/run.mjs --watch",
     "test": "node --test tests/*.test.ts",
     "prepare": "npm run build:types && npm run build:js"

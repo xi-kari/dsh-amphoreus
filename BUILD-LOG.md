@@ -424,7 +424,7 @@
 - 偏离与理由：初始 dataset 赋值加 `document.documentElement` 存在性守卫以兼容既有 VM probe；真实浏览器路径语义不变。任务书目标中的设置区点击控件由明确后置 TD11 实现，本任务只提供持久化与桥接能力。
 - 遗留：无。
 ## TD8 G21：杂志 full 档 Q&A／封面／栏目版式 — 2026-09-05 00:23
-- commit: PENDING-TASK
+- commit: 2d51cc2
 - 验收：
   - TD7+TD8 聚焦 → `tests 9; pass 9; fail 0; skipped 0; duration_ms 346.1989` PASS（exit: `0`）
   - 全量最终 → `tests 154; pass 153; fail 0; skipped 1; duration_ms 1796.3757` PASS（exit: `0`）
@@ -446,6 +446,32 @@
 - 人工断言：✓ folio 分母来自折叠前 allCards；✓ data attrs 两档共用，档位只切 class；✓ draft 不显示空 folio；✓ sidebar/portal 优先 coverUrl、缺失回退 chronicle；✓ full CSS 优先消费 `--thread-color` 并保留 selected halo，为 TC9 逐卡席色留路；✓ light 无专属 CSS；✓ DOM 与交互节点不因切档重建。
 - 偏离与理由：TD8 同时要求“不改 `--thread-color`”与 `#3478f6=0`，但这三处 producer 明确归后置 C/TC9；当前保持 `3`，并把 0 作为 TD8+TC9 联合门。为满足 DOM 数量、焦点与失焦详情输入不丢失的更强验收，档位变化只同步现有 shell class，不再执行 TD7 的完整 render。Folio selector 收紧到具备 data attrs 的正式卡，避免草稿显示空页码。
 - 遗留：`#3478f6 3→0` 与逐卡多席色由 C/TC9；派生 cover 的 data-cover/3:4 实机门由 TD10。
+## TD9：零依赖 ZIP／WebP 素材派生器与独立 CLI bundle — 2026-09-05 00:48
+- commit: PENDING-TASK
+- 动手前核对：
+  - `magick rose: -gravity North -crop 3:4 +repage -format '%wx%h' info:` → `35x46` PASS
+  - Node `v24.14.1`、ImageMagick `7.1.2-25 Q16-HDRI`（含 webp）；71 个权威输入路径 missing=`0`、总 bytes=`304946013`；真实 cache 初始不存在 PASS
+  - 13 个真实 ZIP 只读解析 → entries=`158`、顶层 `00_` cover=`13`、cover bytes=`15739255`，全为 method 8/UTF-8 flag 2048 PASS
+- 自动化验收：
+  - `node --test tests/host-zip.test.ts tests/host-derive.test.ts` → `tests 12; pass 12; fail 0; skipped 0; duration_ms 717.8086` PASS（exit: `0`）
+  - 完整 synthetic fixture → 首次 written=`84`/skipped=`0`/failed=`0`，二次 written=`0`/skipped=`84`；covers progress=`13` hero jobs、stickers=`26` files、wallpapers=`6` PASS
+  - 全量测试 → `tests 166; pass 165; fail 0; skipped 1; duration_ms 1815.4564`；typecheck PASS（各 exit: `0`）
+  - 安全 clean-lib build → JS 恰 `client.js,derive.js,index.js` 三个，unexpected=`0`，index/derive sibling imports=`0`；derive `28.87 kB`、client `109.53 kB`、host `152.54 kB` PASS
+  - `npm pack --dry-run --json --ignore-scripts` → files=`55`、packageSize=`287901`、unpackedSize=`1104748`；index/client/derive 六个 JS+map 与 CLI 七项全在包内，unexpected lib JS=`0` PASS
+  - `git diff --check` → 无空白错误 PASS（exit: `0`）
+- 安全边界：✓ EOCD/central/local 全范围与签名校验；✓ fatal UTF-8 后 latin1；✓ method 0/8、CRC、entry/source identity；✓ 拒绝 encryption/ZIP64/异常 flags；✓ 64MiB ZIP/32MiB entry/200× ratio/4096 entries；✓ 封面只认唯一根级 `00_`；✓ cache/source realpath containment；✓ async spawn pipes + windowsHide + shell:false + stdin.end；✓ output/stderr caps、120s timeout、single settle；✓ RIFF/WEBP 与同目录原子 rename；✓ 单文件失败继续且清临时文件。
+- 真实派生事务：
+  - `.runtime` staging canary（covers+wallpapers）→ written=`32`、failed=`0`、elapsed=`9350ms` PASS
+  - staging `--force` 全量 → written=`84`、skipped=`0`、failed=`0`、elapsed=`18454ms` PASS；WebP count=`84`、bytes=`9633300`、13 hero dirs 各=`5`、global=`19`（chimera=`12`）、非 ASCII 名=`0`、坏签名=`0`
+  - 尺寸 → aglaea cover-34=`1080×1440`（0.75）、cover-169=`1080×608`（1.7763）、wallpaper-0=`2139×2560` PASS
+  - staging 二次运行 → written=`0`、skipped=`84`、failed=`0`、elapsed=`88ms` PASS
+  - 71 个源文件 size/mtime/SHA-256 前后 manifest 完全一致=`true` PASS
+  - 真实 cache 原本不存在；停服务后验证 staging source 在 `.runtime`、target parent 精确为 `.dsh-home/amphoreus`，目录级提升为 `assets-cache`；target WebP=`84`，source 不再存在；重启 HTTP=`200`、stderr=`0` bytes PASS
+  - 按任务书真实 data-dir 再跑 CLI：首行 `data-dir: D:/DeepSeek Harness/.dsh-home/amphoreus`，written=`0`、skipped=`84`、failed=`0`、elapsed=`93ms` PASS
+  - 当前 cache manifest 已记录 84 个相对路径/size/mtime/SHA-256；clean-build 前四 bundle 备份在 `.runtime/td9-lib-backup-20260905-004143`，构建成功未触发恢复
+- 偏离与理由：covers 进度按任务书示例记 13 个 hero job，但 DeriveResult 按两个 cover 实际文件计 26；完整结果精确为 65 席位文件 + 19 全局文件=`84`。为可控测试增加可选 DeriveRuntime seam，生产单参数签名与默认真实 spawn 不变。任务书描述 Vol.04 “封面约28MB”实际是整 ZIP 约29MB，封面约2.46MB；安全上限按实物加冗余。
+- 回滚与终态：原 cache 为 absent，回滚动作是停服务后删除精确 `assets-cache`；本任务目标要求生成并供 TD10 服务，故当前有意保留已验证的 84 文件 cache。权威 sessions、两 storage-domain 与原素材均未改。
+- 遗留：无。
 ## TD2 G2：宿主页向 iframe 桥接 87 个主题 token — 2026-09-04 22:35
 - commit: 1722602
 - 验收：
