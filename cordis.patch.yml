@@ -1,0 +1,11 @@
+# dsh-amphoreus —— 安装后叠在 dsh-base + dsh-web-app 之上；只插入一行，不禁用任何官方行。
+# 用户在 profile 的 cordis.patch.yml 覆盖本行时，补丁按 id 整体替换 config、不深合并；
+# 未写出的键由插件 schema 的默认值补齐，所以只写想改的键即可。
+# 技能内容不在包内：skillRoots 只是目录引用，运行时解析（设计底账 05 §1.1）。
+- insert:
+    - id: amphoreus
+      name: dsh-amphoreus
+      config:
+        skillRoots: ['~/.claude/skills', '~/.codex/skills']
+        dataDir: !!js dshHomePath('amphoreus')
+        assetsRoot: ''

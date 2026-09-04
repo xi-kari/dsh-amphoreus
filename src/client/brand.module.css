@@ -1,0 +1,32 @@
+.sidebarMark,
+.heroMark {
+  display: block;
+  color: var(--dsw-alias-brand-primary);
+  filter: drop-shadow(0 1px 2px var(--dsw-alias-bg-mask-2));
+}
+
+.heroMark {
+  transform: scale(1.08);
+}
+
+.wordmark {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 7px;
+  color: var(--dsw-alias-brand-text);
+  white-space: nowrap;
+}
+
+.wordmark strong {
+  font-family: ui-serif, "Songti SC", "STSong", serif;
+  font-size: 16px;
+  font-weight: 650;
+  letter-spacing: .08em;
+}
+
+.wordmark span {
+  color: var(--dsw-alias-label-caption);
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 9px;
+  letter-spacing: .14em;
+}
