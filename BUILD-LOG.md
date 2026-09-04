@@ -292,7 +292,7 @@
 - 偏离与理由：真实 React session 切换会销毁 iframe，任务书单纯“activate 后 send”会丢第二条消息；新增 `activation-bridge.ts` 以一次性 deferred intent 保持旧 listener，parent 以实际 current 裁决并先完成 prompt admission，随后 reply/open。为闭合实机路径，TB6 跨改 `src/client/workbench.tsx` 并新增行为测试；未改变外部消息顺序。提交短 SHA 按下一提交回填规则处理。
 - 遗留：index 首响应前 hidden 会话可能短暂闪现；统一 unsafe-render dirty flush、branch prompt 失败后的 fork/draft 恢复与浏览器旧 canvas 状态清理由 TB7/TB10 后续收口。
 ## TB7 G11：Canvas/Prefs 服务端持久化与独立体积门 — 2026-09-04 20:56
-- commit: PENDING-TASK
+- commit: f61176c
 - 验收：
   - `node --check workbench/app.js && npm run typecheck && npm test && npm run build` → `tests 102; pass 101; fail 0; skipped 1; duration_ms 1614.6301`；client `82.77 kB`、host `148.79 kB` PASS（各 exit: `0`）
   - TB7 聚焦测试 `workbench-bootstrap + workbench-persistence + webapi-body-limits + store-seats` → `tests 18; pass 18; fail 0; skipped 0` PASS
@@ -310,3 +310,23 @@
 - 人工断言：✓ 位置/折叠/锚点只走服务端 Canvas；✓ 400ms 内无 pointermove PUT；✓ 已知 remount 前可等待 flush；✓ pagehide 与在途写由单调 revision fence 保证新代胜出；✓ 未 hydrate 时 whole-record 写 fail closed；✓ 快捷词合法空值、旧数据升级与多次编辑都有确定语义。
 - 偏离与理由：任务书用空数组同时表示“未初始化/用户清空”会丢合法空值，新增向后兼容 `quickPhrasesInitialized` sentinel；实机揭示 iframe remount 与 pagehide 可绕过 400ms timer，增加可等待串行 flush、keepalive revision header 与服务端本进程代次栅栏。64KiB 实测约容 864 条当前形状记录，不沿用“≥900”估算。提交短 SHA 按下一提交回填规则处理。
 - 遗留：无
+## TB8 G12：「在 DSH 中打开」精确定位轮次 — 2026-09-04 21:38
+- commit: PENDING-TASK
+- 动手前契约核对：
+  - `grep data-chat-anchor-key|data-chat-turn ChatNodeSeat.tsx` → `128:data-chat-anchor-key={routedNode.key}`、`131:data-chat-turn={turn}` PASS
+  - `grep anchorSeq chat-nodes.ts` → `10:readonly anchorSeq: number`（另有 control/answer 字段）PASS
+  - `grep openView contract/slots.ts` → `207`、`230` 均为 `(view:string,focus:string)=>void` PASS
+- 验收：
+  - `node --check workbench/app.js && npm run typecheck && npm test && npm run build` → `tests 111; pass 110; fail 0; skipped 1; duration_ms 1635.2317`；client `86.41 kB`、host `148.79 kB` PASS（各 exit: `0`）
+  - TB8 聚焦测试 `scroll-to-turn + workbench-persistence + activation` → `tests 25; pass 25; fail 0`；独立只读终审阻断 `0`、可提交 PASS
+  - 静态：`data-turn=` 为 `3`（card/inspector/detail）；app.js `amphoreus:open-session` 唯一构造行且含 `seq,turn`；`scrollToTurn|loadThrough` ≥3；`switchToChat=0`；`git diff --check` 无输出 PASS
+  - 当前 TA6-S3 画布 5 张卡初检 → `(seq,turn)=(7,1),(68,2),(106,3),(152,4),(530,5)` 全部存在；追加第 6 轮后原生 DOM `data-chat-turn=6` 节点 `5` 个 PASS
+  - 首次点击第 2 卡 → outgoing `{sessionId,seq:68,turn:2}` 且切到对话，但 1.2s 后目标相对滚动区 `delta=-529.6667px` FAIL；定位过早被 ChatView mount 后自动到底覆盖。
+  - 加入 current/latest 栅栏、目标 identity 120ms 稳定门与后帧复核后二次滚动，复测同会话 → 对话 Tab、turn2 节点 `5`、`delta=-0.33333587646484375px`（绝对值≤40）PASS
+  - 跨会话：先把目标 TA6-S3 的逐会话 Tab 记为 chat，从 S2 工作台第2卡发 `{seq:68,turn:2}` → 侧栏/标题切 TA6-S3、Tab=对话、turn2 节点 `5`、`delta=-0.33333587646484375px` PASS
+  - 不存在定位 `{seq:999999,turn:999999}` → 等待 `8523.10000000149ms` 后仍在对话、title/current 不变、`errors=[]`、alert=null PASS
+  - 分页状态机行为测试 → `loadingOlder=true` 时不抢占；busy 结束后第一次 no-op、120ms 后第二次 `loadThrough` 覆盖目标并滚动；永不 settle 的 load Promise不阻塞8s截止；face/feed每帧重取 PASS
+  - 并发/离席行为测试 → A 定位见过 current 后切B立即退出且不扫B DOM；新请求淘汰旧请求；模块级 `beginScrollRequest` 跨 Workbench remount 仍 latest-wins PASS
+- 人工断言：✓ turn 优先、anchor fallback；✓ 两类 selector 都排除 `[hidden]`；✓ 同/跨会话均保持官方 Tab 记忆语义；✓ 无高亮层、未改 ChatView；✓ canvas flush 先于 open-session；✓ 找不到目标与分页错误静默结束。
+- 偏离与理由：任务书伪码一次 await `loadThrough` 与 alpha.4 busy/no-op 契约冲突，改为受 8s 总截止约束的非阻塞重试；真实 ChatView 的初始自动到底会覆盖过早滚动，加入 120ms 稳定门和一次后帧复核；全局 DOM 查询增加 parent current 与模块级跨 remount 最新请求栅栏。
+- 遗留：真实 profile 当前没有已翻出初始窗口的超长会话；该分支由可控 busy/窗口外行为测试覆盖，当前与跨会话真实 DOM 定位均已通过。

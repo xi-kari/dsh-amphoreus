@@ -42,7 +42,7 @@ function probe(initialStorage: Record<string, string> = {}) {
   context.globalThis = context
   vm.createContext(context)
   const prefix = source.slice(0, source.indexOf('\nlet selectionFollowup = null'))
-  vm.runInContext(`${prefix}\nrender = () => {}; globalThis.__probe = { state, hydrateBootState, canvasRecordFor, resetCardPositions, canvasDirty, rememberBranchAnchor, flushCanvasSaves, persistCardPositions, persistQuickPhrases, conversationCards }`, context)
+  vm.runInContext(`${prefix}\nrender = () => {}; globalThis.__probe = { state, hydrateBootState, canvasRecordFor, resetCardPositions, canvasDirty, rememberBranchAnchor, flushCanvasSaves, persistCardPositions, persistQuickPhrases, conversationCards, optionalSafeInteger }`, context)
   return {
     storage,
     requests,
@@ -71,6 +71,7 @@ function probe(initialStorage: Record<string, string> = {}) {
       persistCardPositions(cardIds?: string[]): void
       persistQuickPhrases(): Promise<unknown>
       conversationCards(threads: unknown[]): Array<{ id: string; positionKey: string }>
+      optionalSafeInteger(value: unknown): number | undefined
     },
   }
 }
@@ -242,6 +243,19 @@ test('pending cards use noncanonical ids and promote their position when a real 
   assert.deepEqual(workbench.state.cardPositions.get(canonical), { x: 70, y: 80 })
   assert.equal(workbench.state.cardPositions.has(pending.id), false)
   assert.equal(workbench.canvasDirty.has(sessionId), true)
+})
+
+test('open-session dataset integers never coerce empty or invalid values to zero', () => {
+  const { workbench } = probe()
+  assert.equal(workbench.optionalSafeInteger(''), undefined)
+  assert.equal(workbench.optionalSafeInteger('   '), undefined)
+  assert.equal(workbench.optionalSafeInteger('NaN'), undefined)
+  assert.equal(workbench.optionalSafeInteger('Infinity'), undefined)
+  assert.equal(workbench.optionalSafeInteger(Number.POSITIVE_INFINITY), undefined)
+  assert.equal(workbench.optionalSafeInteger('1.5'), undefined)
+  assert.equal(workbench.optionalSafeInteger('-1'), undefined)
+  assert.equal(workbench.optionalSafeInteger('0'), 0)
+  assert.equal(workbench.optionalSafeInteger('6'), 6)
 })
 
 test('canvas persistence is batched and pointer movement performs no write', () => {

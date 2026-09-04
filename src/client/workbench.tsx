@@ -13,6 +13,7 @@ import { useCallback, useEffect, useRef } from 'react'
 import type { AmphoreusState } from '../shared/api.ts'
 import { promptWithDeferredActivation } from './activation-bridge.ts'
 import { feedFromChat, HARD_TEXT_CAP, liveTextOf } from './conversation-feed.ts'
+import { beginScrollRequest, safeOptionalInteger, scrollToTurn } from './scroll-to-turn.ts'
 import { rememberTab, WORKBENCH_VIEW_ID } from './tabmemory.ts'
 import css from './workbench.module.css'
 import type { WorkspacesPayload } from './workspaces-source.ts'
@@ -20,7 +21,7 @@ import type { WorkspacesPayload } from './workspaces-source.ts'
 interface SessionFeedFace {
   prompt(content: { type: 'text'; text: string }[], mode: 'queue' | 'steer'): Promise<{ ok: boolean; error?: { message?: string } }>
   loadThrough(seq: number): Promise<void>
-  getSnapshot(): { running: boolean; openState: 'cold' | 'loading' | 'open' | 'error'; hasMore: boolean }
+  getSnapshot(): { running: boolean; openState: 'cold' | 'loading' | 'open' | 'error'; hasMore: boolean; loadingOlder: boolean }
   subscribe(listener: () => void): () => void
 }
 
@@ -54,6 +55,7 @@ interface BridgeMessage {
   atSeq?: number
   text?: string
   seq?: number
+  turn?: number
   seatHeroId?: string
   defer?: boolean
   activate?: boolean
@@ -289,12 +291,28 @@ export function WorkbenchView({
             }
             case 'amphoreus:open-session': {
               if (typeof data.sessionId !== 'string') return
+              const targetId = data.sessionId
+              const isLatestRequest = beginScrollRequest()
+              const seq = safeOptionalInteger(data.seq)
+              const turn = safeOptionalInteger(data.turn)
+              const focus = turn !== undefined ? `turn:${turn}` : seq !== undefined ? `seq:${seq}` : 'amphoreus:open-session'
               rememberTab(localStorage, 'chat')
-              if (data.sessionId === sessionId) {
-                openView('chat', 'amphoreus:open-session')
+              if (targetId === sessionId) {
+                openView('chat', focus)
                 completeViewRequest()
               } else {
-                sessions.open(data.sessionId)
+                sessions.open(targetId)
+              }
+              if (seq !== undefined || turn !== undefined) {
+                void scrollToTurn(
+                  targetId,
+                  seq,
+                  turn,
+                  sessionFace,
+                  conversationFeed,
+                  () => sessions.list.getSnapshot().current,
+                  isLatestRequest,
+                ).catch(() => {})
               }
               return
             }
@@ -332,7 +350,9 @@ export function WorkbenchView({
     pushWorkspaces,
     pushCurrent,
     pushConfig,
+    conversationFeed,
     reply,
+    sessionFace,
     summaryOf,
   ])
 
