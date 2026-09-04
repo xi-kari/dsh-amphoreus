@@ -35,6 +35,10 @@ export function apply(ctx: ClientContext): void {
     isDark: () => ctx.theme.getTheme().active.colorScheme === 'dark',
     subscribe: (listener: () => void) => ctx.on('theme/change', () => listener()),
   }
+  const magazineBridge = {
+    mode: () => model.getSnapshot().state?.effectiveConfig.magazineMode ?? 'light',
+    subscribe: (listener: () => void) => model.subscribe(listener),
+  }
   const seatLayer = createSeatLayer(ctx, model)
   const setSeat = seatLayer.apply.bind(seatLayer)
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'amphoreus: dictionaries')
@@ -121,6 +125,7 @@ export function apply(ctx: ClientContext): void {
         config: model,
         theme: themeBridge,
         setSeat,
+        magazine: magazineBridge,
         seatSkillOf: heroId => skillByHero.get(heroId),
         bindSeat: async (sessionId, skillName) => {
           const nonce = model.getSnapshot().state?.nonce ?? window.__AMPHOREUS_BOOT__?.nonce

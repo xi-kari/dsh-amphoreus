@@ -81,6 +81,12 @@ export interface SeatChangedMessage {
   readonly heroId: string | null
 }
 
+export interface MagazineModeMessage {
+  readonly source: 'dsh-amphoreus'
+  readonly type: 'amphoreus:magazine-mode'
+  readonly mode: 'light' | 'full'
+}
+
 export interface AmphoreusBoot {
   readonly revision: number
   readonly nonce: string
@@ -114,6 +120,7 @@ export interface AmphoreusState {
   readonly effectiveConfig: {
     readonly wallpaper: { readonly enabled: boolean; readonly global: 'rotate' | 'fixed'; readonly globalIndex: number; readonly sidebarIndex: number; readonly perSeat: boolean; readonly darkMask: number; readonly lightMask: number; readonly surfaceAlpha: { readonly light: number; readonly dark: number } }
     readonly magazineMode: 'light' | 'full'
+    readonly magazineModeSource: 'config' | 'prefs'
     readonly seatStyle: boolean
     readonly assetsConfigured: boolean
     readonly heroWorkspaceMode: 'seats' | 'off'

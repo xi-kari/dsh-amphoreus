@@ -84,7 +84,7 @@ const VIEWPORT_MARGIN = 1400
 const state = {
   index: new Map(), indexRevision: 0, indexRequest: 0, eventSource: null, persistenceHydrated: false, bootstrapped: false, mapOpenPending: false, workspace: null, activeId: null, selectedCardId: null, mode: restoredSeatId === null ? 'portal' : 'canvas', zoom: 1, currentDsh: null, currentSessionId: null, sidebarCollapsed: false,
   // Seat portal: hero seats from the host (chronicle art, palette, folder).
-  seats: [], sessionsById: new Map(), assetsConfigured: false, seatId: restoredSeatId, cardFlightPending: false, cardTextLimit: WORKBENCH_CONFIG.cardTextLimit,
+  seats: [], sessionsById: new Map(), assetsConfigured: false, seatId: restoredSeatId, cardFlightPending: false, cardTextLimit: WORKBENCH_CONFIG.cardTextLimit, magazineMode: 'light',
   unprojectable: new Map(),
   historyBySession: new Map(), historyRevisionBySession: new Map(), historyCompleteBySession: new Map(), pendingReplies: new Map(), pendingRpc: new Map(), liveReplies: new Map(),
   draft: null, error: '', branchAnchors: new Map(), cardPositions: new Map(), legacyPositionKeys: new Set(), collapsedCardIds: new Set(), quickPhrases: [...DEFAULT_QUICK_PHRASES], quickPhraseEditorOpen: false,
@@ -94,6 +94,7 @@ const state = {
   detailScrollByThread: new Map(), detailThreadId: null, detailTargetCardId: null,
   inspectorCardId: null, inspectorOpening: false, inspectorScrollByCard: new Map(),
 }
+if (document.documentElement) document.documentElement.dataset.magazine = state.magazineMode
 
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character]))
 const formatTime = value => new Date(value).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
@@ -2162,6 +2163,14 @@ window.addEventListener('message', event => {
       if (canReplaceView()) render()
       else deferCanvasRefresh()
     }
+  }
+  if (data.type === 'amphoreus:magazine-mode' && (data.mode === 'light' || data.mode === 'full') && data.mode !== state.magazineMode) {
+    state.magazineMode = data.mode
+    document.documentElement.dataset.magazine = data.mode
+    if (state.mode !== 'portal') {
+      if (canReplaceView()) render()
+      else deferCanvasRefresh()
+    } else render()
   }
   if (data.type === 'amphoreus:workspaces') {
     applyWorkspaces(data)

@@ -91,6 +91,7 @@ export const GlobalSchema = z.object({
     wallpaperCursor: z.number().int().nonnegative(),
     quickPhrases: z.array(z.string()),
     quickPhrasesInitialized: z.boolean().default(false),
+    magazineMode: z.enum(['light', 'full']).optional(),
   }),
   workbench: z.object({
     hiddenSessionIds: z.array(z.string()).default([]),

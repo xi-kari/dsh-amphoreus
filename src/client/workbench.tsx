@@ -10,7 +10,7 @@ import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type { ChatSnapshot } from '@deepseek-ai/dsh-client-ui-chat/client'
 import { useCallback, useEffect, useRef } from 'react'
-import type { AmphoreusState, ThemeTokensMessage } from '../shared/api.ts'
+import type { AmphoreusState, MagazineModeMessage, ThemeTokensMessage } from '../shared/api.ts'
 import { promptWithDeferredActivation } from './activation-bridge.ts'
 import { feedFromChat, HARD_TEXT_CAP, liveTextOf } from './conversation-feed.ts'
 import { beginScrollRequest, safeOptionalInteger, scrollToTurn } from './scroll-to-turn.ts'
@@ -46,6 +46,10 @@ export interface WorkbenchViewInjected {
     readonly subscribe: (listener: () => void) => () => void
   }
   readonly setSeat: (heroId: string | null) => void
+  readonly magazine: {
+    readonly mode: () => 'light' | 'full'
+    readonly subscribe: (listener: () => void) => () => void
+  }
   /** PUT a seat binding before the first prompt (host webapi, nonce-gated). */
   readonly bindSeat: (sessionId: string, skillName: string) => Promise<void>
   readonly seatSkillOf: (heroId: string) => string | undefined
@@ -78,6 +82,7 @@ export function WorkbenchView({
   config,
   theme,
   setSeat,
+  magazine,
   bindSeat,
   seatSkillOf,
   openView,
@@ -89,6 +94,7 @@ export function WorkbenchView({
   const pushMessagesRef = useRef<() => void>(() => {})
   const pushLiveRef = useRef<() => void>(() => {})
   const pushThemeTokensRef = useRef<() => void>(() => {})
+  const pushMagazineRef = useRef<() => void>(() => {})
   const deferredActivationsRef = useRef(new Set<string>())
   const reply = useCallback((payload: Record<string, unknown>): void => {
     frameRef.current?.contentWindow?.postMessage({ source: 'dsh-amphoreus', ...payload }, window.location.origin)
@@ -122,6 +128,24 @@ export function WorkbenchView({
   useEffect(() => workspaces.subscribe(pushWorkspaces), [workspaces, pushWorkspaces])
 
   useEffect(() => config.subscribe(pushConfig), [config, pushConfig])
+
+  useEffect(() => {
+    const push = (): void => {
+      const message: MagazineModeMessage = {
+        source: 'dsh-amphoreus',
+        type: 'amphoreus:magazine-mode',
+        mode: magazine.mode(),
+      }
+      frameRef.current?.contentWindow?.postMessage(message, window.location.origin)
+    }
+    pushMagazineRef.current = push
+    push()
+    const unsubscribe = magazine.subscribe(push)
+    return () => {
+      unsubscribe()
+      if (pushMagazineRef.current === push) pushMagazineRef.current = () => {}
+    }
+  }, [magazine])
 
   useEffect(() => {
     let active = true
@@ -292,6 +316,7 @@ export function WorkbenchView({
               pushMessagesRef.current()
               pushLiveRef.current()
               pushThemeTokensRef.current()
+              pushMagazineRef.current()
               return
             case 'amphoreus:map-opened':
               return

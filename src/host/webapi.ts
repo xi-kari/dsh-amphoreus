@@ -39,6 +39,7 @@ const BindInput = z.object({
 const PrefsInput = z.object({
   quickPhrases: z.array(z.string().max(16)).max(12).optional(),
   lastSeat: z.string().nullable().optional(),
+  magazineMode: z.enum(['light', 'full']).nullable().optional(),
 })
 
 interface ConnectionFence {
@@ -238,14 +239,16 @@ export class AmphoreusWebApi {
         }
         if (!method(request, response, 'PUT')) return
         const input = PrefsInput.parse(await readJson(request))
-        const updated = await updateAmphoreusGlobal(this.#stores.main, current => ({
-          ...current,
-          prefs: {
+        const updated = await updateAmphoreusGlobal(this.#stores.main, current => {
+          const prefs = {
             ...current.prefs,
             ...(input.quickPhrases === undefined ? {} : { quickPhrases: input.quickPhrases, quickPhrasesInitialized: true }),
             ...(input.lastSeat === undefined ? {} : { lastSeat: input.lastSeat }),
-          },
-        }))
+          }
+          if (input.magazineMode === null) delete prefs.magazineMode
+          else if (input.magazineMode !== undefined) prefs.magazineMode = input.magazineMode
+          return { ...current, prefs }
+        })
         json(response, 200, { prefs: updated.prefs })
         return
       }
@@ -293,6 +296,10 @@ export class AmphoreusWebApi {
     }
   }
 
+  #effectiveMagazineMode(): 'light' | 'full' {
+    return this.#stores.main.global.get().prefs.magazineMode ?? this.#config.magazineMode
+  }
+
   state(): AmphoreusState {
     const snapshot = this.#resolver.current()
     const global = this.#stores.main.global.get()
@@ -314,7 +321,8 @@ export class AmphoreusWebApi {
       },
       effectiveConfig: {
         wallpaper: this.#config.wallpaper,
-        magazineMode: this.#config.magazineMode,
+        magazineMode: this.#effectiveMagazineMode(),
+        magazineModeSource: global.prefs.magazineMode === undefined ? 'config' : 'prefs',
         seatStyle: this.#config.seatStyle,
         assetsConfigured: this.#config.assetsRoot.trim() !== '',
         heroWorkspaceMode: this.#config.heroWorkspaceMode,

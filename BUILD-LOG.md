@@ -405,6 +405,24 @@
 - 人工断言：✓ 77/10 token 一行一项、固定字面量单源；✓ 不含异常 alias；✓ parse/mix/composite/rgba/rgb/luminance/contrast/ensureContrast 均为零依赖纯函数；✓ ensureContrast 每步从原 foreground 线性插值；✓ 未引入运行时 CSS 扫描与第三方颜色库。
 - 偏离与理由：无。
 - 遗留：无。
+## TD7：杂志档位 prefs 覆盖与 iframe 桥 — 2026-09-05 00:01
+- commit: PENDING-TASK
+- 验收：
+  - `node --test tests/magazine-mode.test.ts tests/store-seats.test.ts` → `tests 10; pass 10; fail 0; skipped 0; duration_ms 369.6249` PASS（exit: `0`）
+  - 全量测试 → `tests 149; pass 148; fail 0; skipped 1; duration_ms 1796.2558` PASS（exit: `0`）；首次全量暴露旧 VM fixture 无 documentElement，生产初始 dataset 写增加存在性守卫后重跑全绿
+  - `node --check workbench/app.js`、`npm run typecheck`、`npm run build` 全通过；client `109.53 kB`、host `152.54 kB` PASS（各 exit: `0`）
+  - schema/静态门 → domain version=`1`、INITIAL magazine keys=`0`、schema decl=`1`、prefs route=`1`、mode source api/webapi=`1/1`、app/workbench message=`1/1`、bridge decl/inject=`1/1`、`off=0`、config diff=`0` PASS
+  - 并发单测：同时写 `magazineMode=full` 与 quick phrases 后两字段均保留，证明继续经 updateAmphoreusGlobal 串行 RMW PASS
+  - `git diff --check` → 无空白错误 PASS（exit: `0`）
+- 真实运行态事务（D.0.1）：
+  - baseline GET prefs → `{"prefs":{"lastSeat":null,"wallpaperCursor":0,"quickPhrases":[],"quickPhrasesInitialized":true}}`；state=`light/config`
+  - nonce-gated PUT `{"magazineMode":"full"}` → 响应 prefs 含 `"magazineMode":"full"`；state=`full/prefs` PASS
+  - fresh browser/map-ready → iframe `documentElement.dataset.magazine=full` PASS
+  - nonce-gated PUT `{"magazineMode":null}` → 响应 prefs 删除该键；state=`light/config`；同一 fresh browser 约 `900ms` 后 dataset 实时变为 `light` PASS
+  - 最终 GET prefs 与 baseline JSON 逐字相等=`True`；四个 runtime 临时文件已逐一删除；服务 PID `36104` running、HTTP `200`、stderr=`0` bytes PASS
+- 人工断言：✓ 存储值 only light/full/absent，null 仅为删键命令；✓ omitted 不动；✓ source 精确标 prefs/config；✓ client 写入用 nonce 并 await refresh；✓ magazineBridge 稳定构造，effect 初发、model 变化与 map-ready 重发；✓ iframe 仅接受 light/full 且同值不重绘；✓ portal 可直接 render，canvas 经 canReplaceView；✓ 未提前实现 TD11 设置控件。
+- 偏离与理由：初始 dataset 赋值加 `document.documentElement` 存在性守卫以兼容既有 VM probe；真实浏览器路径语义不变。任务书目标中的设置区点击控件由明确后置 TD11 实现，本任务只提供持久化与桥接能力。
+- 遗留：无。
 ## TD2 G2：宿主页向 iframe 桥接 87 个主题 token — 2026-09-04 22:35
 - commit: 1722602
 - 验收：
@@ -477,7 +495,7 @@
 - 偏离与理由：任务书改动文件仍写已删除路由所在 `host/webapi.ts`，按其同段 J-4 裁决改实际 `client/workspaces-source.ts`；额外增加 workbench-motif 行为测试。浏览器通过宿主设置按钮切主题会按交互语义转移焦点，因此焦点不丢以无 DOM 重建的行为门验证，而真实浏览器同时验证草稿值完整保留。
 - 遗留：无。
 ## TD6：系统字体阶梯单源 — 2026-09-04 23:43
-- commit: PENDING-TASK
+- commit: 4d43f03
 - 动手前核对：TD5 后 styles.css=`378` 行、settings.module.css=`313` 行；旧 display literal rules=`6`、mono literal rules=`3`；font asset/import refs=`0`；`src/client/typography.css` 不存在 PASS
 - 验收：
   - workbench 字体变量 → display/body/mono 定义各=`1`，display 使用=`10`、body 使用=`2`、mono 使用=`3`；五个 `--amphoreus-type-*` 均含 `var(--amphoreus-font-*)`，缺 family=`0` PASS

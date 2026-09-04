@@ -68,6 +68,19 @@ export class AmphoreusClientModel {
     await this.refresh()
   }
 
+  async setMagazineMode(mode: 'light' | 'full' | null): Promise<void> {
+    const nonce = this.#snapshot.state?.nonce ?? window.__AMPHOREUS_BOOT__?.nonce
+    if (nonce === undefined) throw new Error('首帧 nonce 尚未就绪')
+    const response = await fetch('/amphoreus/api/prefs', {
+      method: 'PUT',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json', 'x-amphoreus-nonce': nonce },
+      body: JSON.stringify({ magazineMode: mode }),
+    })
+    if (!response.ok) throw new Error(`杂志档位保存失败（HTTP ${response.status}）`)
+    await this.refresh()
+  }
+
   close(): void {
     this.#closed = true
     this.#abort.abort()
