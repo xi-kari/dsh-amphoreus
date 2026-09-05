@@ -36,6 +36,7 @@ export interface AmphoreusConfig {
   validate: { enabled: boolean; python: string }
   sync: { source: string; ref: string; keepBackups: number }
   trustedHosts: string[]
+  // @anchor config-type
 }
 
 /** Runtime value for nested-object defaults; schemastery fills inner defaults from an empty object (verified on 3.18.2). */
@@ -93,9 +94,10 @@ export const Config: z<AmphoreusConfig> = z.object({
     python: z.string().default('python'),
   }).default(EMPTY_OBJECT),
   sync: z.object({
-    source: z.string().default('github:xi-kari/amphoreus-skill-suite'),
+    source: z.string().default('github:xi-kari/delta-me13-skill'),
     ref: z.string().default('main'),
     keepBackups: z.natural().default(3),
   }).default(EMPTY_OBJECT),
   trustedHosts: z.array(z.string()).default([]),
+  // @anchor config-schema
 })

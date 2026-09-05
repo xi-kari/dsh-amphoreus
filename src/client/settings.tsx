@@ -8,11 +8,13 @@ import css from './settings.module.css'
 
 export interface AmphoreusSettingsInjected {
   readonly model: AmphoreusClientModel
+  // @anchor settings-injected
 }
 
 export type AmphoreusSettingsProps = PropsRuntime<'settings.section'> & PropsLocale<'amphoreus'> & AmphoreusSettingsInjected
 
 type SettingsAction = 'reparse' | 'magazine-light' | 'magazine-full' | 'magazine-reset' | 'derive' | 'derive-force' | 'grammar' | 'wallpaper'
+// @anchor settings-actions
 
 export function AmphoreusSettings({ model, t }: AmphoreusSettingsProps) {
   const snapshot = useSyncExternalStore(model.subscribe, model.getSnapshot)
@@ -195,6 +197,7 @@ export function AmphoreusSettings({ model, t }: AmphoreusSettingsProps) {
             onRemove={heroId => { void run('wallpaper', () => model.removeCustomWallpaper(heroId)) }}
             onPlacement={(heroId, patch) => { void run('wallpaper', () => model.setCustomWallpaperPlacement(heroId, patch)) }}
           />
+          {/* @anchor settings-panels */}
 
           <section className={css.panel} aria-labelledby="amphoreus-workbench">
             <div className={css.sectionHeading}><h2 id="amphoreus-workbench">{t('settings.workbenchHeading')}</h2></div>

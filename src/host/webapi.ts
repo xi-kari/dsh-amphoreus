@@ -68,9 +68,11 @@ const PrefsInput = z.object({
     loop: z.boolean().optional(),
     paused: z.boolean().optional(),
   }).strict().nullable()).optional(),
+  // @anchor prefs-input-fields
 })
 
 const DeriveInput = z.object({ force: z.boolean().optional() }).strict()
+// @anchor webapi-inputs
 
 const ObservationCreateInput = z.object({
   sessionId: z.string().regex(SESSION_ID),
@@ -111,6 +113,7 @@ export interface WebApiOptions {
   readonly dataDir?: string
   readonly deriveAssets?: (options: DeriveOptions) => Promise<DeriveResult>
   readonly probeMagick?: () => Promise<string | undefined>
+  // @anchor webapi-options
 }
 
 interface SseClient {
@@ -181,6 +184,7 @@ export class AmphoreusWebApi {
   readonly #customWallpapers: CustomWallpaperStore | undefined
   readonly #deriveAssets: (options: DeriveOptions) => Promise<DeriveResult>
   readonly #probeMagick: () => Promise<string | undefined>
+  // @anchor webapi-fields
   readonly #sse = new SseHub()
   readonly #canvasRevisions = new Map<string, number>()
   #assetsCacheRealDir: string | undefined
@@ -210,6 +214,7 @@ export class AmphoreusWebApi {
     this.#deriveAssets = options.deriveAssets ?? deriveAssets
     this.#probeMagick = options.probeMagick ?? probeMagick
     this.nonce = options.nonce ?? randomBytes(24).toString('base64url')
+    // @anchor webapi-ctor
   }
 
   async prepareAssets(): Promise<void> {
@@ -228,6 +233,7 @@ export class AmphoreusWebApi {
       } catch (error) {
         this.#warn(`amphoreus custom wallpaper scan failed: ${String(error)}`)
       }
+      // @anchor webapi-prepare
       try {
         this.#magick = await this.#probeMagick() ?? null
       } catch (error) {
@@ -285,6 +291,7 @@ export class AmphoreusWebApi {
       const derivedAssetRequest = path.startsWith('/amphoreus/derived/') || path.startsWith('/amphoreus/custom-wallpaper/') || path.startsWith('/amphoreus/stickers/')
       const write = request.method !== 'GET' && request.method !== 'HEAD' && !derivedAssetRequest
       const binaryUpload = path.startsWith('/amphoreus/api/custom-wallpaper/') && request.method === 'PUT'
+      // @anchor webapi-classify
       if (!this.#authorize(request, response, write, binaryUpload)) return
       if (path === '/amphoreus/api/state' || path.startsWith('/amphoreus/derived/')) await this.prepareAssets()
 
@@ -348,6 +355,7 @@ export class AmphoreusWebApi {
           : decodeTail(path, '/amphoreus/api/observations/'))
         return
       }
+      // @anchor webapi-routes
       if (path === '/amphoreus/api/prefs') {
         if (request.method === 'GET') {
           json(response, 200, { prefs: this.#stores.main.global.get().prefs })
@@ -378,6 +386,7 @@ export class AmphoreusWebApi {
             }
             prefs.customWallpapers = next
           }
+          // @anchor prefs-merge
           return { ...current, prefs }
         })
         json(response, 200, { prefs: updated.prefs })
@@ -489,6 +498,7 @@ export class AmphoreusWebApi {
       suiteEvents: values(this.#stores.main.table('suite_events').entries()).sort((a, b) => b.at - a.at),
       canvas: [...this.#stores.canvas.table('canvas').entries()].map(([sessionId, value]) => ({ sessionId, value })),
       customWallpapers: (this.#customWallpapers?.list() ?? []).map(record => this.#customWallpaperInfo(record)),
+      // @anchor state-fields
       assets: {
         root: this.#config.assetsRoot.trim(),
         cacheDir: this.#assetsCacheDir ?? '',
@@ -515,6 +525,7 @@ export class AmphoreusWebApi {
         receiptParsing: this.#config.receiptParsing && (snapshot?.features.receiptDetection ?? false),
         dispatchHints: snapshot?.features.dispatchHints ?? false,
         pipelinesEnabled: snapshot?.features.pipelines ?? false,
+        // @anchor effective-config-fields
       },
     }
   }
@@ -1056,6 +1067,8 @@ export class AmphoreusWebApi {
       placement: placement as unknown as CustomWallpaperPlacement,
     }
   }
+
+  // @anchor webapi-methods
 
   #authorize(request: IncomingMessage, response: ServerResponse, write: boolean, binaryUpload = false): boolean {
     if (!trustedHost(request.headers.host, this.#config.trustedHosts)) {

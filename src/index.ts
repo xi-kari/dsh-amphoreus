@@ -16,6 +16,7 @@ import { openAmphoreusStores, updateAmphoreusGlobal, type AmphoreusStores } from
 import { AmphoreusWebApi } from './host/webapi.ts'
 import { ProjectionIndex, type ProjectableEvent, type ProjectableSession } from './host/workbench.ts'
 import type { WorkbenchStatus } from './shared/api.ts'
+// @anchor host-imports
 
 export { Config }
 export type { AmphoreusConfig }
@@ -191,6 +192,7 @@ export function apply(ctx: Context, config: AmphoreusConfig): void {
           nonce,
           assetsCacheDir: join(dataDir, 'assets-cache'),
           dataDir,
+          // @anchor webapi-construct
           workbenchStatus: () => workbenchStatus,
           ...(workbench === undefined ? {} : { workbench }),
           ...(seatDirs === undefined ? {} : { seatDirs: seatDirs.dirs }),
@@ -216,9 +218,11 @@ export function apply(ctx: Context, config: AmphoreusConfig): void {
     const disposeObserver = stores === undefined
       ? () => Promise.resolve()
       : registerObserver(ctx, { config, stores, resolver: bridge.resolver })
+    // @anchor host-register
     startColdReplay()
     return async () => {
       await disposeObserver()
+      // @anchor host-dispose
       disposeFirstFrame()
       disposeSeatPrompt()
       disposeInjector()

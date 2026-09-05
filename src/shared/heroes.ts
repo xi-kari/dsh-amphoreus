@@ -6,7 +6,7 @@
  * (CHRYSOS magazine volumes) as the single visual source.
  */
 
-/** Asset id shared with the amphoreus-skill-suite `assets/` naming. */
+/** Asset id shared with the delta-me13-skill (formerly amphoreus-skill-suite) `assets/` naming. */
 export type HeroId =
   | 'aglaea' | 'tribbie' | 'mydei' | 'castorice' | 'anaxa' | 'hyacine' | 'cipher'
   | 'cerydra' | 'hysilens' | 'march7th' | 'terrae' | 'phainon' | 'cyrene'

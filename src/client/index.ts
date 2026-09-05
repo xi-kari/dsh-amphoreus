@@ -40,6 +40,7 @@ import { WorkbenchView, type SessionsFace, type WorkbenchViewInjected } from './
 import { createWorkspacesSource } from './workspaces-source.ts'
 import { currentOrdinaryWorkspace, orphanSeatWorkspacePath, syncWorkspaceSession, waitForReadySnapshot } from './workspace-routing.ts'
 import { heroVisualById } from '../shared/heroes.ts'
+// @anchor client-imports
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -238,6 +239,7 @@ export function apply(ctx: ClientContext): void {
     else await startPortalSeatSession(skill)
     return true
   }
+  // @anchor client-services
   const bootWorkbench = window.__AMPHOREUS_BOOT__?.workbench
   const workbenchEnabled = bootWorkbench?.enabled ?? true
   ctx.effect(async () => {
@@ -290,7 +292,10 @@ export function apply(ctx: ClientContext): void {
     order: 30,
     label: () => t('settings.nav'),
     locale: NS,
-    inject: () => ({ model }),
+    inject: () => ({
+      model,
+      // @anchor settings-inject
+    }),
   }, AmphoreusSettings))
   ctx.slots.inject('sidebar.workspaces', () => ctx.slots.register({
     name: 'sidebar.workspaces',
@@ -356,7 +361,8 @@ export function apply(ctx: ClientContext): void {
     locale: NS,
     inject: (): PortalFooterInjected => ({ portal, assetsConfigured }),
   }, PortalFooterAction))
-  ctx.slots.inject('shell.overlay', () => ctx.slots.register({
+  // shell.overlay is declared once; every overlay entry registers inside this single callback (assembly test pins the call list).
+  ctx.slots.inject('shell.overlay', () => [ctx.slots.register({
     name: 'shell.overlay',
     id: 'amphoreus-portal',
     order: 0,
@@ -377,7 +383,9 @@ export function apply(ctx: ClientContext): void {
       grammar: grammarBridge,
       openSeat,
     }),
-  }, PortalOverlay))
+  }, PortalOverlay),
+  // @anchor shell-overlay-entries
+  ])
 
   if (workbenchEnabled) {
     // Workbench as a second conversation view (id/order shape mirrors ui-trajectory).
@@ -406,6 +414,7 @@ export function apply(ctx: ClientContext): void {
       }),
     }, WorkbenchView))
   }
+  // @anchor client-slots
   ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({
     name: 'conversation.input.dock',
     id: 'amphoreus-handoff',
@@ -413,4 +422,5 @@ export function apply(ctx: ClientContext): void {
     locale: NS,
     inject: () => ({ model, seatDeps }),
   }, HandoffDock))
+  // @anchor client-tail
 }

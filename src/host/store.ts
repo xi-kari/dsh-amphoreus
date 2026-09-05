@@ -25,6 +25,7 @@ export const SeatSchema = z.object({
   userOrder: z.number().int().optional(),
   userDisplayName: z.string().optional(),
   hidden: z.boolean().optional(),
+  // @anchor seat-fields
 })
 
 export const BindingSchema = z.object({
@@ -44,6 +45,7 @@ export const MemoryNoteSchema = z.object({
   createdAt: z.number(),
   sessionId: z.string().optional(),
   seq: z.number().int().nonnegative().optional(),
+  // @anchor memory-note-fields
 })
 
 export const MemorySchema = z.object({
@@ -51,6 +53,7 @@ export const MemorySchema = z.object({
   notes: z.array(MemoryNoteSchema),
   pinnedSessionIds: z.array(z.string()),
   quickPhrases: z.array(z.string()).optional(),
+  // @anchor memory-fields
   updatedAt: z.number(),
 })
 
@@ -115,6 +118,7 @@ export const GlobalSchema = z.object({
       loop: z.boolean().optional(),
       paused: z.boolean().optional(),
     })).optional(),
+    // @anchor prefs-fields
   }),
   workbench: z.object({
     hiddenSessionIds: z.array(z.string()).default([]),

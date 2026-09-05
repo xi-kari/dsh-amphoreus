@@ -219,6 +219,7 @@ export interface AmphoreusState {
   readonly assets: AmphoreusAssetsStatus
   /** User-uploaded per-seat wallpapers (override derived home wallpapers). */
   readonly customWallpapers: readonly CustomWallpaperInfo[]
+  // @anchor state-type-fields
   readonly workbench: {
     readonly status: WorkbenchStatus
     readonly unprojectable: readonly UnprojectableRecord[]
@@ -237,8 +238,11 @@ export interface AmphoreusState {
     readonly receiptParsing: boolean
     readonly dispatchHints: boolean
     readonly pipelinesEnabled: boolean
+    // @anchor effective-config-type-fields
   }
 }
+
+// @anchor shared-types
 
 declare global {
   interface Window {

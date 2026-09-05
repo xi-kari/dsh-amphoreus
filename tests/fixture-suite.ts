@@ -37,6 +37,7 @@ export function fixtureConfig(): AmphoreusConfig {
     workbench: { enabled: true, host: 'iframe', defaultView: 'chat', cardTextLimit: 8000, autoProjection: true },
     suiteWatch: { mode: 'off', pollMs: 15000, debounceMs: 800 }, validate: { enabled: false, python: 'python' },
     sync: { source: 'fixture', ref: 'main', keepBackups: 3 }, trustedHosts: [],
+    // @anchor fixture-config
   }
 }
 

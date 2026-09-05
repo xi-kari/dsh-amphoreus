@@ -147,7 +147,7 @@ profile 的 `cordis.patch.yml` 按 id 整体替换该插件的 config，而不�
 | `validate` | `enabled` | `boolean` | `false` | 是否运行外部校验。 |
 | `validate` | `python` | `string` | `python` | Python 可执行文件。 |
 | `sync` | `sync` | `object` | 见下列子键 | 预留，当前无消费者。 |
-| `sync` | `source` | `string` | `github:xi-kari/amphoreus-skill-suite` | 预留的套件来源。 |
+| `sync` | `source` | `string` | `github:xi-kari/delta-me13-skill` | 预留的套件来源。 |
 | `sync` | `ref` | `string` | `main` | 预留的套件引用。 |
 | `sync` | `keepBackups` | `number` | `3` | 预留的备份数量。 |
 | 顶层 | `trustedHosts` | `string[]` | `[]` | Host 门额外允许的主机。 |

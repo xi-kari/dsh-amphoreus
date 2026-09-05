@@ -196,6 +196,8 @@ export class AmphoreusClientModel {
     await this.refresh()
   }
 
+  // @anchor client-model-methods
+
   close(): void {
     this.#closed = true
     this.#abort.abort()

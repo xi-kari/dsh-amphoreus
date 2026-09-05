@@ -66,6 +66,7 @@ export function planSeatReconciliation(
       ...(old?.userOrder === undefined ? {} : { userOrder: old.userOrder }),
       ...(old?.userDisplayName === undefined ? {} : { userDisplayName: old.userDisplayName }),
       ...(old?.hidden === undefined ? {} : { hidden: old.hidden }),
+      // @anchor seat-preserve
     }
     if (old === undefined) {
       next.set(card.name, { key: card.name, value: generated, change: 'added' })
