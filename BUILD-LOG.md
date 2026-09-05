@@ -929,7 +929,7 @@
 - 人工断言：✓ 不修改普通 lineage 实线；✓ 不跨 workspace 画不存在端点；✓ 不为 source 造卡；✓ 同 endpoints 普通谱系与移交语义可并存；✓ 相机 pan/zoom 整体变换不重算世界 path。
 - 偏离与理由：任务书一行 Map 会为 answer 缺失写重复空键，改为显式 assistant/first/last 三表；跨席来源反查显式过滤 kind/status，避免 dispatch 同样带 acceptedSessionId 时误标。README 工作台总说明统一留 TE10 收口。
 - 遗留：真实同席 connector/drag 需当前 March7 disposable 会话完成并经后续接受后回填；TE8 将修 bridge open-before-reply 并继续用这些 observation/child 证据。
-## TE7：会话头流水线站位与点站派发 — 2026-09-05 08:07
+## TE7：会话头流水线站位与点站派发 — 2026-09-05 07:42
 - commit: 5798fd9
 - 动手前核对：实际执行任务书指定的 `sed -n '480,500p' deepseek-harness-source/packages/client/ui-slots/src/index.ts`；确认 strict session slot 的 inject 首参为 framework-resolved `sessionId`，声明 store 时才追加 actions，业务依赖只能由 apply closure 注入 PASS
 - 验收：
@@ -948,7 +948,7 @@
 - 人工断言：✓ 流水线与站名全部来自 `state.suite.pipelines`；✓ 点站派发不是 fork/移交；✓ 未部署与未解析站 disabled；✓ 单站选择；✓ 派发失败保留文本和目标，成功才清空并关闭。
 - 偏离与理由：任务书示例仅按 skill 判定当前站，会把三月七/长夜月这类同 skill 双面席错配；实现按 binding face 精确匹配，旧无 face 记录仍按首站兼容。增加提交时热状态重验与同步锁，避免配置刷新后向已撤站位派发或同 tick 双提交。
 - 遗留：无。
-## TE8：「接通中」尾页与 iframe 移交闭环 — 2026-09-05 08:23
+## TE8：「接通中」尾页与 iframe 移交闭环 — 2026-09-05 08:01
 - commit: f56902e
 - 动手前核对：实际执行任务书 `sed -n '4296,4345p'` 并继续读至 TE8 末尾；同时以源码核实 `sessions.open()` 经 manager `notifyNow()` 可同步推 current-session，确认原 TE3 的 open-before-reply 会使 iframe 来不及设置目标相机标记 PASS
 - 验收：
@@ -970,7 +970,7 @@
 - 人工断言：✓ 尾页不自动接受/播放/发送；✓ 按钮固定移交/忽略；✓ 不显示档位与读取；✓ 贴纸失败走确定首字；✓ 接受后的打开权交回 iframe，最终仍使用官方 sessions.open 路径。
 - 偏离与理由：任务书示例假设 TE3 已打开 child 后再设置 mapCardSessionSwitches，但平台 `sessions.open()` 可同步推送 current-session，实测时序有竞态；因此给 `acceptHandoff` 增加默认兼容的 open option，bridge 只做 durable fork/binding/observation 并先回执，iframe 完成索引/相机准备后再激活。另把任务书未覆盖的 Dock/iframe 跨入口重复操作收口为共享同步锁。
 - 遗留：无。
-## TE9：侧栏台账、席位记忆与插入草稿 — 2026-09-05 08:38
+## TE9：侧栏台账、席位记忆与插入草稿 — 2026-09-05 08:15
 - commit: cef988f
 - 动手前核对：实际执行任务书 `sed -n '4349,4433p'`、指定 `grep -n "draft" .../contract/input.ts | head`，并继续 `sed -n '315,330p'` 定位当前 `InputState.draft`；确认 conversation.view owner 自动提供 useInput/inputActions，`InputActions.setDraft` 是正确的未发送草稿写入口 PASS
 - 验收：
@@ -992,7 +992,7 @@
 - 人工断言：✓ 台账不写 localStorage；✓ 便签不自动 prompt/发送；✓ runtime rawLine 是回执行唯一来源；✓ state.amph=null、无 skill、空记录均可降级；✓ memory 最终恢复为开工前空状态。
 - 偏离与理由：任务书最小 putMemory 每次从可能滞后的 SSE snapshot 做 RMW，连续八笔会覆盖前笔；实现增加单一串行 Promise 队列，并使用已由服务端 schema 校验的 PUT response 推进下一笔基线。任务书列 index.ts 但同时裁决其不注入 activateChat，当前 owner props 已足够，故核对而不制造无意义改动。
 - 遗留：无。
-## TE10：20 词防火墙与 E 章文档收尾 — 2026-09-05 08:55
+## TE10：20 词防火墙与 E 章文档收尾 — 2026-09-05 08:25
 - commit: 7bfbbaa
 - 动手前核对：实际执行任务书 `sed -n '4434,4487p'`；`grep -c canvas-controls workbench/styles.css` 基线=`4`；读取真实 common.md 防火墙行并直接调用旧 parseSuite，确认旧 `lastIndexOf('：')` 因词项「读取：」误取最后冒号，只得到 `17/20` 词 PASS
 - 验收：
@@ -1013,7 +1013,7 @@
 - 人工断言：✓ 防火墙只豁免可证明的台账、tooltip 与设置表面；✓ 不扫描技能正文或生成产物；✓ 文档只陈述 A–E 已实现事实；✓ 未把运行态 common.md 词表复制进生产 UI。
 - 偏离与理由：任务书假定 parse.ts 已正确提供 20 词，真实验收证明只有 17 词；若不修解析器，静态门会系统性漏扫回执/档位/读取：三词，故本任务连带修复 parser 并补最小回归。任务书只列 locales `*Tip` 豁免，但现有 TD11 的两个档位文案确属设置区；采用两个精确键白名单而非放行整个 settings namespace。
 - 遗留：无。
-## E 章完成定义：派发、移交、站位轨与台账 — 2026-09-05 09:11
+## E 章完成定义：派发、移交、站位轨与台账 — 2026-09-05 08:34
 - commit: 0486490；tag: `chapter-E`
 - 范围：TE1–TE10 共 `10` 项均已有独立提交；因依赖环采用书内允许的 `TE2→TE3→TE1→TE4→…→TE10` 落地顺序，A→B→D→C→E 章节顺序与既有四章标签保持不变。
 - 最终测试与构建：
@@ -1044,7 +1044,7 @@
 - 恢复状态：Anaxa memory notes=`0`、门户临时文本与宿主草稿均清空；五个 E 章专用 binding 均 DELETE HTTP=`200`，五个专用会话以官方 gateway envelope `client-request → workspace/archiveSession({request})` 得 HTTP=`200/result.ok=true/archivedMatches=1`，对应权威 session 目录仍=`5/5`；首次只发 `{sessionId}` 虽 HTTP 200 但 result.ok=false，未误计成功，随后已用正确 envelope 完成。
 - 偏离与理由：① matcher 书面 11 与唯一词累计实算 13 冲突，按真实三词命中；② alpha.4 blank session 不渲染 conversation.view，portal fallback 保持覆盖层同一 all 画布；③ TE8 修复同步 current-session 竞态；④ fork 日志零消息按 end-seed 自有事件边界判定；其余偏离逐项见 TE1–TE10。
 - 遗留：无。E 章代码、运行态、浏览器与恢复门全部闭合；下一章为 F 发布包装、独立路径验收与实际发布。
-## TF1：仓库卫生、品牌素材替换与 LF 基线 — 2026-09-05 09:27
+## TF1：仓库卫生、品牌素材替换与 LF 基线 — 2026-09-05 08:43
 - commit: 1aa5252
 - 动手前核对：实际执行任务书 `sed -n '4536,4577p'`；确认 package 根已是 main git 仓、现有 `.gitignore` 七行、pack 临时 JSON 不存在、AUDIT 已跟踪、官方 glyph 路径与 webapi 白名单引用仍在 PASS
 - 验收：
@@ -1060,8 +1060,8 @@
 - 人工断言：✓ 审计正文只移动不改写；✓ HANDOFF 留在仓根；✓ reference/SYNAPSE-LICENSE 保留；✓ 官方素材从发布源码中移除但稳定 URL/白名单不变。
 - 偏离与理由：任务书改动文件未列 README/HANDOFF，但 AUDIT 物理迁移后旧相对链接会断；同步只改五处引用（其中三个 Markdown href）并把 README 本机 link 示例占位化，属于 TF1 明示验收所必需。
 - 遗留：无。
-## TF2：发布字段、依赖归位与 npm 锁 — 2026-09-05 09:56
-- commit: PENDING-TASK
+## TF2：发布字段、依赖归位与 npm 锁 — 2026-09-05 09:01
+- commit: f66fa6e
 - 动手前核对：实际执行任务书 `sed -n '4578,4636p'`，并确认 HEAD=`1aa5252`、工作树 clean；实时 GitHub REST/GraphQL viewer 的 canonical login=`xi-kari`、databaseId=`107102048`，`xixilove486` 公共用户查询=`404`，故任务书 `xi-kari/dsh-amphoreus` 三个 URL 与当前认证身份一致；两个候选远程仓均不存在且本地无 remote；npm 默认 registry=`https://registry.npmmirror.com`，显式 npmjs 查询 `dsh-amphoreus`=`404`，TF2 全部直接依赖及六个 override 的目标版本均存在 PASS
 - 验收：
   - manifest 字面断言 → `0.2.0 alpha https://registry.npmjs.org yaml,zod 6 6` PASS（exit: `0`）；`.npmrc` 逐字=`legacy-peer-deps=true\n`、22 bytes、唯一匹配行=`1` PASS
@@ -1075,3 +1075,20 @@
 - 人工断言：✓ 未执行登录、发布、建仓或 remote 写入；✓ 未写 token/registry 到 `.npmrc`；✓ 未改变 `files`、`engines`、inject、prepare；✓ 未对当前 junction `node_modules` 执行非 dry-run `npm ci`。
 - 偏离与理由：任务书锁命令在包根因 npm 11 对现有大规模 junction idealTree 的内存占用退出 `134`；为同时保留原命令参数与“不碰 junction”边界，在包根 `.tmp` 下隔离生成并按哈希复制唯一锁文件，随后以受界路径检查清理，产物内容满足全部原验收断言。
 - 遗留：远程仓与 npm 包尚未创建/发布，按任务书留给 TF12；TF9 路径 B 若实测 fallback 缺宿主 peer，再按任务书回退四个 DSH 包并记录。
+## TF3：发布产物、纯度与 tarball 白名单机检 — 2026-09-05 09:04
+- commit: PENDING-TASK
+- 动手前核对：实际重读任务书 `sed -n '4637,4666p'` 对应段；确认 HEAD=`f66fa6e`、工作树 clean、TF2 的 `verify:dist` 脚本入口已提交但实现文件尚不存在，`package.json.files` 不含 `scripts/verify-dist.mjs` PASS
+- 验收：
+  - `npm run build` → derive/client/host=`28.87/205.78/199.59 kB` PASS（exit: `0`）
+  - `npm run verify:dist` → `verify-dist: OK 377 checks` PASS（exit: `0`）；必需五产物存在，顶层 `lib/*.js` 精确为 client/derive/index 三个
+  - 宿主纯度 → index/derive 的 `from`、副作用 import、字面 dynamic import 均纳入扫描，非字面 dynamic import fail closed；外部包名全部属于 `dependencies ∪ peerDependencies` PASS
+  - 浏览器纯度 → literal require=`react,react/jsx-runtime`，均属于 PLATFORM_MODULES；全部 require 调用数与 literal require 数相等，非字面 require fail closed PASS
+  - 包装契约 → ModuleLoader 首部、解析出的 loader id=`dsh-amphoreus` 与 manifest.name 全等、去 sourcemap 后以 `});` 结束；tsdown 多行 footer 经空白归一后精确含 `return module.exports; } });` PASS
+  - tarball → files=`70`、unpackedSize=`1555660`、严格白名单外=`0`、禁用媒体/技能/源码/测试/reference/docs/HANDOFF/.npmrc/lock=`0`；`scripts/verify-dist.mjs` 在 manifest files 与 dry-run tarball 中均不存在 PASS
+  - 真实反向：显式复制 `表情包/昔涟-收到.png` 为单文件 `workbench/x.png` 后运行 `npm run verify:dist` → `verify-dist: FAIL tarball path is not allowed: workbench/x.png` 与 `verify-dist: FAIL tarball contains forbidden media: workbench/x.png`，exit=`1` PASS；`finally` 显式删除该单文件，`HAS_FAIL=true`、`CLEANED=true`
+  - 脚本写盘检查 → `writeFile/appendFile/copyFile/rename/unlink/rm/mkdir` 调用命中=`0`；唯一子进程为 `npm pack --dry-run --ignore-scripts --json`，无 tgz 产物 PASS
+  - 全量 `npm test` → `tests 326; pass 325; fail 0; skipped 1; duration_ms 2862.5087` PASS（exit: `0`）；唯一 skip 为未设置真实套件环境变量的既有集成门
+  - `git diff --check` → 无空白错误 PASS（exit: `0`）
+- 人工断言：✓ Windows 通过显式 `ComSpec /d /s /c` 调用常量 npm pack 命令，避免 Node `shell:true` 的 DEP0190 警告；✓ npm JSON 前缀按首个 `[` 剥离；✓ 所有失败均整理为 `verify-dist: FAIL <原因>`，不输出脚本堆栈；✓ 未加入 `package.json.files`，未生成 tgz。
+- 偏离与理由：任务书按单行字面量检查 footer，但当前 tsdown 0.22.2 将同一 footer 格式化为多行；先删除 sourcemap、再归一空白后检查任务书完整语义，既接受格式化差异，也不放宽 `return module.exports` 或双层闭合要求。Windows 任务书示例的 `shell:true` 会在 Node 24 打 DEP0190；改为显式执行 `ComSpec` 与常量命令，保留 npm.cmd 兼容且无动态 shell 输入。
+- 遗留：无。
