@@ -2,6 +2,8 @@ import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots
 import { useRef, useState, useSyncExternalStore, type CSSProperties } from 'react'
 import { GrammarPanel } from './grammar-panel.tsx'
 import { WallpaperPanel } from './wallpaper-panel.tsx'
+import { SoundPanel } from './sound-panel.tsx'
+import { SEAT_SOUND_MASTER_DEFAULT } from '../shared/api.ts'
 import { seatColorOf } from './seat-model.ts'
 import type { AmphoreusClientModel } from './state.ts'
 import css from './settings.module.css'
@@ -9,14 +11,15 @@ import css from './settings.module.css'
 export interface AmphoreusSettingsInjected {
   readonly model: AmphoreusClientModel
   // @anchor settings-injected
+  readonly previewSound: (url: string, volume: number) => void
 }
 
 export type AmphoreusSettingsProps = PropsRuntime<'settings.section'> & PropsLocale<'amphoreus'> & AmphoreusSettingsInjected
 
-type SettingsAction = 'reparse' | 'magazine-light' | 'magazine-full' | 'magazine-reset' | 'derive' | 'derive-force' | 'grammar' | 'wallpaper'
+type SettingsAction = 'reparse' | 'magazine-light' | 'magazine-full' | 'magazine-reset' | 'derive' | 'derive-force' | 'grammar' | 'wallpaper' | 'sound'
 // @anchor settings-actions
 
-export function AmphoreusSettings({ model, t }: AmphoreusSettingsProps) {
+export function AmphoreusSettings({ model, previewSound, t }: AmphoreusSettingsProps) {
   const snapshot = useSyncExternalStore(model.subscribe, model.getSnapshot)
   const [actionError, setActionError] = useState<string>()
   const [activeAction, setActiveAction] = useState<SettingsAction>()
@@ -198,6 +201,18 @@ export function AmphoreusSettings({ model, t }: AmphoreusSettingsProps) {
             onPlacement={(heroId, patch) => { void run('wallpaper', () => model.setCustomWallpaperPlacement(heroId, patch)) }}
           />
           {/* @anchor settings-panels */}
+
+          <SoundPanel
+            seatSounds={state.seatSounds ?? []}
+            master={state.prefs.seatSounds?.master ?? SEAT_SOUND_MASTER_DEFAULT}
+            seatNames={new Map(state.seats.map(seat => [seat.skillName, seat.userDisplayName ?? suite?.cards.find(card => card.name === seat.skillName)?.displayName ?? seat.displayName]))}
+            busy={busy}
+            t={t}
+            onUpload={(heroId, slot, file) => { void run('sound', () => model.uploadSeatSound(heroId, slot, file)) }}
+            onRemove={(heroId, slot) => { void run('sound', () => model.removeSeatSound(heroId, slot)) }}
+            onPrefs={patch => { void run('sound', () => model.setSeatSoundPrefs(patch)) }}
+            onPreview={previewSound}
+          />
 
           <section className={css.panel} aria-labelledby="amphoreus-workbench">
             <div className={css.sectionHeading}><h2 id="amphoreus-workbench">{t('settings.workbenchHeading')}</h2></div>

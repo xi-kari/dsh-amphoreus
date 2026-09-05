@@ -220,6 +220,8 @@ export interface AmphoreusState {
   /** User-uploaded per-seat wallpapers (override derived home wallpapers). */
   readonly customWallpapers: readonly CustomWallpaperInfo[]
   // @anchor state-type-fields
+  /** User-uploaded per-seat sounds (greeting on seat enter / click on send); never bundled. */
+  readonly seatSounds: readonly SeatSoundInfo[]
   readonly workbench: {
     readonly status: WorkbenchStatus
     readonly unprojectable: readonly UnprojectableRecord[]
@@ -243,6 +245,42 @@ export interface AmphoreusState {
 }
 
 // @anchor shared-types
+
+/** Which moment a user-supplied seat sound plays at. */
+export type SeatSoundSlot = 'greeting' | 'send'
+export const SEAT_SOUND_SLOTS: readonly SeatSoundSlot[] = Object.freeze(['greeting', 'send'])
+
+/** Per-slot playback knobs (persisted in `prefs.seatSounds.seats[heroId][slot]`). */
+export interface SeatSoundPrefs {
+  readonly enabled: boolean
+  /** 0..1 linear gain applied to the media element. */
+  readonly volume: number
+}
+
+export const SEAT_SOUND_DEFAULTS: SeatSoundPrefs = Object.freeze({ enabled: true, volume: 0.6 })
+/** Master switch default (`prefs.seatSounds.master`). */
+export const SEAT_SOUND_MASTER_DEFAULT = true
+/** Upload cap for one sound file (bytes). */
+export const SEAT_SOUND_MAX_BYTES = 20 * 1024 * 1024
+
+/** One stored seat sound as the client sees it (prefs already merged with defaults). */
+export interface SeatSoundInfo {
+  readonly heroId: string
+  readonly slot: SeatSoundSlot
+  readonly url: string
+  readonly mime: string
+  readonly bytes: number
+  readonly prefs: SeatSoundPrefs
+}
+
+/** Body of `PUT /amphoreus/api/prefs` `{ seatSounds }`: partial patch; a `null` seat entry deletes it. */
+export interface SeatSoundPrefsPatch {
+  readonly master?: boolean
+  readonly seats?: Readonly<Record<string, {
+    readonly greeting?: Partial<SeatSoundPrefs>
+    readonly send?: Partial<SeatSoundPrefs>
+  } | null>>
+}
 
 declare global {
   interface Window {

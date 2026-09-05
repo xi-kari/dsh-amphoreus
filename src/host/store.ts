@@ -119,6 +119,13 @@ export const GlobalSchema = z.object({
       paused: z.boolean().optional(),
     })).optional(),
     // @anchor prefs-fields
+    seatSounds: z.object({
+      master: z.boolean().optional(),
+      seats: z.record(z.string(), z.object({
+        greeting: z.object({ enabled: z.boolean().optional(), volume: z.number().min(0).max(1).optional() }).optional(),
+        send: z.object({ enabled: z.boolean().optional(), volume: z.number().min(0).max(1).optional() }).optional(),
+      })).optional(),
+    }).optional(),
   }),
   workbench: z.object({
     hiddenSessionIds: z.array(z.string()).default([]),

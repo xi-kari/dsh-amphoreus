@@ -154,6 +154,20 @@ export const zh = {
   'settings.credit': '工作台源自 dsh-synapse v0.4.1（MIT，liangmianya），经改造；原始许可见包内 NOTICE。',
   'view.workbench': '工作台',
   // @anchor zh-keys
+  'settings.soundHeading': '席位音效',
+  'settings.soundHint': '为每位黄金裔上传自己的音效：入席时的问候、发送消息时的提示音。文件只存在本机数据目录，插件不附带任何音频；单个文件不超过 20 MiB。',
+  'settings.soundFormats': 'MP3 / OGG / WAV / WebM / M4A / AAC / FLAC',
+  'settings.soundMasterOn': '音效已开启',
+  'settings.soundMasterOff': '音效已关闭',
+  'settings.soundGreeting': '入席问候',
+  'settings.soundSend': '发送提示',
+  'settings.soundNone': '未上传',
+  'settings.soundUpload': '上传',
+  'settings.soundReplace': '更换',
+  'settings.soundRemove': '移除',
+  'settings.soundPreview': '试听',
+  'settings.soundEnabled': '启用',
+  'settings.soundVolume': '音量',
 } as const
 
 export type AmphoreusKey = keyof typeof zh
@@ -313,6 +327,20 @@ export const en: Record<AmphoreusKey, string> = {
   'settings.credit': 'The workbench derives from dsh-synapse v0.4.1 (MIT, liangmianya), adapted; original license in NOTICE.',
   'view.workbench': 'Workbench',
   // @anchor en-keys
+  'settings.soundHeading': 'Seat sounds',
+  'settings.soundHint': 'Upload your own sounds per seat: a greeting when a seat is entered and a click when you send. Files stay in the local data directory; the plugin ships no audio. 20 MiB per file.',
+  'settings.soundFormats': 'MP3 / OGG / WAV / WebM / M4A / AAC / FLAC',
+  'settings.soundMasterOn': 'Sounds on',
+  'settings.soundMasterOff': 'Sounds off',
+  'settings.soundGreeting': 'Greeting',
+  'settings.soundSend': 'Send click',
+  'settings.soundNone': 'Not uploaded',
+  'settings.soundUpload': 'Upload',
+  'settings.soundReplace': 'Replace',
+  'settings.soundRemove': 'Remove',
+  'settings.soundPreview': 'Preview',
+  'settings.soundEnabled': 'Enabled',
+  'settings.soundVolume': 'Volume',
 }
 
 export const NS = 'amphoreus'

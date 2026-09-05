@@ -69,10 +69,20 @@ const PrefsInput = z.object({
     paused: z.boolean().optional(),
   }).strict().nullable()).optional(),
   // @anchor prefs-input-fields
+  /** Seat sound patch: master switch + per-seat per-slot knobs; a `null` seat entry deletes it. */
+  seatSounds: z.object({
+    master: z.boolean().optional(),
+    seats: z.record(z.string().regex(/^[a-z0-9][a-z0-9-]{0,31}$/u), z.object({
+      greeting: z.object({ enabled: z.boolean().optional(), volume: z.number().min(0).max(1).optional() }).strict().optional(),
+      send: z.object({ enabled: z.boolean().optional(), volume: z.number().min(0).max(1).optional() }).strict().optional(),
+    }).strict().nullable()).optional(),
+  }).strict().optional(),
 })
 
 const DeriveInput = z.object({ force: z.boolean().optional() }).strict()
 // @anchor webapi-inputs
+import { isSeatSoundSlot, SeatSoundStore, SeatSoundTooLargeError, type SeatSoundRecord } from './seat-sounds.ts'
+import { SEAT_SOUND_DEFAULTS, type SeatSoundInfo, type SeatSoundPrefs } from '../shared/api.ts'
 
 const ObservationCreateInput = z.object({
   sessionId: z.string().regex(SESSION_ID),
@@ -185,6 +195,7 @@ export class AmphoreusWebApi {
   readonly #deriveAssets: (options: DeriveOptions) => Promise<DeriveResult>
   readonly #probeMagick: () => Promise<string | undefined>
   // @anchor webapi-fields
+  readonly #seatSounds: SeatSoundStore | undefined
   readonly #sse = new SseHub()
   readonly #canvasRevisions = new Map<string, number>()
   #assetsCacheRealDir: string | undefined
@@ -215,6 +226,7 @@ export class AmphoreusWebApi {
     this.#probeMagick = options.probeMagick ?? probeMagick
     this.nonce = options.nonce ?? randomBytes(24).toString('base64url')
     // @anchor webapi-ctor
+    this.#seatSounds = options.dataDir === undefined ? undefined : new SeatSoundStore(options.dataDir)
   }
 
   async prepareAssets(): Promise<void> {
@@ -234,6 +246,11 @@ export class AmphoreusWebApi {
         this.#warn(`amphoreus custom wallpaper scan failed: ${String(error)}`)
       }
       // @anchor webapi-prepare
+      try {
+        await this.#seatSounds?.scan()
+      } catch (error) {
+        this.#warn(`amphoreus seat sound scan failed: ${String(error)}`)
+      }
       try {
         this.#magick = await this.#probeMagick() ?? null
       } catch (error) {
@@ -292,6 +309,15 @@ export class AmphoreusWebApi {
       const write = request.method !== 'GET' && request.method !== 'HEAD' && !derivedAssetRequest
       const binaryUpload = path.startsWith('/amphoreus/api/custom-wallpaper/') && request.method === 'PUT'
       // @anchor webapi-classify
+      // Seat sounds: `write`/`binaryUpload` above are consts, so this branch authorizes and dispatches on its own.
+      if (path.startsWith('/amphoreus/seat-sound/') || path.startsWith('/amphoreus/api/seat-sound/')) {
+        const seatSoundAsset = path.startsWith('/amphoreus/seat-sound/')
+        const seatSoundUpload = !seatSoundAsset && request.method === 'PUT'
+        if (!this.#authorize(request, response, write && !seatSoundAsset, seatSoundUpload)) return
+        if (seatSoundAsset) await this.#seatSoundAssetRoute(request, response, decodeTail(path, '/amphoreus/seat-sound/'))
+        else await this.#seatSoundRoute(request, response, decodeTail(path, '/amphoreus/api/seat-sound/'))
+        return
+      }
       if (!this.#authorize(request, response, write, binaryUpload)) return
       if (path === '/amphoreus/api/state' || path.startsWith('/amphoreus/derived/')) await this.prepareAssets()
 
@@ -387,6 +413,24 @@ export class AmphoreusWebApi {
             prefs.customWallpapers = next
           }
           // @anchor prefs-merge
+          if (input.seatSounds !== undefined) {
+            const stored = current.prefs.seatSounds ?? {}
+            const seats = { ...(stored.seats ?? {}) }
+            for (const [heroId, patch] of Object.entries(input.seatSounds.seats ?? {})) {
+              if (patch === null) { delete seats[heroId]; continue }
+              const previous = seats[heroId] ?? {}
+              seats[heroId] = {
+                ...previous,
+                ...(patch.greeting === undefined ? {} : { greeting: { ...previous.greeting, ...patch.greeting } }),
+                ...(patch.send === undefined ? {} : { send: { ...previous.send, ...patch.send } }),
+              }
+            }
+            prefs.seatSounds = {
+              ...stored,
+              ...(input.seatSounds.master === undefined ? {} : { master: input.seatSounds.master }),
+              seats,
+            }
+          }
           return { ...current, prefs }
         })
         json(response, 200, { prefs: updated.prefs })
@@ -499,6 +543,7 @@ export class AmphoreusWebApi {
       canvas: [...this.#stores.canvas.table('canvas').entries()].map(([sessionId, value]) => ({ sessionId, value })),
       customWallpapers: (this.#customWallpapers?.list() ?? []).map(record => this.#customWallpaperInfo(record)),
       // @anchor state-fields
+      seatSounds: (this.#seatSounds?.list() ?? []).map(record => this.#seatSoundInfo(record)),
       assets: {
         root: this.#config.assetsRoot.trim(),
         cacheDir: this.#assetsCacheDir ?? '',
@@ -1069,6 +1114,87 @@ export class AmphoreusWebApi {
   }
 
   // @anchor webapi-methods
+
+  /** `PUT|DELETE /amphoreus/api/seat-sound/<heroId>/<slot>` — binary body on PUT (content-type = audio MIME, or octet-stream + `x-amphoreus-ext`). */
+  async #seatSoundRoute(request: IncomingMessage, response: ServerResponse, tail: string | undefined): Promise<void> {
+    const store = this.#seatSounds
+    if (store === undefined) {
+      json(response, 503, { error: 'seat sounds need a dataDir' })
+      return
+    }
+    const [heroId, slot, ...rest] = (tail ?? '').split('/')
+    if (heroId === undefined || !/^[a-z0-9][a-z0-9-]{0,31}$/u.test(heroId)) {
+      json(response, 400, { error: 'invalid hero id' })
+      return
+    }
+    if (slot === undefined || rest.length > 0 || !isSeatSoundSlot(slot)) {
+      json(response, 400, { error: 'invalid sound slot (greeting|send)' })
+      return
+    }
+    if (request.method === 'PUT') {
+      const mime = (request.headers['content-type'] ?? '').split(';')[0]!.trim().toLowerCase()
+      const extHeader = request.headers['x-amphoreus-ext']
+      const extHint = typeof extHeader === 'string' ? extHeader : undefined
+      try {
+        const record = await store.put(heroId, slot, mime, request, extHint)
+        this.#publishSse('state-change', { domain: 'amphoreus', table: 'seat-sounds', key: `${heroId}/${slot}`, operation: 'put' })
+        json(response, 200, { sound: this.#seatSoundInfo(record) })
+      } catch (error) {
+        if (error instanceof SeatSoundTooLargeError) json(response, 413, { error: error.message })
+        else if (error instanceof TypeError) json(response, 415, { error: error.message })
+        else throw error
+      }
+      return
+    }
+    if (request.method === 'DELETE') {
+      const deleted = await store.remove(heroId, slot)
+      if (deleted) {
+        await updateAmphoreusGlobal(this.#stores.main, current => {
+          const stored = current.prefs.seatSounds
+          if (stored?.seats?.[heroId] === undefined) return current
+          const seat = { ...stored.seats[heroId] }
+          delete seat[slot]
+          const seats = { ...stored.seats }
+          if (Object.keys(seat).length === 0) delete seats[heroId]
+          else seats[heroId] = seat
+          return { ...current, prefs: { ...current.prefs, seatSounds: { ...stored, seats } } }
+        })
+        this.#publishSse('state-change', { domain: 'amphoreus', table: 'seat-sounds', key: `${heroId}/${slot}`, operation: 'remove' })
+      }
+      json(response, deleted ? 200 : 404, deleted ? { deleted: true } : { error: 'seat sound not found' })
+      return
+    }
+    response.writeHead(405, { allow: 'PUT, DELETE' })
+    response.end()
+  }
+
+  /** `GET|HEAD /amphoreus/seat-sound/<heroId>/<file>` — Range-capable, realpath-contained, immutable-cached. */
+  async #seatSoundAssetRoute(request: IncomingMessage, response: ServerResponse, tail: string | undefined): Promise<void> {
+    if (request.method !== 'GET' && request.method !== 'HEAD') {
+      response.writeHead(405, { allow: 'GET, HEAD' })
+      response.end()
+      return
+    }
+    const [heroId, file, ...rest] = (tail ?? '').split('/')
+    const served = heroId !== undefined && file !== undefined && rest.length === 0 && this.#seatSounds !== undefined
+      ? await this.#seatSounds.serve(request, response, heroId, file)
+      : false
+    if (!served) json(response, 404, { error: 'seat sound not found' })
+  }
+
+  #seatSoundInfo(record: SeatSoundRecord): SeatSoundInfo {
+    const stored = this.#stores.main.global.get().prefs.seatSounds?.seats?.[record.heroId]?.[record.slot] ?? {}
+    const prefs: Record<string, unknown> = { ...SEAT_SOUND_DEFAULTS }
+    for (const [key, value] of Object.entries(stored)) if (value !== undefined) prefs[key] = value
+    return {
+      heroId: record.heroId,
+      slot: record.slot,
+      url: this.#seatSounds!.urlOf(record),
+      mime: record.mime,
+      bytes: record.bytes,
+      prefs: prefs as unknown as SeatSoundPrefs,
+    }
+  }
 
   #authorize(request: IncomingMessage, response: ServerResponse, write: boolean, binaryUpload = false): boolean {
     if (!trustedHost(request.headers.host, this.#config.trustedHosts)) {

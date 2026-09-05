@@ -1,4 +1,4 @@
-import type { AmphoreusState, CustomWallpaperPlacement, DeriveKind, DeriveProgress, GrammarPrefs } from '../shared/api.ts'
+import type { AmphoreusState, CustomWallpaperPlacement, DeriveKind, DeriveProgress, GrammarPrefs, SeatSoundPrefsPatch, SeatSoundSlot } from '../shared/api.ts'
 
 export interface AmphoreusClientSnapshot {
   readonly phase: 'loading' | 'ready' | 'error'
@@ -197,6 +197,53 @@ export class AmphoreusClientModel {
   }
 
   // @anchor client-model-methods
+
+  /** Upload (replace) one seat sound slot; MIME from the File, extension hint from its name (host falls back to it when the browser reports no type). */
+  async uploadSeatSound(heroId: string, slot: SeatSoundSlot, file: File): Promise<void> {
+    const nonce = this.#snapshot.state?.nonce ?? window.__AMPHOREUS_BOOT__?.nonce
+    if (nonce === undefined) throw new Error('首帧 nonce 尚未就绪')
+    const ext = /\.([a-z0-9]{1,5})$/iu.exec(file.name)?.[1]?.toLowerCase()
+    const response = await fetch(`/amphoreus/api/seat-sound/${encodeURIComponent(heroId)}/${slot}`, {
+      method: 'PUT',
+      credentials: 'include',
+      headers: {
+        'content-type': file.type || 'application/octet-stream',
+        'x-amphoreus-nonce': nonce,
+        ...(ext === undefined ? {} : { 'x-amphoreus-ext': ext }),
+      },
+      body: file,
+    })
+    if (response.status === 415) throw new Error('不支持的音频类型：请用 MP3 / OGG / WAV / WebM / M4A / AAC / FLAC')
+    if (response.status === 413) throw new Error('音频文件超过 20 MiB 上限')
+    if (!response.ok) throw new Error(`音效上传失败（HTTP ${response.status}）`)
+    await this.refresh()
+  }
+
+  async removeSeatSound(heroId: string, slot: SeatSoundSlot): Promise<void> {
+    const nonce = this.#snapshot.state?.nonce ?? window.__AMPHOREUS_BOOT__?.nonce
+    if (nonce === undefined) throw new Error('首帧 nonce 尚未就绪')
+    const response = await fetch(`/amphoreus/api/seat-sound/${encodeURIComponent(heroId)}/${slot}`, {
+      method: 'DELETE',
+      credentials: 'include',
+      headers: { 'x-amphoreus-nonce': nonce },
+    })
+    if (!response.ok && response.status !== 404) throw new Error(`音效移除失败（HTTP ${response.status}）`)
+    await this.refresh()
+  }
+
+  /** Patch seat sound prefs (master switch and/or per-seat per-slot knobs; a null seat entry clears it). */
+  async setSeatSoundPrefs(patch: SeatSoundPrefsPatch): Promise<void> {
+    const nonce = this.#snapshot.state?.nonce ?? window.__AMPHOREUS_BOOT__?.nonce
+    if (nonce === undefined) throw new Error('首帧 nonce 尚未就绪')
+    const response = await fetch('/amphoreus/api/prefs', {
+      method: 'PUT',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json', 'x-amphoreus-nonce': nonce },
+      body: JSON.stringify({ seatSounds: patch }),
+    })
+    if (!response.ok) throw new Error(`音效设置保存失败（HTTP ${response.status}）`)
+    await this.refresh()
+  }
 
   close(): void {
     this.#closed = true
