@@ -41,7 +41,7 @@ import { createWorkspacesSource } from './workspaces-source.ts'
 import { currentOrdinaryWorkspace, orphanSeatWorkspacePath, syncWorkspaceSession, waitForReadySnapshot } from './workspace-routing.ts'
 import { heroVisualById } from '../shared/heroes.ts'
 // @anchor client-imports
-import { createSeatPresetApplier } from './seat-preset-apply.ts'
+import { createSeatPresetApplier, parseDefaultModelUser } from './seat-preset-apply.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -179,12 +179,21 @@ export function apply(ctx: ClientContext): void {
   })
   ctx.inject(['remote.settings'], scope => {
     scope.effect(() => seatPresetApplier.attach({
-      // selectModel also rewrites this namespace (core/agent-default-model saveSelection → settings.replace); write the prior default back.
-      restoreDefaultModel: selection => scope.remote.settings.replace('agent-default-model', {
-        provider: selection.provider,
-        model: selection.model,
-        ...(selection.reasoningEffort === undefined ? {} : { reasoningEffort: selection.reasoningEffort }),
-      }, undefined),
+      // selectModel also rewrites this namespace (core/agent-default-model saveSelection → settings.replace).
+      // Read the raw user layer + revision around the select and write the prior section back revision-checked.
+      describeDefaultModel: async () => {
+        const described = await scope.remote.settings.describe()
+        if (!described.ok) return described
+        const view = described.value.namespaces.find(namespace => namespace.ns === 'agent-default-model')
+        return { ok: true, value: view === undefined ? undefined : { user: parseDefaultModelUser(view.user), revision: view.revision } }
+      },
+      restoreDefaultModel: (section, expectedRevision) => scope.remote.settings.replace('agent-default-model', {
+        ...(section === undefined ? {} : {
+          provider: section.provider,
+          model: section.model,
+          ...(section.reasoningEffort === undefined ? {} : { reasoningEffort: section.reasoningEffort }),
+        }),
+      }, expectedRevision),
     }), 'amphoreus: seat preset default-model restore')
   })
   type SessionFeed = Exclude<ReturnType<WorkbenchViewInjected['sessionFace']>, undefined>

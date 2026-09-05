@@ -206,7 +206,7 @@ export function AmphoreusSettings({ model, t }: AmphoreusSettingsProps) {
             directory={model.presetDirectory}
             busy={busy}
             t={t}
-            onSave={(skillName, preset) => { void run('seat-preset' as SettingsAction, () => model.setSeatPreset(skillName, preset)) }}
+            onSave={(skillName, preset) => model.setSeatPreset(skillName, preset)}
           />
 
           <section className={css.panel} aria-labelledby="amphoreus-workbench">

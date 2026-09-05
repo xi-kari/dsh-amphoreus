@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFileSync, readdirSync } from 'node:fs'
 import { test } from 'node:test'
-import { createSeatPresetApplier, sameModelSelection, type SeatPresetApplyDeps, type SeatPresetRemoteResult } from '../src/client/seat-preset-apply.ts'
+import { createSeatPresetApplier, parseDefaultModelUser, sameModelSelection, type SeatPresetApplyDeps, type SeatPresetModel, type SeatPresetRemoteResult } from '../src/client/seat-preset-apply.ts'
 import { decodeModelChoice, encodeModelChoice, withTier } from '../src/client/seat-preset-tiers.ts'
 import { en, zh } from '../src/client/locales.ts'
 import { isEmptySeatPreset, normalizeSeatPreset, SEAT_PERMISSION_PRESETS, type SeatPreset } from '../src/shared/seat-preset.ts'
@@ -28,6 +28,41 @@ function harness(preset: SeatPreset | undefined, overrides: Partial<SeatPresetAp
   return { applier, calls, warnings }
 }
 
+/**
+ * Fake platform for the model tier: `selectModel` rewrites the stored
+ * 'agent-default-model' user section exactly like core/agent-default-model's
+ * saveSelection (settings.replace → revision + 1 when the raw section changed),
+ * and the settings faces describe/replace that document with revision checks.
+ */
+function platform(initialUser: SeatPresetModel | undefined, options: { readonly selectDelay?: () => Promise<void> } = {}) {
+  const doc = { user: initialUser as SeatPresetModel | undefined, revision: 3 }
+  const calls: string[] = []
+  const write = (next: SeatPresetModel | undefined): void => {
+    if (JSON.stringify(next ?? {}) === JSON.stringify(doc.user ?? {})) return
+    doc.user = next
+    doc.revision += 1
+  }
+  const deps: Partial<SeatPresetApplyDeps> = {
+    selectModel: async request => {
+      calls.push(`select:${request.sessionId}:${request.model}`)
+      await options.selectDelay?.()
+      write({ provider: request.provider, model: request.model, ...(request.reasoningEffort === undefined ? {} : { reasoningEffort: request.reasoningEffort }) })
+      return ok({ selected: request })
+    },
+    modelCatalog: async () => { calls.push('catalog'); return ok({ default: doc.user ?? DEFAULT_MODEL, groups: [] }) },
+  }
+  const faces = {
+    describeDefaultModel: async () => { calls.push(`describe@${doc.revision}`); return ok({ user: doc.user, revision: doc.revision }) },
+    restoreDefaultModel: async (section: SeatPresetModel | undefined, expectedRevision: number) => {
+      calls.push(`restore:${section === undefined ? '{}' : section.model}@${expectedRevision}`)
+      if (expectedRevision !== doc.revision) return fail('settings/conflict', `expected ${expectedRevision}, now ${doc.revision}`)
+      write(section)
+      return ok(undefined)
+    },
+  }
+  return { doc, calls, deps, faces }
+}
+
 test('apply: no preset → nothing happens; agent preset runs before model; each tier is independent', async () => {
   const none = harness(undefined)
   await none.applier.apply(SESSION, SKILL)
@@ -36,15 +71,16 @@ test('apply: no preset → nothing happens; agent preset runs before model; each
   const full = harness({ agentPreset: 'standard', model: SEAT_MODEL, permission: 'read-only' })
   full.applier.attach({
     selectAgentPreset: async (sessionId, id) => { full.calls.push(`agentPreset:${sessionId}:${id}`); return ok(id) },
-    restoreDefaultModel: async selection => { full.calls.push(`restore:${selection.provider}/${selection.model}`); return ok(undefined) },
+    describeDefaultModel: async () => { full.calls.push('describe'); return ok({ user: DEFAULT_MODEL, revision: 1 }) },
+    restoreDefaultModel: async (section, revision) => { full.calls.push(`restore:${section?.provider}/${section?.model}@${revision}`); return ok(undefined) },
   })
   await full.applier.apply(SESSION, SKILL)
   assert.deepEqual(full.calls, [
     `agentPreset:${SESSION}:standard`,
-    'catalog',
+    'describe',
     `selectModel:${SESSION}:deepseek/deepseek-reasoner/high`,
-    'restore:deepseek/deepseek-chat',
-  ])
+    'describe',
+  ], 'a describe that reports an unchanged revision means the platform write was a no-op → nothing to restore')
   assert.deepEqual(full.warnings, [], 'permission is a host tier; nothing to warn about here')
 })
 
@@ -67,34 +103,128 @@ test('apply: locked / unavailable agent preset refusals are silent, other refusa
   assert.deepEqual(detached.calls, [], 'without the remote.agentPresets face the tier is skipped')
 })
 
-test('apply: the deployment default model is read before selectModel and restored after it; same selection restores nothing', async () => {
-  const h = harness({ model: SEAT_MODEL })
-  h.applier.attach({ restoreDefaultModel: async selection => { h.calls.push(`restore:${selection.provider}/${selection.model}/${selection.reasoningEffort ?? '-'}`); return ok(undefined) } })
+test('apply: the stored default is described before selectModel and restored after it with the post-select revision; same selection restores nothing', async () => {
+  const fake = platform(DEFAULT_MODEL)
+  const h = harness({ model: SEAT_MODEL }, fake.deps)
+  h.applier.attach(fake.faces)
   await h.applier.apply(SESSION, SKILL)
-  assert.deepEqual(h.calls, ['catalog', `selectModel:${SESSION}:deepseek/deepseek-reasoner/high`, 'restore:deepseek/deepseek-chat/-'])
+  assert.deepEqual(fake.calls, ['describe@3', `select:${SESSION}:deepseek-reasoner`, 'describe@4', 'restore:deepseek-chat@4'])
+  assert.deepEqual(fake.doc, { user: DEFAULT_MODEL, revision: 5 }, 'the deployment default is back to the prior user section')
+  assert.deepEqual(h.warnings, [])
 
-  const same = harness({ model: DEFAULT_MODEL })
-  same.applier.attach({ restoreDefaultModel: async () => { same.calls.push('restore'); return ok(undefined) } })
-  await same.applier.apply(SESSION, SKILL)
-  assert.deepEqual(same.calls, ['catalog', `selectModel:${SESSION}:deepseek/deepseek-chat/-`])
+  const same = platform(DEFAULT_MODEL)
+  const sameH = harness({ model: DEFAULT_MODEL }, same.deps)
+  sameH.applier.attach(same.faces)
+  await sameH.applier.apply(SESSION, SKILL)
+  assert.deepEqual(same.calls, ['describe@3', `select:${SESSION}:deepseek-chat`, 'describe@3'])
+  assert.equal(same.doc.revision, 3)
+
+  // No user layer before (composition default only): restore writes `{}` so the base re-applies instead of materializing a user entry.
+  const base = platform(undefined)
+  const baseH = harness({ model: SEAT_MODEL }, base.deps)
+  baseH.applier.attach(base.faces)
+  await baseH.applier.apply(SESSION, SKILL)
+  assert.deepEqual(base.calls, ['describe@3', `select:${SESSION}:deepseek-reasoner`, 'describe@4', 'restore:{}@4'])
+  assert.deepEqual(base.doc, { user: undefined, revision: 5 })
 
   const refused = harness({ model: SEAT_MODEL }, { selectModel: async () => fail('gateway/bad-request', 'unroutable') })
-  refused.applier.attach({ restoreDefaultModel: async () => { refused.calls.push('restore'); return ok(undefined) } })
+  refused.applier.attach({
+    describeDefaultModel: async () => { refused.calls.push('describe'); return ok({ user: DEFAULT_MODEL, revision: 1 }) },
+    restoreDefaultModel: async () => { refused.calls.push('restore'); return ok(undefined) },
+  })
   await refused.applier.apply(SESSION, SKILL)
-  assert.deepEqual(refused.calls, ['catalog'])
+  assert.deepEqual(refused.calls, ['describe'])
   assert.match(refused.warnings[0]!, /model deepseek\/deepseek-reasoner not applied \(gateway\/bad-request\): unroutable/u)
 
   const noRestore = harness({ model: SEAT_MODEL })
   await noRestore.applier.apply(SESSION, SKILL)
-  assert.deepEqual(noRestore.calls, [`selectModel:${SESSION}:deepseek/deepseek-reasoner/high`], 'no catalog read when nothing can be restored')
+  assert.deepEqual(noRestore.calls, [`selectModel:${SESSION}:deepseek/deepseek-reasoner/high`], 'no settings read when nothing can be restored')
   assert.equal(noRestore.applier.canRestoreDefaultModel(), false)
   assert.match(noRestore.warnings[0]!, /also made it the deployment default/u)
 
   const restoreFails = harness({ model: SEAT_MODEL })
-  restoreFails.applier.attach({ restoreDefaultModel: async () => fail('gateway/internal', 'settings provider offline') })
+  restoreFails.applier.attach({
+    describeDefaultModel: async () => ok({ user: DEFAULT_MODEL, revision: restoreFails.calls.some(call => call.startsWith('selectModel')) ? 2 : 1 }),
+    restoreDefaultModel: async () => fail('gateway/internal', 'settings provider offline'),
+  })
   assert.equal(restoreFails.applier.canRestoreDefaultModel(), true)
   await restoreFails.applier.apply(SESSION, SKILL)
   assert.match(restoreFails.warnings[0]!, /could not be restored to deepseek\/deepseek-chat \(gateway\/internal\)/u)
+
+  // Namespace not registered (describe → undefined): select still lands, restore is impossible → warn once.
+  const unregistered = harness({ model: SEAT_MODEL })
+  unregistered.applier.attach({ describeDefaultModel: async () => ok(undefined), restoreDefaultModel: async () => { unregistered.calls.push('restore'); return ok(undefined) } })
+  await unregistered.applier.apply(SESSION, SKILL)
+  assert.deepEqual(unregistered.calls, [`selectModel:${SESSION}:deepseek/deepseek-reasoner/high`])
+  assert.match(unregistered.warnings[0]!, /cannot be restored/u)
+})
+
+test('apply: a third-party write between select and restore (revision moved by more than one) is left alone with a warning', async () => {
+  const fake = platform(DEFAULT_MODEL, {
+    selectDelay: async () => { fake.doc.user = { provider: 'other', model: 'user-picked' }; fake.doc.revision += 1 },
+  })
+  const h = harness({ model: SEAT_MODEL }, fake.deps)
+  h.applier.attach(fake.faces)
+  await h.applier.apply(SESSION, SKILL)
+  assert.deepEqual(fake.calls, ['describe@3', `select:${SESSION}:deepseek-reasoner`, 'describe@5'])
+  assert.equal(h.warnings.length, 1)
+  assert.match(h.warnings[0]!, /moved from revision 3 to 5/u)
+  assert.equal(fake.doc.user?.model, 'deepseek-reasoner', 'the applier never overwrites a write it cannot account for')
+})
+
+test('apply: concurrent seat starts (conference dispatch) serialize the model tier so the deployment default ends where it began', async () => {
+  const gates: Array<() => void> = []
+  const fake = platform(DEFAULT_MODEL, { selectDelay: () => new Promise<void>(resolve => { gates.push(resolve) }) })
+  const presets: Record<string, SeatPreset> = {
+    'seat-a': { model: { provider: 'deepseek', model: 'A' } },
+    'seat-b': { model: { provider: 'deepseek', model: 'B' } },
+  }
+  const h = harness(undefined, { ...fake.deps, presetOf: skill => presets[skill] })
+  h.applier.attach(fake.faces)
+  const a = h.applier.apply('session-a', 'seat-a')
+  const b = h.applier.apply('session-b', 'seat-b')
+  // Let both chains progress as far as they can; only one select may be in flight.
+  await new Promise(resolve => setTimeout(resolve, 0))
+  assert.equal(gates.length, 1, 'the second seat waits for the first triple to finish')
+  gates.shift()!()
+  await a
+  assert.deepEqual(fake.doc.user, DEFAULT_MODEL, 'default restored before the second seat reads it')
+  await new Promise(resolve => setTimeout(resolve, 0))
+  assert.equal(gates.length, 1)
+  gates.shift()!()
+  await b
+  assert.deepEqual(fake.doc.user, DEFAULT_MODEL, 'deployment default ended where it began, not as seat A or B')
+  assert.deepEqual(fake.calls.filter(call => call.startsWith('restore')), ['restore:deepseek-chat@4', 'restore:deepseek-chat@6'])
+  assert.deepEqual(h.warnings, [])
+
+  // A failing link never blocks the next one in the same chain.
+  const plain = platform(DEFAULT_MODEL)
+  let failOnce = true
+  const chain = harness(undefined, {
+    ...plain.deps,
+    presetOf: skill => presets[skill],
+    selectModel: async request => {
+      if (failOnce) { failOnce = false; throw new Error('transport down') }
+      return plain.deps.selectModel!(request)
+    },
+  })
+  chain.applier.attach(plain.faces)
+  const failing = chain.applier.apply('session-c', 'seat-a')
+  const following = chain.applier.apply('session-d', 'seat-b')
+  await assert.rejects(failing, /transport down/u)
+  await following
+  assert.deepEqual(plain.doc.user, DEFAULT_MODEL)
+  assert.deepEqual(plain.calls.filter(call => call.startsWith('select')), ['select:session-d:B'])
+})
+
+test('parseDefaultModelUser narrows the redacted user layer and rejects anything else', () => {
+  assert.deepEqual(parseDefaultModelUser({ provider: 'deepseek', model: 'deepseek-chat' }), { provider: 'deepseek', model: 'deepseek-chat' })
+  assert.deepEqual(parseDefaultModelUser({ provider: 'deepseek', model: 'deepseek-reasoner', reasoningEffort: 'high', extra: 1 }), { provider: 'deepseek', model: 'deepseek-reasoner', reasoningEffort: 'high' })
+  assert.equal(parseDefaultModelUser(undefined), undefined)
+  assert.equal(parseDefaultModelUser({}), undefined)
+  assert.equal(parseDefaultModelUser({ provider: 'x' }), undefined)
+  assert.equal(parseDefaultModelUser([1]), undefined)
+  assert.equal(parseDefaultModelUser('deepseek'), undefined)
 })
 
 test('attach returns a detacher that only removes its own faces', async () => {
@@ -162,15 +292,23 @@ test('assembly: applier is wired after the pinned seatDeps literal, remote faces
   const index = readFileSync(new URL('../src/client/index.ts', import.meta.url), 'utf8')
   assert.match(index, /ctx\.inject\(\['remote\.agentPresets'\], scope => \{/u)
   assert.match(index, /ctx\.inject\(\['remote\.settings'\], scope => \{/u)
-  assert.match(index, /scope\.remote\.settings\.replace\('agent-default-model', \{/u)
+  assert.match(index, /scope\.remote\.settings\.describe\(\)/u)
+  assert.match(index, /namespace\.ns === 'agent-default-model'/u)
+  assert.match(index, /scope\.remote\.settings\.replace\('agent-default-model', \{[\s\S]*?\}, expectedRevision\)/u)
+  assert.doesNotMatch(index, /replace\('agent-default-model'[\s\S]*?, undefined\)/u, 'the restore is never an unconditional write')
+  const panel = readFileSync(new URL('../src/client/seat-preset-panel.tsx', import.meta.url), 'utf8')
+  assert.match(panel, /const restorable = directory\.canRestoreDefaultModel\(\)/u, 'restorable is read at render time, not cached in state')
+  assert.doesNotMatch(panel, /restorable:/u)
   assert.match(index, /model\.presetDirectory = seatPresetApplier/u)
   assert.doesNotMatch(index, /'remote\.agentPresets'\s*\]\s*$/mu, 'the frozen inject array must not grow')
   const settings = readFileSync(new URL('../src/client/settings.tsx', import.meta.url), 'utf8')
-  assert.match(settings, /<SeatPresetPanel[\s\S]*?directory=\{model\.presetDirectory\}[\s\S]*?onSave=\{\(skillName, preset\) => \{ void run\('seat-preset' as SettingsAction, \(\) => model\.setSeatPreset\(skillName, preset\)\) \}\}/u)
+  assert.match(settings, /<SeatPresetPanel[\s\S]*?directory=\{model\.presetDirectory\}[\s\S]*?onSave=\{\(skillName, preset\) => model\.setSeatPreset\(skillName, preset\)\}/u)
+  assert.doesNotMatch(settings, /as SettingsAction/u, 'the panel owns its saving state; no value is cast into the pinned action union')
+  assert.match(panel, /const \[saving, setSaving\] = useState\(false\)/u)
   const wallpaper = settings.indexOf('<WallpaperPanel')
-  const panel = settings.indexOf('<SeatPresetPanel')
+  const panelAt = settings.indexOf('<SeatPresetPanel')
   const workbench = settings.indexOf('aria-labelledby="amphoreus-workbench"')
-  assert.ok(wallpaper < panel && panel < workbench)
+  assert.ok(wallpaper < panelAt && panelAt < workbench)
   const component = readFileSync(new URL('../src/client/seat-preset-panel.tsx', import.meta.url), 'utf8')
   assert.doesNotMatch(component, /\bctx\b/u)
   assert.match(component, /aria-labelledby="amphoreus-seat-presets"/u)

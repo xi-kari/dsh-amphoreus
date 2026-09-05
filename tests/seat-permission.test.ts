@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 import type { Context } from '@deepseek-ai/cordis'
-import { registerSeatPermission, seatPermissionFor } from '../src/host/seat-permission.ts'
+import { isFreshSession, registerSeatPermission, seatPermissionFor } from '../src/host/seat-permission.ts'
 import type { AmphoreusStores, BindingRecord, SeatRecord } from '../src/host/store.ts'
 
 const SESSION = 'session-00000000-0000-0000-0000-000000000031'
@@ -37,6 +37,13 @@ const seat = (preset?: SeatRecord['preset']): SeatRecord => ({
   ...(preset === undefined ? {} : { preset }),
 })
 
+/** A brand-new session as announced by SessionStore.announce right after `sessions.create`. */
+const fresh = (id: string, extra: Partial<{ firstLiveSeq: number; parentSession: string }> = {}) => ({
+  id,
+  firstLiveSeq: extra.firstLiveSeq ?? 0,
+  header: { id, ...(extra.parentSession === undefined ? {} : { parentSession: extra.parentSession }) },
+})
+
 const binding = (): BindingRecord => ({ sessionId: SESSION, skillName: SKILL, boundAt: 1, source: 'seat-new', injection: { state: 'pending' } })
 
 function stores(seats: Map<string, SeatRecord>, bindings: Map<string, BindingRecord>): AmphoreusStores {
@@ -68,33 +75,54 @@ test('session/created applies the seat permission AFTER a previously registered 
   const dispose = registerSeatPermission(ctx as unknown as Context, {
     stores: stores(new Map([[SKILL, seat({ permission: 'danger-full-access' })]]), new Map([[SESSION, binding()]])),
   })
-  ctx.emit('session/created', { id: SESSION })
+  ctx.emit('session/created', fresh(SESSION))
   assert.deepEqual(calls, [`pin:${SESSION}`, `seat:${SESSION}:danger-full-access`])
-  ctx.emit('session/created', { id: 'session-00000000-0000-0000-0000-000000000099' })
+  ctx.emit('session/created', fresh('session-00000000-0000-0000-0000-000000000099'))
   assert.equal(calls.length, 3, 'an unbound session only receives the platform pin')
   assert.deepEqual(ctx.warnings, [])
   dispose()
-  ctx.emit('session/created', { id: SESSION })
+  ctx.emit('session/created', fresh(SESSION))
   assert.equal(calls.length, 4, 'after dispose only the platform pin remains')
+})
+
+test('resumed / restored / forked sessions never receive the tier: a manual /permission switch survives reopen', () => {
+  const ctx = new FakeContext()
+  const calls: string[] = []
+  ctx.services.set('permissionPresets', { set: (_session: unknown, name: string) => { calls.push(name) } })
+  registerSeatPermission(ctx as unknown as Context, {
+    stores: stores(new Map([[SKILL, seat({ permission: 'danger-full-access' })]]), new Map([[SESSION, binding()]])),
+  })
+  // Resume: the constructor seed is the full stored log (announce fires again on every publish source).
+  ctx.emit('session/created', fresh(SESSION, { firstLiveSeq: 12 }))
+  // Handoff fork child whose binding already exists at announce time.
+  ctx.emit('session/created', fresh(SESSION, { parentSession: 'session-00000000-0000-0000-0000-000000000001' }))
+  assert.deepEqual(calls, [], 'a session with seed events or a parent keeps its effective knobs')
+  assert.deepEqual(ctx.warnings, [])
+  ctx.emit('session/created', fresh(SESSION))
+  assert.deepEqual(calls, ['danger-full-access'], 'only the brand-new session is pinned')
+
+  assert.equal(isFreshSession({ firstLiveSeq: 0, header: {} }), true)
+  assert.equal(isFreshSession({ firstLiveSeq: 1, header: {} }), false)
+  assert.equal(isFreshSession({ firstLiveSeq: 0, header: { parentSession: 'x' } }), false)
 })
 
 test('a missing permission service or a refused preset is warned, never thrown', () => {
   const ctx = new FakeContext()
   const options = { stores: stores(new Map([[SKILL, seat({ permission: 'made-up' })]]), new Map([[SESSION, binding()]])) }
   registerSeatPermission(ctx as unknown as Context, options)
-  assert.doesNotThrow(() => ctx.emit('session/created', { id: SESSION }))
+  assert.doesNotThrow(() => ctx.emit('session/created', fresh(SESSION)))
   assert.equal(ctx.warnings.length, 1)
   assert.match(ctx.warnings[0]!, /permission service not composed/u)
 
   ctx.services.set('permissionPresets', { set: () => { throw new Error('unknown permission preset "made-up"') } })
-  assert.doesNotThrow(() => ctx.emit('session/created', { id: SESSION }))
+  assert.doesNotThrow(() => ctx.emit('session/created', fresh(SESSION)))
   assert.equal(ctx.warnings.length, 2)
   assert.match(ctx.warnings[1]!, /refused for session-.*unknown permission preset/u)
 
   const broken = { stores: { main: { table: () => { throw new Error('table offline') } } } as unknown as AmphoreusStores }
   const ctx2 = new FakeContext()
   registerSeatPermission(ctx2 as unknown as Context, broken)
-  assert.doesNotThrow(() => ctx2.emit('session/created', { id: SESSION }))
+  assert.doesNotThrow(() => ctx2.emit('session/created', fresh(SESSION)))
   assert.match(ctx2.warnings[0]!, /table offline/u)
 })
 

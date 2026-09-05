@@ -7,6 +7,13 @@
  * amphoreus patch row), so the seat value wins. The service is optional (absent
  * on non-confining shell executors): resolve it with `ctx.get` per event, never
  * inject it.
+ *
+ * `session/created` is announced for EVERY publish source (startup, resume,
+ * clear, compact — core/agent-loop publish → sessions.announce), and the seat
+ * binding persists, so only a genuinely fresh session may receive the tier:
+ * `firstLiveSeq === 0` (empty constructor seed; restore/fork seeds are > 0) and
+ * no `parentSession` (a handoff fork keeps its parent's knobs). Anything else
+ * would silently undo a user's manual `/permission` switch on reopen.
  */
 import type { Context } from '@deepseek-ai/cordis'
 // Type-only: merges `permissionPresets` into Context and the session/* events into Events.
@@ -25,8 +32,14 @@ export function seatPermissionFor(stores: AmphoreusStores, sessionId: string): s
   return stores.main.table('seats').get(binding.skillName)?.preset?.permission
 }
 
+/** True only for a brand-new session: no seed events and no fork parent. */
+export function isFreshSession(session: { readonly firstLiveSeq: number; readonly header: { readonly parentSession?: string } }): boolean {
+  return session.firstLiveSeq === 0 && session.header.parentSession === undefined
+}
+
 export function registerSeatPermission(ctx: Context, options: SeatPermissionOptions): () => void {
   return ctx.on('session/created', session => {
+    if (!isFreshSession(session)) return
     let name: string | undefined
     try {
       name = seatPermissionFor(options.stores, session.id)

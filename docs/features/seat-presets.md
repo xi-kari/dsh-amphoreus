@@ -6,7 +6,7 @@
 |---|---|---|---|
 | 智能体预设 `agentPreset` | `remote.agentPresets.select(sessionId, id)`（插件组合，不含模型/权限） | 客户端，`startSeatSession` 在 create + 工作区同步之后、open/返回之前 | **只能在会话空白（未开始首轮）时切换**；`agent-preset/locked`、`gateway/invocation-unavailable` 静默跳过，其余拒绝只 `console.warn`，会话照常创建（落回部署默认预设） |
 | 模型 `model{provider, model, reasoningEffort?}` | `remote.session.selectModel(...)` | 客户端，同上 | 平台会**同时把它写成部署级默认模型**（`agent-default-model` 设置命名空间），见下文处理 |
-| 权限 `permission` | `ctx.permissionPresets.set(session, name)` | 宿主端 `session/created` 监听（`src/host/seat-permission.ts`） | 服务可选（非受限 shell 执行器上不存在），用 `ctx.get('permissionPresets')` 按事件解析；缺失或拒绝只 `logger.warn` |
+| 权限 `permission` | `ctx.permissionPresets.set(session, name)` | 宿主端 `session/created` 监听（`src/host/seat-permission.ts`） | **只对全新会话生效**：`firstLiveSeq === 0` 且无 `header.parentSession`（`isFreshSession`）。`session/created` 在每种 publish 来源（startup / resume / clear / compact）都会再次触发，而席位绑定是持久的，不加此守卫会在重开会话时把用户手动 `/permission` 切换的值悄悄改回去。服务可选（非受限 shell 执行器上不存在），用 `ctx.get('permissionPresets')` 按事件解析；缺失或拒绝只 `logger.warn` |
 
 所有层都是"尽力而为"：任何一层失败都不会删除席位绑定，也不会阻止会话创建；`dispatchTask` 之类紧接着发提示词的调用方在预设落地之后才继续。
 
@@ -29,22 +29,25 @@
 
 - `SeatActionDeps.applySeatPreset?: (sessionId, skillName) => Promise<void>`（可变可选属性）。`seatDeps` 字面量被测试钉住，因此在字面量之后一行赋值：`seatDeps.applySeatPreset = …`。
 - `src/client/seat-preset-apply.ts`：纯函数式 applier，`createSeatPresetApplier(deps)`。`remote.agentPresets` 与 `remote.settings` 是可选服务，通过 `ctx.inject([...], scope => scope.effect(() => applier.attach({...})))` 附着/脱离，因此**冻结的 `inject` 数组没有变化**，缺少这些命名空间的部署自然退化为"默认"。
-- 设置面板 `src/client/seat-preset-panel.tsx`（anchor `settings-panels`，位于壁纸面板与工作台之间）：每个已部署、未隐藏席位一行三个 select（智能体预设 / 模型 (+推理强度，仅当模型公布 efforts) / 权限）；"默认"= 未设置。目录（`listAgentPresets()` 过滤 broken、`modelCatalog()`）通过 `model.presetDirectory`（`AmphoreusClientModel` 上的纯回调槽，装配时换成真实 applier）传给面板，settings 的注入 props 与组件签名保持原样，组件不接触 ctx。样式 `seat-preset-panel.module.css` 只用 `--dsw-alias-*` 令牌。
+- 设置面板 `src/client/seat-preset-panel.tsx`（anchor `settings-panels`，位于壁纸面板与工作台之间；面板自持 saving / 错误状态，`onSave` 直接返回 `model.setSeatPreset(...)` 的 promise，不向被钉住的 `SettingsAction` 联合类型塞值）：每个已部署、未隐藏席位一行三个 select（智能体预设 / 模型 (+推理强度，仅当模型公布 efforts) / 权限）；"默认"= 未设置。目录（`listAgentPresets()` 过滤 broken、`modelCatalog()`）通过 `model.presetDirectory`（`AmphoreusClientModel` 上的纯回调槽，装配时换成真实 applier）传给面板，settings 的注入 props 与组件签名保持原样，组件不接触 ctx。样式 `seat-preset-panel.module.css` 只用 `--dsw-alias-*` 令牌。
 - 纯逻辑 `src/client/seat-preset-tiers.ts`：`withTier` 单层编辑（换模型会丢弃推理强度；全默认折叠为 `null`）、`encode/decodeModelChoice`（`U+001F` 分隔 provider 与 model）。
 
 ## 模型层的全局副作用与处理
 
-已核实 `api/session-controller/src/commands.ts` selectModel 无条件调用 `agentDefaultModel.saveSelection`，而 `core/agent-default-model/src/index.ts` 的文档形状为 `{ provider, model, reasoningEffort? }`，写入方式是 `settings.replace('agent-default-model', …)`。因此：
+已核实 `api/session-controller/src/commands.ts` selectModel 无条件调用 `agentDefaultModel.saveSelection`，而 `core/agent-default-model/src/index.ts` 的文档形状为 `{ provider, model, reasoningEffort? }`，写入方式是 `settings.replace('agent-default-model', …)`（原始 user 层变化时 revision +1）。因此，当 `remote.settings` 可用时：
 
-1. 应用前先读 `remote.session.modelCatalog().default`；
+1. `remote.settings.describe()` 取 `agent-default-model` 命名空间的原始 `user` 层与 `revision`（`parseDefaultModelUser` 收窄）；
 2. `selectModel` 落到席位会话；
-3. 若 `remote.settings` 可用且旧默认与席位模型不同，用 `remote.settings.replace('agent-default-model', {provider, model, reasoningEffort?}, undefined)` 写回旧默认。
+3. 再 `describe()` 一次：revision 未变 → 平台写入是空操作，不恢复；revision 恰好 +1 → 用 `remote.settings.replace('agent-default-model', 之前的 user 层, expectedRevision = 新 revision)` 写回（之前**没有** user 层时写 `{}`，让组合基线重新生效，而不是物化一条原本不存在的用户条目）；revision 变动超过 1 → 期间有第三方写入，只警告、不动它。
+4. `expectedRevision` 使得并发的用户设置页编辑得到 `settings/conflict` 而不是被覆盖；冲突只警告。
 
-面板底部据 `canRestoreDefaultModel()` 显示 `settings.presetModelRestore`（可恢复）或 `settings.presetModelWarning`（"会同时改写全局默认模型"，`remote.settings` 缺失时）。恢复失败只警告。极小窗口内（读默认 → 写回之间）其他新建的普通会话可能拿到席位模型，这是平台接口形态决定的已知限制。
+**串行化**：会议面板 `startConference({ concurrency: 3 })` 会让多个 `startSeatSession → applySeatPreset` 交错。applier 内部用一条 promise 链把整个"describe → select → describe → restore"三元组串行化（失败的一环不阻塞后续），否则第二个席位会把第一个席位的模型当作"默认值"读走并永久写回。回归测试：`tests/client-seat-preset-apply.test.ts` 用带闸门的假平台并发两次 `apply`，断言部署默认回到原值。
+
+面板底部在渲染时读取 `canRestoreDefaultModel()`（`describe` 与 `replace` 两个 face 都在），显示 `settings.presetModelRestore`（可恢复）或 `settings.presetModelWarning`（"会同时改写全局默认模型"，`remote.settings` 缺失时）；不再缓存到 state，因此 inject 作用域晚到/离开时文案随之更新。恢复失败只警告。极小窗口内（select → 写回之间）其他新建的普通会话可能拿到席位模型，这是平台接口形态决定的已知限制。
 
 ## 已知限制
 
-- 智能体预设不作用于已开始的会话与 `acceptHandoff` 的 fork 子会话（非空白，`agent-preset/locked`）；席位进入既有会话（seat-enter）也不重新应用任何层。
+- 智能体预设不作用于已开始的会话与 `acceptHandoff` 的 fork 子会话（非空白，`agent-preset/locked`）；席位进入既有会话（seat-enter）与会话恢复/fork 也不重新应用任何层（权限层由 `isFreshSession` 守卫保证）。
 - 权限名单硬编码 base bundle 三项；部署若改了权限表，可在 select 中看到"未知名"选项保留原值但无法枚举新名字。
 - 未在 seat-browser 行内加预设徽记（`SeatView` 与 seat-model 测试被钉住，非平凡改动，按任务说明跳过）。
 - 宿主监听顺序（权限服务 pin 先于本插件监听）依据 bundle 行序推断并以假 ctx 测试了"后注册者覆盖"语义；未在真机验证权限服务是否在当前 Windows 部署上被组合。
@@ -55,4 +58,4 @@
 
 ## 测试
 
-`tests/store-seats.test.ts`（schema 接受/拒绝、reconcile 保留）、`tests/client-seat-actions.test.ts`（create → sync → preset → open 顺序；失败只警告；缺依赖跳过）、`tests/webapi-seat-preset.test.ts`（存/换/清、404/400/403/415/405、分支位置）、`tests/seat-permission.test.ts`（监听顺序、服务缺失/拒绝容错、宿主装配与 type-only）、`tests/client-seat-preset-apply.test.ts`（三层独立、locked 静默、默认模型读回/恢复、目录降级、tiers 纯函数、装配与 CSS 令牌）。
+`tests/store-seats.test.ts`（schema 接受/拒绝、reconcile 保留）、`tests/client-seat-actions.test.ts`（create → sync → preset → open 顺序；失败只警告；缺依赖跳过）、`tests/webapi-seat-preset.test.ts`（存/换/清、404/400/403/415/405、分支位置）、`tests/seat-permission.test.ts`（监听顺序、resume/fork 不重复应用、服务缺失/拒绝容错、宿主装配与 type-only）、`tests/client-seat-preset-apply.test.ts`（三层独立、locked 静默、默认模型 describe/revision 恢复、第三方写入让路、并发串行化、目录降级、tiers 纯函数、装配与 CSS 令牌）。

@@ -9,9 +9,16 @@
  *   are silent; a missing or broken preset falls back to the deployment default
  *   with a warning (the session is still created).
  * - model → `remote.session.selectModel(...)`. The platform ALSO rewrites the
- *   deployment default model (settings namespace 'agent-default-model'); we read
- *   the default from `modelCatalog().default` first and write it back through
- *   `remote.settings.replace` afterwards when that face is attached.
+ *   deployment default model (settings namespace 'agent-default-model' — the
+ *   session controller calls agentDefaultModel.saveSelection → settings.replace).
+ *   When `remote.settings` is attached we put it back: describe the namespace
+ *   BEFORE (raw `user` section + `revision`), select, describe AFTER, and
+ *   restore the prior user section (`{}` re-inherits the composition base when
+ *   there was none) with the post-select revision as `expectedRevision`. The
+ *   whole triple is serialized per applier so concurrent seat starts
+ *   (conference dispatch, concurrency 3) can never capture another seat's model
+ *   as "the default" and write it back for good. A revision that moved by more
+ *   than our own write means a third party wrote in between → warn, no restore.
  * - permission → applied host-side (src/host/seat-permission.ts); nothing here.
  */
 import type { SeatPreset, SeatPresetModel } from '../shared/seat-preset.ts'
@@ -66,7 +73,31 @@ export interface SeatPresetOptionalFaces {
   readonly listAgentPresets?: () => Promise<SeatPresetRemoteResult<{
     readonly presets: readonly { readonly id: string; readonly isDefault: boolean; readonly name?: string; readonly broken?: string }[]
   }>>
-  readonly restoreDefaultModel?: (selection: SeatPresetModel) => Promise<SeatPresetRemoteResult<unknown>>
+  /** `remote.settings.describe()` narrowed to the 'agent-default-model' namespace; `undefined` when the namespace is not registered. */
+  readonly describeDefaultModel?: () => Promise<SeatPresetRemoteResult<SeatPresetDefaultModelView | undefined>>
+  /**
+   * `remote.settings.replace('agent-default-model', section, expectedRevision)`;
+   * `section === undefined` writes `{}` so the composition base applies again.
+   */
+  readonly restoreDefaultModel?: (section: SeatPresetModel | undefined, expectedRevision: number) => Promise<SeatPresetRemoteResult<unknown>>
+}
+
+/** Raw user layer of the 'agent-default-model' namespace and the revision it was read at. */
+export interface SeatPresetDefaultModelView {
+  readonly user: SeatPresetModel | undefined
+  readonly revision: number
+}
+
+/** Narrow a redacted `SettingsNamespaceView.user` JSON value to a model selection; anything else reads as "no user layer". */
+export function parseDefaultModelUser(value: unknown): SeatPresetModel | undefined {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined
+  const record = value as Record<string, unknown>
+  if (typeof record['provider'] !== 'string' || typeof record['model'] !== 'string') return undefined
+  return {
+    provider: record['provider'],
+    model: record['model'],
+    ...(typeof record['reasoningEffort'] === 'string' ? { reasoningEffort: record['reasoningEffort'] } : {}),
+  }
 }
 
 export interface SeatPresetApplier extends SeatPresetDirectory {
@@ -97,31 +128,62 @@ export function createSeatPresetApplier(deps: SeatPresetApplyDeps): SeatPresetAp
     warn(`amphoreus seat preset: agent preset "${agentPreset}" not applied (${result.error.code}): ${result.error.message}`)
   }
 
-  const applyModel = async (sessionId: string, model: SeatPresetModel): Promise<void> => {
-    let previousDefault: SeatPresetModel | undefined
-    const restore = faces.restoreDefaultModel
-    if (restore !== undefined) {
-      const catalog = await deps.modelCatalog()
-      if (catalog.ok) previousDefault = catalog.value.default
-      else if (catalog.error.code !== UNAVAILABLE) warn(`amphoreus seat preset: model catalog unavailable (${catalog.error.code}); the deployment default model cannot be restored`)
-    }
+  const selectModel = async (sessionId: string, model: SeatPresetModel): Promise<boolean> => {
     const selected = await deps.selectModel({
       sessionId,
       provider: model.provider,
       model: model.model,
       ...(model.reasoningEffort === undefined ? {} : { reasoningEffort: model.reasoningEffort }),
     })
-    if (!selected.ok) {
-      if (selected.error.code !== UNAVAILABLE) warn(`amphoreus seat preset: model ${model.provider}/${model.model} not applied (${selected.error.code}): ${selected.error.message}`)
+    if (selected.ok) return true
+    if (selected.error.code !== UNAVAILABLE) warn(`amphoreus seat preset: model ${model.provider}/${model.model} not applied (${selected.error.code}): ${selected.error.message}`)
+    return false
+  }
+
+  const describeDefault = async (describe: NonNullable<SeatPresetOptionalFaces['describeDefaultModel']>, when: string): Promise<SeatPresetDefaultModelView | undefined> => {
+    const result = await describe()
+    if (result.ok) return result.value
+    if (result.error.code !== UNAVAILABLE) warn(`amphoreus seat preset: settings namespace agent-default-model could not be read ${when} (${result.error.code}): ${result.error.message}`)
+    return undefined
+  }
+
+  const applyModel = async (sessionId: string, model: SeatPresetModel): Promise<void> => {
+    const describe = faces.describeDefaultModel
+    const restore = faces.restoreDefaultModel
+    if (describe === undefined || restore === undefined) {
+      if (await selectModel(sessionId, model)) {
+        warn(`amphoreus seat preset: model ${model.provider}/${model.model} applied; the platform also made it the deployment default (no settings face to restore it)`)
+      }
       return
     }
-    if (restore === undefined) {
-      warn(`amphoreus seat preset: model ${model.provider}/${model.model} applied; the platform also made it the deployment default (no settings face to restore it)`)
+    const before = await describeDefault(describe, 'before selectModel')
+    if (before === undefined) {
+      if (await selectModel(sessionId, model)) warn(`amphoreus seat preset: model ${model.provider}/${model.model} applied; the deployment default model cannot be restored`)
       return
     }
-    if (previousDefault === undefined || sameModelSelection(previousDefault, model)) return
-    const restored = await restore(previousDefault)
-    if (!restored.ok) warn(`amphoreus seat preset: deployment default model could not be restored to ${previousDefault.provider}/${previousDefault.model} (${restored.error.code}): ${restored.error.message}`)
+    if (!await selectModel(sessionId, model)) return
+    const after = await describeDefault(describe, 'after selectModel')
+    if (after === undefined) return
+    if (after.revision === before.revision) return // the platform write was a no-op (already the stored default)
+    if (after.revision !== before.revision + 1) {
+      warn(`amphoreus seat preset: deployment default model left as is; agent-default-model moved from revision ${before.revision} to ${after.revision} while the seat model landed`)
+      return
+    }
+    const restored = await restore(before.user, after.revision)
+    if (!restored.ok) {
+      const label = before.user === undefined ? 'the composition default' : `${before.user.provider}/${before.user.model}`
+      warn(`amphoreus seat preset: deployment default model could not be restored to ${label} (${restored.error.code}): ${restored.error.message}`)
+    }
+  }
+
+  // One chain per applier: describe → select → describe → restore triples must
+  // never interleave, or a concurrent seat start reads another seat's model as
+  // the default and restores THAT. A failed link never blocks the next one.
+  let modelQueue: Promise<void> = Promise.resolve()
+  const enqueueModel = (sessionId: string, model: SeatPresetModel): Promise<void> => {
+    const run = modelQueue.then(() => applyModel(sessionId, model))
+    modelQueue = run.catch(() => undefined)
+    return run
   }
 
   return {
@@ -129,7 +191,7 @@ export function createSeatPresetApplier(deps: SeatPresetApplyDeps): SeatPresetAp
       const preset = deps.presetOf(skillName)
       if (preset === undefined) return
       if (preset.agentPreset !== undefined) await applyAgentPreset(sessionId, preset.agentPreset)
-      if (preset.model !== undefined) await applyModel(sessionId, preset.model)
+      if (preset.model !== undefined) await enqueueModel(sessionId, preset.model)
     },
     attach(next) {
       faces = { ...faces, ...next }
@@ -140,7 +202,7 @@ export function createSeatPresetApplier(deps: SeatPresetApplyDeps): SeatPresetAp
       }
     },
     canRestoreDefaultModel() {
-      return faces.restoreDefaultModel !== undefined
+      return faces.restoreDefaultModel !== undefined && faces.describeDefaultModel !== undefined
     },
     async listAgentPresets() {
       const list = faces.listAgentPresets
