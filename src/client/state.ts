@@ -197,6 +197,46 @@ export class AmphoreusClientModel {
   }
 
   // @anchor client-model-methods
+  /** Append one Trailblazer note to a seat's memory (append route; never a full-record replace). */
+  async addMemoryNote(skill: string, text: string): Promise<void> {
+    const nonce = this.#snapshot.state?.nonce ?? window.__AMPHOREUS_BOOT__?.nonce
+    if (nonce === undefined) throw new Error('首帧 nonce 尚未就绪')
+    const response = await fetch(`/amphoreus/api/memory/${encodeURIComponent(skill)}/notes`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json', 'x-amphoreus-nonce': nonce },
+      body: JSON.stringify({ text, author: 'user' }),
+    })
+    if (!response.ok) throw new Error(`记忆保存失败（HTTP ${response.status}）`)
+    await this.refresh()
+  }
+
+  async deleteMemoryNote(skill: string, id: string): Promise<void> {
+    const nonce = this.#snapshot.state?.nonce ?? window.__AMPHOREUS_BOOT__?.nonce
+    if (nonce === undefined) throw new Error('首帧 nonce 尚未就绪')
+    const response = await fetch(`/amphoreus/api/memory/${encodeURIComponent(skill)}/notes/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      credentials: 'include',
+      headers: { 'x-amphoreus-nonce': nonce },
+    })
+    if (!response.ok && response.status !== 404) throw new Error(`记忆删除失败（HTTP ${response.status}）`)
+    await this.refresh()
+  }
+
+  /** Patch a seat's memory switches (inject / autoNote / injectLimit); omitted keys keep their value. */
+  async setMemorySettings(skill: string, patch: Partial<import('../shared/api.ts').MemorySettings>): Promise<void> {
+    const nonce = this.#snapshot.state?.nonce ?? window.__AMPHOREUS_BOOT__?.nonce
+    if (nonce === undefined) throw new Error('首帧 nonce 尚未就绪')
+    const response = await fetch(`/amphoreus/api/memory/${encodeURIComponent(skill)}/settings`, {
+      method: 'PUT',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json', 'x-amphoreus-nonce': nonce },
+      body: JSON.stringify(patch),
+    })
+    if (!response.ok) throw new Error(`记忆设置保存失败（HTTP ${response.status}）`)
+    await this.refresh()
+  }
+
   /** Store (or clear with `null`) one seat's default tiers; refreshes state afterwards. */
   async setSeatPreset(skillName: string, preset: import('../shared/seat-preset.ts').SeatPreset | null): Promise<void> {
     const nonce = this.#snapshot.state?.nonce ?? window.__AMPHOREUS_BOOT__?.nonce

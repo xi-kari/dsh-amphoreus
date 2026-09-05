@@ -231,7 +231,8 @@ export function registerObserver(ctx: Context, options: ObserverOptions): Dispos
   }
 }
 
-function contractLines(text: string): string[] {
+/** Non-empty trimmed lines outside code fences and `<details>台账` wrappers (shared with the seat-note parser). */
+export function contractLines(text: string): string[] {
   let fence: { readonly character: '`' | '~'; readonly length: number } | undefined
   const lines: string[] = []
 

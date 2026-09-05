@@ -18,6 +18,7 @@ import type { SuiteSnapshot } from './suite/types.ts'
 import { InputError, NotFoundError, type ProjectionIndex } from './workbench.ts'
 import type { SeatDirRecord } from './seatdirs.ts'
 import { readSticker } from './stickers.ts'
+import { appendSeatNote, deleteSeatNote, effectiveMemorySettings, patchSeatMemorySettings, withReplacementTombstones } from './memory.ts'
 
 const MAX_BODY_BYTES = 4 * 1024
 const MAX_CANVAS_BODY_BYTES = 64 * 1024
@@ -111,6 +112,15 @@ const SeatPresetInput = z.object({
 }).strict().nullable()
 import { isSeatSoundSlot, SeatSoundStore, SeatSoundTooLargeError, type SeatSoundRecord } from './seat-sounds.ts'
 import { SEAT_SOUND_DEFAULTS, type SeatSoundInfo, type SeatSoundPrefs } from '../shared/api.ts'
+const MemoryNoteInput = z.object({
+  text: z.string().min(1).max(500),
+  author: z.enum(['user', 'seat']).optional(),
+}).strict()
+const MemorySettingsInput = z.object({
+  inject: z.boolean().optional(),
+  autoNote: z.boolean().optional(),
+  injectLimit: z.number().int().min(0).max(50).optional(),
+}).strict()
 
 const ObservationCreateInput = z.object({
   sessionId: z.string().regex(SESSION_ID),
@@ -641,6 +651,7 @@ export class AmphoreusWebApi {
         dispatchHints: snapshot?.features.dispatchHints ?? false,
         pipelinesEnabled: snapshot?.features.pipelines ?? false,
         // @anchor effective-config-fields
+        memory: this.#config.memory,
       },
     }
   }
@@ -695,21 +706,60 @@ export class AmphoreusWebApi {
     json(response, 200, { binding: value })
   }
 
-  async #memoryRoute(request: IncomingMessage, response: ServerResponse, skill: string | undefined): Promise<void> {
-    if (skill === undefined || !SKILL_NAME.test(skill)) {
+  async #memoryRoute(request: IncomingMessage, response: ServerResponse, tail: string | undefined): Promise<void> {
+    // `<skill>` | `<skill>/notes` | `<skill>/notes/<id>` | `<skill>/settings` — split BEFORE validating the skill.
+    const [skill, ...rest] = (tail ?? '').split('/')
+    if (skill === undefined || skill === '' || !SKILL_NAME.test(skill)) {
       json(response, 400, { error: 'invalid skill name' })
       return
     }
     const table = this.#stores.main.table('memory')
-    if (request.method === 'GET') {
-      json(response, 200, { memory: table.get(skill) })
+    if (rest.length === 0) {
+      if (request.method === 'GET') {
+        json(response, 200, { memory: table.get(skill) })
+        return
+      }
+      if (!method(request, response, 'PUT')) return
+      const body = await readJson(request, 64 * 1024)
+      // Whole-record replace: tombstone replayable notes the caller dropped (workbench ledger delete).
+      const value = withReplacementTombstones(table.get(skill), MemorySchema.parse({ ...asRecord(body), skillName: skill, updatedAt: Date.now() }))
+      await table.put(skill, value)
+      json(response, 200, { memory: value })
       return
     }
-    if (!method(request, response, 'PUT')) return
-    const body = await readJson(request, 64 * 1024)
-    const value = MemorySchema.parse({ ...asRecord(body), skillName: skill, updatedAt: Date.now() })
-    await table.put(skill, value)
-    json(response, 200, { memory: value })
+    if (rest[0] === 'notes' && rest.length === 1) {
+      if (!method(request, response, 'POST')) return
+      const parsed = MemoryNoteInput.safeParse(await readJson(request))
+      if (!parsed.success) {
+        json(response, 400, { error: zodError(parsed.error) })
+        return
+      }
+      const note = await appendSeatNote(table, skill, { text: parsed.data.text, author: parsed.data.author ?? 'user' })
+      if (note === undefined) {
+        json(response, 400, { error: 'note text is empty' })
+        return
+      }
+      json(response, 201, { note, memory: table.get(skill) })
+      return
+    }
+    if (rest[0] === 'notes' && rest.length === 2 && rest[1] !== undefined && rest[1] !== '') {
+      if (!method(request, response, 'DELETE')) return
+      const deleted = await deleteSeatNote(table, skill, rest[1])
+      json(response, deleted ? 200 : 404, deleted ? { deleted: true, memory: table.get(skill) } : { error: 'note not found' })
+      return
+    }
+    if (rest[0] === 'settings' && rest.length === 1) {
+      if (!method(request, response, 'PUT')) return
+      const parsed = MemorySettingsInput.safeParse(await readJson(request))
+      if (!parsed.success) {
+        json(response, 400, { error: zodError(parsed.error) })
+        return
+      }
+      const memory = await patchSeatMemorySettings(table, skill, Object.fromEntries(Object.entries(parsed.data).filter(([, value]) => value !== undefined)) as Partial<import('../shared/api.ts').MemorySettings>)
+      json(response, 200, { memory, effective: effectiveMemorySettings(this.#config, memory) })
+      return
+    }
+    json(response, 404, { error: 'unknown memory route' })
   }
 
   async #observationsRoute(request: IncomingMessage, response: ServerResponse, key: string | undefined): Promise<void> {

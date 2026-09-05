@@ -179,6 +179,7 @@ function config(
     workbench: { enabled: false, host: 'iframe', defaultView: 'chat', cardTextLimit: 8000, autoProjection: false },
     suiteWatch: { mode: 'off', pollMs: 15_000, debounceMs: 800 }, validate: { enabled: false, python: 'python' },
     sync: { source: '', ref: '', keepBackups: 3 }, trustedHosts: [],
+    memory: { inject: true, autoNote: true, injectLimit: 8, command: 'remember' },
   }
 }
 

@@ -18,6 +18,7 @@ import { ProjectionIndex, type ProjectableEvent, type ProjectableSession } from 
 import type { WorkbenchStatus } from './shared/api.ts'
 // @anchor host-imports
 import { registerSeatPermission } from './host/seat-permission.ts'
+import { registerSeatMemory } from './host/memory.ts'
 
 export { Config }
 export type { AmphoreusConfig }
@@ -221,11 +222,15 @@ export function apply(ctx: Context, config: AmphoreusConfig): void {
       : registerObserver(ctx, { config, stores, resolver: bridge.resolver })
     // @anchor host-register
     const disposeSeatPermission = stores === undefined ? () => {} : registerSeatPermission(ctx, { stores })
+    const disposeSeatMemory = stores === undefined
+      ? () => Promise.resolve()
+      : registerSeatMemory(ctx, { config, stores, current: () => bridge.resolver.current() })
     startColdReplay()
     return async () => {
       await disposeObserver()
       // @anchor host-dispose
       disposeSeatPermission()
+      await disposeSeatMemory()
       disposeFirstFrame()
       disposeSeatPrompt()
       disposeInjector()

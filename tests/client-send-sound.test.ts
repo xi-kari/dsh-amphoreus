@@ -44,7 +44,8 @@ test('send sentinel derives the click from session pendingSubmissions (composer 
 })
 
 test('settings mounts the sound panel at the panels anchor, adds the sound action, and keeps file inputs out of settings.tsx', () => {
-  assert.match(settings, /type SettingsAction = 'reparse'[\s\S]*'derive-force'[^\n]*\| 'sound'\n/u)
+  // The union line is shared by several panels; pin membership, not the line tail.
+  assert.match(settings, /type SettingsAction = 'reparse'[\s\S]*'derive-force'[^\n]*\| 'sound'(?: \|[^\n]*)?\n/u)
   const wallpaper = settings.indexOf('<WallpaperPanel')
   const sound = settings.indexOf('<SoundPanel')
   const workbench = settings.indexOf('aria-labelledby="amphoreus-workbench"')

@@ -5,6 +5,7 @@ import { WallpaperPanel } from './wallpaper-panel.tsx'
 import { SchemePanel } from './scheme-panel.tsx'
 import { SoundPanel } from './sound-panel.tsx'
 import { SEAT_SOUND_MASTER_DEFAULT } from '../shared/api.ts'
+import { MemoryPanel } from './memory-panel.tsx'
 import { seatColorOf } from './seat-model.ts'
 import type { AmphoreusClientModel } from './state.ts'
 import css from './settings.module.css'
@@ -17,7 +18,7 @@ export interface AmphoreusSettingsInjected {
 
 export type AmphoreusSettingsProps = PropsRuntime<'settings.section'> & PropsLocale<'amphoreus'> & AmphoreusSettingsInjected
 
-type SettingsAction = 'reparse' | 'magazine-light' | 'magazine-full' | 'magazine-reset' | 'derive' | 'derive-force' | 'grammar' | 'wallpaper' | 'scheme-export' | 'scheme-import' | 'sound'
+type SettingsAction = 'reparse' | 'magazine-light' | 'magazine-full' | 'magazine-reset' | 'derive' | 'derive-force' | 'grammar' | 'wallpaper' | 'scheme-export' | 'scheme-import' | 'sound' | 'memory'
 // @anchor settings-actions
 // Seat preset panel (import kept beside its action so the pinned header above stays untouched; ESM hoists it).
 import { SeatPresetPanel } from './seat-preset-panel.tsx'
@@ -232,6 +233,18 @@ export function AmphoreusSettings({ model, previewSound, t }: AmphoreusSettingsP
             onRemove={(heroId, slot) => { void run('sound', () => model.removeSeatSound(heroId, slot)) }}
             onPrefs={patch => { void run('sound', () => model.setSeatSoundPrefs(patch)) }}
             onPreview={previewSound}
+          />
+          <MemoryPanel
+            seats={state.seats.filter(seat => (seat.status === 'deployed' && seat.hidden !== true) || state.memory.some(record => record.skillName === seat.skillName))
+              .sort((a, b) => (a.userOrder ?? a.order) - (b.userOrder ?? b.order))
+              .map(seat => ({ skillName: seat.skillName, displayName: seat.userDisplayName ?? suite?.cards.find(card => card.name === seat.skillName)?.displayName ?? seat.displayName, inactive: seat.status !== 'deployed' || seat.hidden === true }))}
+            memory={state.memory}
+            config={state.effectiveConfig.memory}
+            busy={busy}
+            t={t}
+            onAdd={(skill, text) => { void run('memory', () => model.addMemoryNote(skill, text)) }}
+            onDelete={(skill, id) => { void run('memory', () => model.deleteMemoryNote(skill, id)) }}
+            onSettings={(skill, patch) => { void run('memory', () => model.setMemorySettings(skill, patch)) }}
           />
 
           <section className={css.panel} aria-labelledby="amphoreus-workbench">

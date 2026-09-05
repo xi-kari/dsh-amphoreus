@@ -52,6 +52,8 @@ export const MemoryNoteSchema = z.object({
   sessionId: z.string().optional(),
   seq: z.number().int().nonnegative().optional(),
   // @anchor memory-note-fields
+  /** Who wrote the note: the Trailblazer (user) or the seat itself at turn end. Legacy notes have no author. */
+  author: z.enum(['user', 'seat']).optional(),
 })
 
 export const MemorySchema = z.object({
@@ -60,6 +62,14 @@ export const MemorySchema = z.object({
   pinnedSessionIds: z.array(z.string()),
   quickPhrases: z.array(z.string()).optional(),
   // @anchor memory-fields
+  /** Per-seat overrides of config.memory (absent = config default). */
+  settings: z.object({
+    inject: z.boolean().optional(),
+    autoNote: z.boolean().optional(),
+    injectLimit: z.number().int().min(0).max(50).optional(),
+  }).optional(),
+  /** Ids of replayable (seat-authored) notes the user deleted; startup replay must not re-add them. */
+  deletedNoteIds: z.array(z.string()).optional(),
   updatedAt: z.number(),
 })
 
