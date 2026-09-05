@@ -52,6 +52,8 @@ export interface HeroVisual {
     readonly sticker: string
     /** Folder under HOME_WALLPAPER_ROOT holding this seat's home-space wallpapers (any count, scanned at derive time). */
     readonly homeWallpaperDir: string
+    /** Optional file inside homeWallpaperDir the user pinned as home-00 regardless of aspect ratio. */
+    readonly homeWallpaperPin?: string
   }
   /** Face ids this seat can present (visual only; the suite decides semantics). */
   readonly faces?: readonly string[]
@@ -70,7 +72,7 @@ export const HERO_VISUALS: readonly HeroVisual[] = [
     assets: { chronicle: '02刻律德菈.jpg', calendar: '2月-平衡月-刻律德菈.jpg', card: '02刻律德菈.png', magazineZip: 'Vol.10_执棋的君主_刻律德菈_12张.zip', sticker: '刻律德菈-将军.png', homeWallpaperDir: '刻律德菈壁纸' } },
   { skill: 'amphoreus-march7th', heroId: 'march7th', order: 3, volume: 11, motif: 'film',
     palette: { accent: '#6a5d9b', accent2: '#231829', accent3: '#d7b4cb', lightBase: '#f1ecf3', darkBase: '#1b1420', mode: 'dark' },
-    assets: { chronicle: '03长夜月.jpg', calendar: '3月-长夜月-长夜月.jpg', card: '03长夜月.png', magazineZip: 'Vol.11_隐秘的陌客_长夜月_12张.zip', sticker: '长夜月-去吧.png', homeWallpaperDir: '三月七壁纸' },
+    assets: { chronicle: '03长夜月.jpg', calendar: '3月-长夜月-长夜月.jpg', card: '03长夜月.png', magazineZip: 'Vol.11_隐秘的陌客_长夜月_12张.zip', sticker: '长夜月-去吧.png', homeWallpaperDir: '三月七壁纸', homeWallpaperPin: 'Image_1788603038879_823.jpg' },
     faces: ['evernight'] },
   { skill: 'amphoreus-terrae', heroId: 'terrae', order: 4, volume: 12, motif: 'scales',
     palette: { accent: '#644d2e', accent2: '#2e5351', accent3: '#a98f5c', lightBase: '#f3efe6', darkBase: '#1d1a15', mode: 'light' },

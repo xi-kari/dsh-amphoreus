@@ -245,13 +245,18 @@ export const LANDSCAPE_RATIO = 1.2
  */
 export function selectHomeWallpapers(
   files: readonly { name: string; width?: number; height?: number }[],
+  pin?: string,
 ): string[] {
   const ratio = (file: { width?: number; height?: number }): number =>
     file.width !== undefined && file.height !== undefined && file.height > 0 ? file.width / file.height : 0
-  const landscapes = files.filter(file => ratio(file) >= LANDSCAPE_RATIO)
+  // A user-pinned file always leads as home-00 (it exists in the folder), whatever its shape.
+  const pinned = pin !== undefined && files.some(file => file.name === pin) ? [pin] : []
+  const rest = files.filter(file => file.name !== pin)
+  const landscapes = rest.filter(file => ratio(file) >= LANDSCAPE_RATIO)
     .sort((left, right) => ratio(right) - ratio(left) || left.name.localeCompare(right.name, 'en'))
-  if (landscapes.length > 0) return landscapes.map(file => file.name)
-  return [...files].sort((left, right) => left.name.localeCompare(right.name, 'en')).map(file => file.name)
+  if (landscapes.length > 0) return [...pinned, ...landscapes.map(file => file.name)]
+  if (pinned.length > 0) return pinned
+  return [...rest].sort((left, right) => left.name.localeCompare(right.name, 'en')).map(file => file.name)
 }
 
 function isErrno(error: unknown, code: string): boolean {
@@ -494,12 +499,16 @@ export async function deriveAssets(options: DeriveOptions, runtime: DeriveRuntim
   if (requested.has('home')) {
     // Home-space wallpapers: one folder per seat plus the all-seat group shots. Folder
     // contents are scanned (any file names), so users drop images in without renaming.
-    const owners = [
-      ...HERO_VISUALS.map(hero => ({ owner: hero.heroId, folder: hero.assets.homeWallpaperDir })),
+    const owners: { owner: string; folder: string; pin?: string }[] = [
+      ...HERO_VISUALS.map(hero => ({
+        owner: hero.heroId,
+        folder: hero.assets.homeWallpaperDir,
+        ...(hero.assets.homeWallpaperPin === undefined ? {} : { pin: hero.assets.homeWallpaperPin }),
+      })),
       { owner: '_global', folder: GLOBAL_HOME_DIR },
     ]
     const jobs: { source: readonly string[]; target: string; current: string; args: readonly string[] }[] = []
-    for (const { owner, folder } of owners) {
+    for (const { owner, folder, pin } of owners) {
       const names = await listHomeWallpapers(assetsRoot, folder)
       // Landscape first: the shell picks index 0 unless a session seed says otherwise, so the
       // widest image becomes home-00 and portraits only appear when no landscape exists.
@@ -512,7 +521,7 @@ export async function deriveAssets(options: DeriveOptions, runtime: DeriveRuntim
           return { name }
         }
       }))
-      const files = selectHomeWallpapers(measured)
+      const files = selectHomeWallpapers(measured, pin)
       files.forEach((file, index) => jobs.push({
         source: [HOME_WALLPAPER_ROOT, folder, file],
         target: derivedHomeWallpaperPath(cacheDir, owner, index),

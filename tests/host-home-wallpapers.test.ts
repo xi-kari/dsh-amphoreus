@@ -141,4 +141,10 @@ test('home wallpaper selection prefers every landscape (widest first) and falls 
   assert.deepEqual(selectHomeWallpapers([{ name: 'z.png', width: 1000, height: 1800 }, { name: 'y.png', width: 700, height: 980 }]), ['y.png', 'z.png'])
   assert.deepEqual(selectHomeWallpapers([{ name: 'square.png', width: 1000, height: 1000 }]), ['square.png'], 'square counts as portrait but is the only option')
   assert.deepEqual(selectHomeWallpapers([]), [])
+  // Pinned file leads regardless of shape; portraits still drop out when a landscape exists.
+  assert.deepEqual(selectHomeWallpapers(mixed, 'b-portrait.jpg'), ['b-portrait.jpg', 'c-ultrawide.png', 'a-wide.jpg'])
+  assert.deepEqual(selectHomeWallpapers([{ name: 'p1.jpg', width: 1, height: 2 }, { name: 'p2.jpg', width: 1, height: 2 }], 'p2.jpg'), ['p2.jpg'])
+  assert.deepEqual(selectHomeWallpapers(mixed, 'missing.jpg'), ['c-ultrawide.png', 'a-wide.jpg'], 'absent pin is ignored')
+  const march = heroVisualById('march7th')!
+  assert.equal(march.assets.homeWallpaperPin, 'Image_1788603038879_823.jpg')
 })
