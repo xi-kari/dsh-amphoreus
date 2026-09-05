@@ -6,6 +6,8 @@ import { SchemePanel } from './scheme-panel.tsx'
 import { SoundPanel } from './sound-panel.tsx'
 import { SEAT_SOUND_MASTER_DEFAULT } from '../shared/api.ts'
 import { MemoryPanel } from './memory-panel.tsx'
+import { SetupPanel } from './setup-panel.tsx'
+import { setupStoreOf } from './setup-store.ts'
 import { seatColorOf } from './seat-model.ts'
 import type { AmphoreusClientModel } from './state.ts'
 import css from './settings.module.css'
@@ -245,6 +247,14 @@ export function AmphoreusSettings({ model, previewSound, t }: AmphoreusSettingsP
             onAdd={(skill, text) => { void run('memory', () => model.addMemoryNote(skill, text)) }}
             onDelete={(skill, id) => { void run('memory', () => model.deleteMemoryNote(skill, id)) }}
             onSettings={(skill, patch) => { void run('memory', () => model.setMemorySettings(skill, patch)) }}
+          />
+          <SetupPanel
+            assets={state.assets}
+            busy={busy}
+            t={t}
+            onOpenWizard={() => setupStoreOf(model)?.open('root')}
+            onRecheck={async () => { await model.checkAssets() }}
+            onResetRoot={() => model.setAssetsRoot(null)}
           />
 
           <section className={css.panel} aria-labelledby="amphoreus-workbench">

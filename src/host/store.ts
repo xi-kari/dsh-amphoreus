@@ -142,6 +142,10 @@ export const GlobalSchema = z.object({
         send: z.object({ enabled: z.boolean().optional(), volume: z.number().min(0).max(1).optional() }).optional(),
       })).optional(),
     }).optional(),
+    /** Setup wizard: assets root chosen at runtime (wins over cordis.patch.yml assetsRoot). */
+    assetsRoot: z.string().optional(),
+    /** Setup wizard: when the user dismissed the first-run wizard (ms since epoch). */
+    setupDismissedAt: z.number().optional(),
   }),
   workbench: z.object({
     hiddenSessionIds: z.array(z.string()).default([]),

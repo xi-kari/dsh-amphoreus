@@ -51,6 +51,8 @@ import { orderedHotkeySeats } from './seat-switch.ts'
 import { createSeatPresetApplier, parseDefaultModelUser } from './seat-preset-apply.ts'
 import { createSeatSoundPlayer, installSeatSounds } from './seat-sounds.ts'
 import { SendSound } from './send-sound.tsx'
+import { bindSetupStore, createSetupStore, watchSetupAutoOpen } from './setup-store.ts'
+import { registerSetupOverlay, type SetupWizardInjected } from './setup-wizard.tsx'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -498,6 +500,12 @@ export function apply(ctx: ClientContext): void {
       subscribePortal: portal.subscribe,
     }),
   }, SuiteNoticeBanner),
+  registerSetupOverlay(ctx.slots, (): SetupWizardInjected => ({
+    setup,
+    model,
+    pickDirectory: () => ctx.uiWorkspace.pickDirectory(),
+    listDirectory: path => ctx.uiWorkspace.listDirectory(path),
+  })),
   ])
 
   if (workbenchEnabled) {
@@ -534,6 +542,10 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => () => soundPlayer.dispose(), 'amphoreus: seat sound player')
   ctx.effect(() => installSeatSounds({ seat: seatWatch, model, player: soundPlayer }), 'amphoreus: seat sounds')
   // conversation.input.dock is declared once; every dock entry registers inside this single callback (assembly test pins the call list).
+  // Setup wizard store: declared after the overlay/settings registrations that close over it (inject factories run at render, never during apply).
+  const setup = createSetupStore()
+  bindSetupStore(model, setup)
+  ctx.effect(() => watchSetupAutoOpen(model, setup), 'amphoreus: setup wizard auto-open')
   ctx.slots.inject('conversation.input.dock', () => [ctx.slots.register({
     name: 'conversation.input.dock',
     id: 'amphoreus-handoff',

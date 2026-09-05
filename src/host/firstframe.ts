@@ -141,6 +141,8 @@ export interface FirstFrameOptions {
   readonly current: () => SuiteSnapshot | undefined
   readonly wallpaperIndex?: number
   readonly derivedWallpaper?: (index: number) => string | null
+  /** Effective assets root (prefs override over config); defaults to config.assetsRoot. */
+  readonly assetsRoot?: () => string
 }
 
 export function createBootPayload(options: FirstFrameOptions): AmphoreusBoot {
@@ -148,7 +150,7 @@ export function createBootPayload(options: FirstFrameOptions): AmphoreusBoot {
   const index = options.config.wallpaper.global === 'fixed'
     ? options.config.wallpaper.globalIndex
     : (options.wallpaperIndex ?? 0) % GLOBAL_WALLPAPERS.length
-  const assetsConfigured = options.config.assetsRoot.trim() !== ''
+  const assetsConfigured = (options.assetsRoot?.() ?? options.config.assetsRoot).trim() !== ''
   const url = options.derivedWallpaper?.(index) ?? (assetsConfigured ? wallpaperUrl(index) : undefined)
   const sidebarUrl = options.derivedWallpaper?.(options.config.wallpaper.sidebarIndex)
     ?? (assetsConfigured ? wallpaperUrl(options.config.wallpaper.sidebarIndex) : undefined)

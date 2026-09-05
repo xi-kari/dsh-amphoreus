@@ -83,6 +83,8 @@ const PrefsInput = z.object({
       send: z.object({ enabled: z.boolean().optional(), volume: z.number().min(0).max(1).optional() }).strict().optional(),
     }).strict().nullable()).optional(),
   }).strict().optional(),
+  /** Setup wizard dismissal timestamp; `null` clears it so the wizard may offer itself again. */
+  setupDismissedAt: z.number().int().nonnegative().nullable().optional(),
 })
 
 const DeriveInput = z.object({ force: z.boolean().optional() }).strict()
@@ -121,6 +123,9 @@ const MemorySettingsInput = z.object({
   autoNote: z.boolean().optional(),
   injectLimit: z.number().int().min(0).max(50).optional(),
 }).strict()
+import { canonicalizeForContainment, checkAssets, looksLikeAssetPack, type AssetsCheckOptions, type AssetsCheckReport } from './assets-check.ts'
+const AssetsCheckInput = z.object({ root: z.string().max(4096).optional() }).strict()
+const AssetsRootInput = z.object({ root: z.string().max(4096).nullable() }).strict()
 
 const ObservationCreateInput = z.object({
   sessionId: z.string().regex(SESSION_ID),
@@ -164,6 +169,9 @@ export interface WebApiOptions {
   // @anchor webapi-options
   /** Test seam: seat sound upload cap in bytes (default SEAT_SOUND_MAX_BYTES). */
   readonly seatSoundMaxBytes?: number
+  /** Effective assets root (trimmed; '' when none). Default: prefs.assetsRoot over config.assetsRoot. */
+  readonly assetsRoot?: () => string
+  readonly checkAssets?: (root: string, options?: AssetsCheckOptions) => Promise<AssetsCheckReport>
 }
 
 interface SseClient {
@@ -236,6 +244,11 @@ export class AmphoreusWebApi {
   readonly #probeMagick: () => Promise<string | undefined>
   // @anchor webapi-fields
   readonly #seatSounds: SeatSoundStore | undefined
+  readonly #assetsRoot: () => string
+  readonly #checkAssets: (root: string, options?: AssetsCheckOptions) => Promise<AssetsCheckReport>
+  #assetsCheck: AssetsCheckReport | undefined
+  /** Set when the effective root changed since the last derive: the cache holds another root's files, so the next derive must rewrite. */
+  #deriveForceNext = false
   readonly #sse = new SseHub()
   readonly #canvasRevisions = new Map<string, number>()
   #assetsCacheRealDir: string | undefined
@@ -267,6 +280,11 @@ export class AmphoreusWebApi {
     this.nonce = options.nonce ?? randomBytes(24).toString('base64url')
     // @anchor webapi-ctor
     this.#seatSounds = options.dataDir === undefined ? undefined : new SeatSoundStore(options.dataDir, options.seatSoundMaxBytes === undefined ? {} : { maxBytes: options.seatSoundMaxBytes })
+    this.#assetsRoot = options.assetsRoot ?? (() => {
+      const saved = this.#stores.main.global.get().prefs.assetsRoot ?? ''
+      return saved.trim() !== '' ? saved.trim() : this.#config.assetsRoot.trim()
+    })
+    this.#checkAssets = options.checkAssets ?? checkAssets
   }
 
   async prepareAssets(): Promise<void> {
@@ -290,6 +308,12 @@ export class AmphoreusWebApi {
         await this.#seatSounds?.scan()
       } catch (error) {
         this.#warn(`amphoreus seat sound scan failed: ${String(error)}`)
+      }
+      try {
+        await this.#refreshAssetsCheck()
+      } catch (error) {
+        this.#assetsCheck = undefined
+        this.#warn(`amphoreus assets self-check failed: ${String(error)}`)
       }
       try {
         this.#magick = await this.#probeMagick() ?? null
@@ -462,6 +486,14 @@ export class AmphoreusWebApi {
         await this.#seatPresetRoute(request, response, decodeTail(path, '/amphoreus/api/seats/'))
         return
       }
+      if (path === '/amphoreus/api/assets/check') {
+        await this.#assetsCheckRoute(request, response)
+        return
+      }
+      if (path === '/amphoreus/api/assets/root') {
+        await this.#assetsRootRoute(request, response)
+        return
+      }
       if (path === '/amphoreus/api/prefs') {
         if (request.method === 'GET') {
           json(response, 200, { prefs: this.#stores.main.global.get().prefs })
@@ -511,6 +543,8 @@ export class AmphoreusWebApi {
               seats,
             }
           }
+          if (input.setupDismissedAt === null) delete prefs.setupDismissedAt
+          else if (input.setupDismissedAt !== undefined) prefs.setupDismissedAt = input.setupDismissedAt
           return { ...current, prefs }
         })
         json(response, 200, { prefs: updated.prefs })
@@ -625,7 +659,9 @@ export class AmphoreusWebApi {
       // @anchor state-fields
       seatSounds: (this.#seatSounds?.list() ?? []).map(record => this.#seatSoundInfo(record)),
       assets: {
-        root: this.#config.assetsRoot.trim(),
+        root: this.#assetsRoot(),
+        rootSource: this.#rootSource(),
+        ...(this.#assetsCheck === undefined ? {} : { check: this.#assetsCheck }),
         cacheDir: this.#assetsCacheDir ?? '',
         derivedCount: this.#derived.size,
         derived: [...this.#derived].sort(),
@@ -643,7 +679,7 @@ export class AmphoreusWebApi {
         magazineModeSource: global.prefs.magazineMode === undefined ? 'config' : 'prefs',
         grammar: this.#effectiveGrammar(),
         seatStyle: this.#config.seatStyle,
-        assetsConfigured: this.#config.assetsRoot.trim() !== '',
+        assetsConfigured: this.#assetsRoot() !== '',
         heroWorkspaceMode: this.#config.heroWorkspaceMode,
         workbench: publicWorkbench(this.#config),
         handoffEnabled: this.#config.handoff.enabled && (snapshot?.features.handoffButtons ?? false),
@@ -652,6 +688,7 @@ export class AmphoreusWebApi {
         pipelinesEnabled: snapshot?.features.pipelines ?? false,
         // @anchor effective-config-fields
         memory: this.#config.memory,
+        setupNeeded: this.#assetsRoot() === '' || this.#derived.size === 0,
       },
     }
   }
@@ -938,7 +975,7 @@ export class AmphoreusWebApi {
       json(response, 404, { error: 'wallpaper not found' })
       return
     }
-    const configured = this.#config.assetsRoot.trim()
+    const configured = this.#assetsRoot()
     const directory = configured === '' ? ['昔涟壁纸'] : await resolveGlobalWallpaperDir(resolve(configured))
     await this.#serveAssetPath(response, [...directory, name])
   }
@@ -962,7 +999,7 @@ export class AmphoreusWebApi {
       json(response, 400, { error: 'invalid derive request' })
       return
     }
-    const assetsRoot = this.#config.assetsRoot.trim()
+    const assetsRoot = this.#assetsRoot()
     if (assetsRoot === '') {
       json(response, 400, { error: 'assetsRoot is not configured' })
       return
@@ -978,9 +1015,11 @@ export class AmphoreusWebApi {
     }
     this.#deriveRunning = true
     const generation = ++this.#deriveGeneration
+    const force = parsed.data.force === true || this.#deriveForceNext
+    this.#deriveForceNext = false
     this.#publishAssetState('put')
     json(response, 202, { started: true })
-    queueMicrotask(() => { void this.#runDerive(generation, assetsRoot, cacheDir, parsed.data.force === true) })
+    queueMicrotask(() => { void this.#runDerive(generation, assetsRoot, cacheDir, force) })
   }
 
   async #runDerive(generation: number, assetsRoot: string, cacheDir: string, force: boolean): Promise<void> {
@@ -1166,7 +1205,7 @@ export class AmphoreusWebApi {
   }
 
   async #serveAssetPath(response: ServerResponse, segments: readonly string[]): Promise<void> {
-    const configured = this.#config.assetsRoot.trim()
+    const configured = this.#assetsRoot()
     if (configured === '') {
       json(response, 404, { error: 'assetsRoot is not configured' })
       return
@@ -1350,6 +1389,117 @@ export class AmphoreusWebApi {
     }
   }
 
+  #rootSource(): 'none' | 'config' | 'prefs' {
+    if (this.#assetsRoot() === '') return 'none'
+    const saved = this.#stores.main.global.get().prefs.assetsRoot ?? ''
+    return saved.trim() !== '' ? 'prefs' : 'config'
+  }
+
+  #assetsCheckOptions(): AssetsCheckOptions {
+    return this.#assetsCacheDir === undefined ? {} : { cacheDir: this.#assetsCacheDir }
+  }
+
+  /** Re-run the self-check of the effective root (undefined when no root is effective). */
+  async #refreshAssetsCheck(): Promise<AssetsCheckReport | undefined> {
+    const root = this.#assetsRoot()
+    this.#assetsCheck = root === '' ? undefined : await this.#checkAssets(root, this.#assetsCheckOptions())
+    return this.#assetsCheck
+  }
+
+  /** POST {root?} → self-check report of a candidate root (or the effective one); statuses only, never contents. */
+  async #assetsCheckRoute(request: IncomingMessage, response: ServerResponse): Promise<void> {
+    if (!method(request, response, 'POST')) return
+    let body: unknown
+    try {
+      body = await readJson(request, MAX_BODY_BYTES)
+    } catch (error) {
+      if (error instanceof BodyTooLargeError) throw error
+      json(response, 400, { error: 'invalid assets check request' })
+      return
+    }
+    const parsed = AssetsCheckInput.safeParse(body)
+    if (!parsed.success) {
+      json(response, 400, { error: zodError(parsed.error) })
+      return
+    }
+    const candidate = parsed.data.root?.trim()
+    if (candidate === undefined || candidate === '') {
+      if (this.#assetsRoot() === '') {
+        json(response, 400, { error: 'assetsRoot is not configured' })
+        return
+      }
+      const report = await this.#refreshAssetsCheck()
+      this.#publishSse('state-change', { domain: 'amphoreus', table: 'assets', key: 'check', operation: 'put' })
+      json(response, 200, { report })
+      return
+    }
+    const report = await this.#checkAssets(candidate, this.#assetsCheckOptions())
+    if (report.error !== undefined) {
+      json(response, 400, { error: report.error })
+      return
+    }
+    json(response, 200, { report })
+  }
+
+  /** PUT {root: string|null} → persist prefs.assetsRoot (null clears back to cordis.patch.yml) and refresh the check. */
+  async #assetsRootRoute(request: IncomingMessage, response: ServerResponse): Promise<void> {
+    if (!method(request, response, 'PUT')) return
+    let body: unknown
+    try {
+      body = await readJson(request, MAX_BODY_BYTES)
+    } catch (error) {
+      if (error instanceof BodyTooLargeError) throw error
+      json(response, 400, { error: 'invalid assets root request' })
+      return
+    }
+    const parsed = AssetsRootInput.safeParse(body)
+    if (!parsed.success) {
+      json(response, 400, { error: zodError(parsed.error) })
+      return
+    }
+    const next = parsed.data.root === null ? null : parsed.data.root.trim()
+    if (next === '') {
+      json(response, 400, { error: 'assetsRoot must not be empty (send null to clear)' })
+      return
+    }
+    if (this.#deriveRunning) {
+      json(response, 409, { error: 'asset derivation is running; wait for it to finish before changing assetsRoot' })
+      return
+    }
+    if (next !== null) {
+      const report = await this.#checkAssets(next, this.#assetsCheckOptions())
+      if (report.error !== undefined) {
+        json(response, 400, { error: report.error })
+        return
+      }
+      // An arbitrary directory must not become the (unauthenticated) /amphoreus/assets/ root: require a pack signal.
+      if (!looksLikeAssetPack(report)) {
+        json(response, 400, { error: 'assetsRoot does not look like an Amphoreus asset pack (no known files found)' })
+        return
+      }
+    }
+    const previous = this.#assetsRoot()
+    await updateAmphoreusGlobal(this.#stores.main, current => {
+      const prefs = { ...current.prefs }
+      if (next === null) delete prefs.assetsRoot
+      else prefs.assetsRoot = next
+      return { ...current, prefs }
+    })
+    const effective = this.#assetsRoot()
+    if (!(await sameRoot(previous, effective))) {
+      // The derived cache (if any) was produced from another root and its files carry newer mtimes: force the next derive.
+      this.#deriveForceNext = true
+    }
+    try {
+      await this.#refreshAssetsCheck()
+    } catch (error) {
+      this.#assetsCheck = undefined
+      this.#warn(`amphoreus assets self-check failed: ${String(error)}`)
+    }
+    this.#publishSse('state-change', { domain: 'amphoreus', table: 'assets', key: 'root', operation: next === null ? 'remove' : 'put' })
+    json(response, 200, { assets: this.state().assets })
+  }
+
   #authorize(request: IncomingMessage, response: ServerResponse, write: boolean, binaryUpload = false): boolean {
     if (!trustedHost(request.headers.host, this.#config.trustedHosts)) {
       send(response, 403, 'text/plain; charset=utf-8', 'forbidden')
@@ -1494,6 +1644,16 @@ function contained(root: string, child: string): boolean {
   const target = fold(resolve(child))
   const rel = relative(base, target)
   return rel === '' || (!rel.startsWith(`..${sep}`) && rel !== '..' && !isAbsolute(rel))
+}
+
+/** Same effective assets root after canonicalisation ('' equals only ''); realpath failures fall back to string comparison. */
+async function sameRoot(left: string, right: string): Promise<boolean> {
+  if (left === '' || right === '') return left === right
+  try {
+    return samePath(await canonicalizeForContainment(left), await canonicalizeForContainment(right))
+  } catch {
+    return samePath(left, right)
+  }
 }
 
 function samePath(left: string, right: string): boolean {
