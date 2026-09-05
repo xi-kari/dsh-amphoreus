@@ -36,7 +36,8 @@ test('send sentinel is the second entry inside the single conversation.input.doc
 test('send sentinel derives the click from session pendingSubmissions (composer sends only) and renders null', () => {
   assert.match(sendSound, /PropsRuntime<'conversation\.input\.dock'>/u)
   assert.match(sendSound, /useSession\(snapshot => snapshot\.pendingSubmissions\)/u)
-  assert.match(sendSound, /freshSubmissionIds\(seen\.current, ids\)/u)
+  assert.match(sendSound, /nextSendDecision\(seen\.current, ids\)/u, 'effect body is the pure reducer tested in client-seat-sounds.test.ts')
+  assert.match(sendSound, /if \(!decision\.play\) return/u)
   assert.match(sendSound, /resolveSeatSound\(model\.getSnapshot\(\)\.state, seat\.getSnapshot\(\), 'send'\)/u)
   assert.match(sendSound, /return null\s*\}\s*$/u)
   assert.doesNotMatch(sendSound, /inputActions|useInput/u, 'no dependence on the input machine: plugin prompts must stay silent and phase flips back to plain synchronously for default sends')
@@ -65,7 +66,12 @@ test('sound panel: accept list mirrors the host map, cyrene shows only the send 
   assert.match(panel, /audio\/mpeg,audio\/ogg,audio\/wav,audio\/x-wav,audio\/webm,audio\/mp4,audio\/aac,audio\/flac,\.mp3,\.ogg,\.wav,\.webm,\.m4a,\.aac,\.flac/u)
   assert.match(panel, /onPreview\(info\.url, prefs\.volume\)/u)
   assert.match(panel, /window\.setTimeout\([\s\S]*?\}, 200\)\)/u, 'volume slider is debounced')
-  assert.match(panel, /onPrefs\(\{ master: event\.currentTarget\.checked \}\)/u)
+  assert.match(panel, /emitPrefs\(\{ master: event\.currentTarget\.checked \}\)/u)
+  const outsideQueue = panel
+    .replace(/const emitPrefs = [\s\S]*?\n  \}\n/u, '')
+    .replace(/useEffect\(\(\) => \{[\s\S]*?\n  \}, \[busy, onPrefs\]\)/u, '')
+  assert.doesNotMatch(outsideQueue, /\bonPrefs\(/u, 'every pref write goes through emitPrefs (queued while busy, flushed when the lock releases)')
+  assert.match(panel, /mergeSeatSoundPatch\(queued\.current, patch\)/u)
   assert.doesNotMatch(panel, /\bctx\b|document\.body\.appendChild/u)
   assert.match(state, /'x-amphoreus-ext': ext/u)
   assert.match(state, /file\.type \|\| 'application\/octet-stream'/u)

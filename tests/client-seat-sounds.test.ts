@@ -1,7 +1,7 @@
 /** Seat sound player + greeting hook under node --test with a fake audio factory and gesture target. */
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { createSeatSoundPlayer, freshSubmissionIds, installSeatSounds, resolveSeatSound, type AudioLike } from '../src/client/seat-sounds.ts'
+import { createSeatSoundPlayer, freshSubmissionIds, installSeatSounds, mergeSeatSoundPatch, nextSendDecision, resolveSeatSound, SEND_SEEN_LIMIT, type AudioLike } from '../src/client/seat-sounds.ts'
 import type { AmphoreusState } from '../src/shared/api.ts'
 
 class FakeAudio implements AudioLike {
@@ -191,4 +191,51 @@ test('freshSubmissionIds reports only ids not seen before (one composer send == 
   assert.deepEqual(freshSubmissionIds(seen, ['a', 'b', 'c']), ['b', 'c'])
   assert.deepEqual(freshSubmissionIds(seen, ['a']), [])
   assert.deepEqual(freshSubmissionIds(new Set(), []), [])
+})
+
+test('nextSendDecision: mount never plays, one play per batch with a fresh id, vanished ids do not replay, prune keeps in-flight ids', () => {
+  // (a) first observation (session switch mid-flight): remember, stay silent
+  const mount = nextSendDecision(undefined, ['r1', 'r2'])
+  assert.equal(mount.play, false)
+  assert.deepEqual([...mount.seen].sort(), ['r1', 'r2'])
+  // same ids again → nothing new
+  assert.equal(nextSendDecision(mount.seen, ['r1', 'r2']).play, false)
+  // (b) one new id → exactly one play for the batch (two new ids still one batch)
+  const second = nextSendDecision(mount.seen, ['r2', 'r3'])
+  assert.equal(second.play, true)
+  assert.deepEqual([...second.seen].sort(), ['r1', 'r2', 'r3'])
+  const twoAtOnce = nextSendDecision(second.seen, ['r4', 'r5'])
+  assert.equal(twoAtOnce.play, true)
+  // (c) an id that disappeared and reappears is not fresh
+  const gone = nextSendDecision(twoAtOnce.seen, [])
+  assert.equal(gone.play, false)
+  assert.equal(nextSendDecision(gone.seen, ['r3']).play, false)
+  // retired ids stay remembered below the limit
+  assert.equal(gone.seen.size, 5)
+  // (d) prune: past the limit the set collapses to the current batch; the ids still in flight are kept, so the next identical observation does not replay
+  let seen: Set<string> = new Set()
+  for (let index = 0; index < SEND_SEEN_LIMIT; index += 1) seen = nextSendDecision(seen, [`id-${index}`]).seen
+  assert.equal(seen.size, SEND_SEEN_LIMIT)
+  const overflow = nextSendDecision(seen, ['id-63', 'id-64'])
+  assert.equal(overflow.play, true)
+  assert.deepEqual([...overflow.seen].sort(), ['id-63', 'id-64'], 'collapsed to what is in flight')
+  assert.equal(nextSendDecision(overflow.seen, ['id-63', 'id-64']).play, false, 'no replay after the collapse')
+  assert.equal(nextSendDecision(overflow.seen, ['id-64', 'id-65']).play, true)
+  // empty batches never play
+  assert.equal(nextSendDecision(new Set(), []).play, false)
+})
+
+test('mergeSeatSoundPatch: queued pref writes coalesce per leaf, later wins, null seat entry replaces', () => {
+  assert.deepEqual(mergeSeatSoundPatch(undefined, { master: false }), { master: false })
+  assert.deepEqual(
+    mergeSeatSoundPatch({ seats: { anaxa: { greeting: { volume: 0.2 } } } }, { seats: { anaxa: { greeting: { enabled: false }, send: { volume: 1 } } } }),
+    { seats: { anaxa: { greeting: { volume: 0.2, enabled: false }, send: { volume: 1 } } } },
+  )
+  assert.deepEqual(
+    mergeSeatSoundPatch({ master: true, seats: { anaxa: { send: { volume: 0.1 } } } }, { master: false, seats: { anaxa: { send: { volume: 0.9 } }, cipher: { send: { enabled: true } } } }),
+    { master: false, seats: { anaxa: { send: { volume: 0.9 } }, cipher: { send: { enabled: true } } } },
+  )
+  assert.deepEqual(mergeSeatSoundPatch({ master: false }, { seats: { anaxa: { greeting: { volume: 0.5 } } } }), { master: false, seats: { anaxa: { greeting: { volume: 0.5 } } } })
+  assert.deepEqual(mergeSeatSoundPatch({ seats: { anaxa: { greeting: { volume: 0.5 } } } }, { seats: { anaxa: null } }), { seats: { anaxa: null } })
+  assert.deepEqual(mergeSeatSoundPatch({ seats: { anaxa: null } }, { seats: { anaxa: { send: { volume: 0.3 } } } }), { seats: { anaxa: { send: { volume: 0.3 } } } })
 })

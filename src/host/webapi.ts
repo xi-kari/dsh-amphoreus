@@ -124,6 +124,8 @@ export interface WebApiOptions {
   readonly deriveAssets?: (options: DeriveOptions) => Promise<DeriveResult>
   readonly probeMagick?: () => Promise<string | undefined>
   // @anchor webapi-options
+  /** Test seam: seat sound upload cap in bytes (default SEAT_SOUND_MAX_BYTES). */
+  readonly seatSoundMaxBytes?: number
 }
 
 interface SseClient {
@@ -226,7 +228,7 @@ export class AmphoreusWebApi {
     this.#probeMagick = options.probeMagick ?? probeMagick
     this.nonce = options.nonce ?? randomBytes(24).toString('base64url')
     // @anchor webapi-ctor
-    this.#seatSounds = options.dataDir === undefined ? undefined : new SeatSoundStore(options.dataDir)
+    this.#seatSounds = options.dataDir === undefined ? undefined : new SeatSoundStore(options.dataDir, options.seatSoundMaxBytes === undefined ? {} : { maxBytes: options.seatSoundMaxBytes })
   }
 
   async prepareAssets(): Promise<void> {
@@ -1140,6 +1142,7 @@ export class AmphoreusWebApi {
         this.#publishSse('state-change', { domain: 'amphoreus', table: 'seat-sounds', key: `${heroId}/${slot}`, operation: 'put' })
         json(response, 200, { sound: this.#seatSoundInfo(record) })
       } catch (error) {
+        // The store drains the body before throwing 413, so the response is never cut off by a reset.
         if (error instanceof SeatSoundTooLargeError) json(response, 413, { error: error.message })
         else if (error instanceof TypeError) json(response, 415, { error: error.message })
         else throw error

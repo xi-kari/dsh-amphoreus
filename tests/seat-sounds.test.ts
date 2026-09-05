@@ -1,13 +1,14 @@
 import assert from 'node:assert/strict'
 import { once } from 'node:events'
-import { mkdtemp, mkdir, readdir, rm, writeFile } from 'node:fs/promises'
-import { createServer } from 'node:http'
+import { mkdtemp, mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises'
+import { createServer, request as httpRequest, type IncomingMessage } from 'node:http'
+import { PassThrough } from 'node:stream'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import type { Context } from '@deepseek-ai/cordis'
 import type { SuiteResolver } from '../src/host/bridge.ts'
-import { resolveSeatSoundExt, SEAT_SOUND_TYPES, SeatSoundStore } from '../src/host/seat-sounds.ts'
+import { declaredTooLarge, resolveSeatSoundExt, SEAT_SOUND_TYPES, SeatSoundStore, SeatSoundTooLargeError } from '../src/host/seat-sounds.ts'
 import { GlobalSchema, INITIAL_GLOBAL, type AmphoreusStores } from '../src/host/store.ts'
 import { AmphoreusWebApi } from '../src/host/webapi.ts'
 import { SEAT_SOUND_MAX_BYTES } from '../src/shared/api.ts'
@@ -30,7 +31,7 @@ function stores(): { stores: AmphoreusStores; read(): typeof INITIAL_GLOBAL } {
   }
 }
 
-async function serve(root: string) {
+async function serve(root: string, seatSoundMaxBytes?: number) {
   const fixture = stores()
   const api = new AmphoreusWebApi({} as Context, {
     config: fixtureConfig(),
@@ -40,6 +41,7 @@ async function serve(root: string) {
     dataDir: root,
     assetsCacheDir: join(root, 'assets-cache'),
     probeMagick: async () => undefined,
+    seatSoundMaxBytes,
   })
   const server = createServer((request, response) => { void api.handle(request, response) })
   server.listen(0, '127.0.0.1')
@@ -65,7 +67,11 @@ test('extension resolution: MIME wins, octet-stream falls back to a known x-amph
   assert.equal(resolveSeatSoundExt('', 'ogg'), 'ogg')
   assert.equal(resolveSeatSoundExt('application/octet-stream', 'exe'), undefined)
   assert.equal(resolveSeatSoundExt('application/zip', undefined), undefined)
-  assert.equal(resolveSeatSoundExt('image/png', 'mp3'), 'mp3', 'hint wins over an unknown declared type')
+  assert.equal(resolveSeatSoundExt('image/png', 'mp3'), undefined, 'the hint only rescues an empty / octet-stream declared type')
+  assert.equal(resolveSeatSoundExt('application/zip', 'mp3'), undefined)
+  assert.equal(declaredTooLarge({ 'content-length': '2049' }, 2048), true)
+  assert.equal(declaredTooLarge({ 'content-length': '2048' }, 2048), false)
+  assert.equal(declaredTooLarge({}, 2048), false)
   assert.equal(Object.keys(SEAT_SOUND_TYPES).length, 8)
   assert.equal(SEAT_SOUND_MAX_BYTES, 20 * 1024 * 1024)
 })
@@ -115,6 +121,7 @@ test('upload per (seat, slot), Range streaming, prefs merge, 415/413/400/403, re
       // 3) rejections: unknown type → 415; octet-stream without a usable hint → 415; bad slot / hero → 400; no nonce → 403; oversize → 413
       assert.equal((await fetch(`${origin}/amphoreus/api/seat-sound/anaxa/greeting`, { method: 'PUT', headers: { 'content-type': 'application/zip', 'x-amphoreus-nonce': NONCE }, body: 'zip' })).status, 415)
       assert.equal((await fetch(`${origin}/amphoreus/api/seat-sound/anaxa/greeting`, { method: 'PUT', headers: { 'content-type': 'application/octet-stream', 'x-amphoreus-ext': 'exe', 'x-amphoreus-nonce': NONCE }, body: 'x' })).status, 415)
+      assert.equal((await fetch(`${origin}/amphoreus/api/seat-sound/anaxa/greeting`, { method: 'PUT', headers: { 'content-type': 'image/png', 'x-amphoreus-ext': 'mp3', 'x-amphoreus-nonce': NONCE }, body: 'x' })).status, 415, 'ext hint does not rescue a foreign declared type')
       assert.equal((await fetch(`${origin}/amphoreus/api/seat-sound/anaxa/ambient`, { method: 'PUT', headers: { 'content-type': 'audio/mpeg', 'x-amphoreus-nonce': NONCE }, body: 'x' })).status, 400)
       assert.equal((await fetch(`${origin}/amphoreus/api/seat-sound/Bad%20Id/greeting`, { method: 'PUT', headers: { 'content-type': 'audio/mpeg', 'x-amphoreus-nonce': NONCE }, body: 'x' })).status, 400)
       assert.equal((await fetch(`${origin}/amphoreus/api/seat-sound/anaxa/greeting`, { method: 'PUT', headers: { 'content-type': 'audio/mpeg' }, body: 'x' })).status, 403)
@@ -198,7 +205,21 @@ test('upload per (seat, slot), Range streaming, prefs merge, 415/413/400/403, re
   }
 })
 
-test('uploads past the byte cap are rejected with 413 and leave no file', async () => {
+/** Streams `total` bytes with no content-length (chunked), pushing `chunk`-sized pieces. */
+function chunkedBody(total: number, chunk = 256 * 1024): ReadableStream<Uint8Array> {
+  const piece = Buffer.alloc(chunk, 0x61)
+  let sent = 0
+  return new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (sent >= total) { controller.close(); return }
+      const size = Math.min(piece.length, total - sent)
+      controller.enqueue(piece.subarray(0, size))
+      sent += size
+    },
+  })
+}
+
+test('uploads past the byte cap are rejected with 413 and leave no file or directory', async () => {
   const root = await mkdtemp(join(tmpdir(), 'amphoreus-seat-snd-cap-'))
   try {
     const store = new SeatSoundStore(root, { maxBytes: 1024 })
@@ -206,33 +227,145 @@ test('uploads past the byte cap are rejected with 413 and leave no file', async 
     const { origin, close } = await serve(root)
     try {
       // The web api uses the default 20 MiB cap: stream 20 MiB + 1 byte in modest chunks.
-      const chunk = Buffer.alloc(1024 * 1024, 0x61)
-      const total = SEAT_SOUND_MAX_BYTES + 1
-      let sent = 0
-      const body = new ReadableStream<Uint8Array>({
-        pull(controller) {
-          if (sent >= total) { controller.close(); return }
-          const size = Math.min(chunk.length, total - sent)
-          controller.enqueue(chunk.subarray(0, size))
-          sent += size
-        },
-      })
       const response = await fetch(`${origin}/amphoreus/api/seat-sound/cipher/send`, {
         method: 'PUT',
         headers: { 'content-type': 'audio/mpeg', 'x-amphoreus-nonce': NONCE },
-        body,
+        body: chunkedBody(SEAT_SOUND_MAX_BYTES + 1, 1024 * 1024),
         // @ts-expect-error undici streaming upload option
         duplex: 'half',
       })
       assert.equal(response.status, 413)
       assert.deepEqual(await response.json(), { error: `request body exceeds ${SEAT_SOUND_MAX_BYTES} bytes` })
-      const files = await readdir(join(root, 'seat-sounds', 'cipher')).catch(() => [] as string[])
-      assert.deepEqual(files, [], 'temp file removed and nothing published')
+      await assert.rejects(stat(join(root, 'seat-sounds', 'cipher')), /ENOENT/u, 'temp file removed and the empty hero directory pruned')
       assert.equal((await (await fetch(`${origin}/amphoreus/api/state`)).json() as { seatSounds: unknown[] }).seatSounds.length, 0)
     } finally {
       await close()
     }
   } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('413 is delivered for a declared content-length past the cap (no disk work) and for a chunked body far past the cap', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'amphoreus-seat-snd-cap2-'))
+  try {
+    const cap = 4096
+    const { origin, close } = await serve(root, cap)
+    try {
+      // Browsers always declare a File's length: 64 KiB declared against a 4 KiB cap -> 413 without creating the hero directory.
+      const declared = await fetch(`${origin}/amphoreus/api/seat-sound/cipher/send`, {
+        method: 'PUT', headers: { 'content-type': 'audio/mpeg', 'x-amphoreus-nonce': NONCE }, body: Buffer.alloc(64 * 1024, 0x61),
+      })
+      assert.equal(declared.status, 413)
+      assert.deepEqual(await declared.json(), { error: `request body exceeds ${cap} bytes` })
+      await assert.rejects(stat(join(root, 'seat-sounds', 'cipher')), /ENOENT/u, 'declared-too-large never touches the disk')
+
+      // A chunked body 6 MiB long against a 4 KiB cap: nothing past the cap is written, yet a real 413 arrives (not ECONNRESET).
+      const streamed = await fetch(`${origin}/amphoreus/api/seat-sound/cipher/send`, {
+        method: 'PUT', headers: { 'content-type': 'audio/mpeg', 'x-amphoreus-nonce': NONCE }, body: chunkedBody(6 * 1024 * 1024),
+        // @ts-expect-error undici streaming upload option
+        duplex: 'half',
+      })
+      assert.equal(streamed.status, 413)
+      assert.deepEqual(await streamed.json(), { error: `request body exceeds ${cap} bytes` })
+
+      // Raw http client (no undici retries): an 8 MiB chunked body still sees a 413 status line.
+      const raw = await new Promise<IncomingMessage>((resolveResponse, reject) => {
+        const url = new URL(`${origin}/amphoreus/api/seat-sound/cipher/greeting`)
+        const client = httpRequest({ host: url.hostname, port: url.port, path: url.pathname, method: 'PUT', headers: { 'content-type': 'audio/mpeg', 'x-amphoreus-nonce': NONCE, 'transfer-encoding': 'chunked' } }, resolveResponse)
+        client.on('error', reject)
+        const piece = Buffer.alloc(64 * 1024, 0x62)
+        let sent = 0
+        const pump = (): void => {
+          if (client.destroyed) return
+          while (sent < 8 * 1024 * 1024) {
+            sent += piece.length
+            if (!client.write(piece)) { client.once('drain', pump); return }
+          }
+          client.end()
+        }
+        pump()
+      })
+      assert.equal(raw.statusCode, 413)
+      raw.resume()
+
+      // Still usable afterwards: a small upload succeeds, and nothing was left behind by the failures.
+      const ok = await fetch(`${origin}/amphoreus/api/seat-sound/cipher/send`, {
+        method: 'PUT', headers: { 'content-type': 'audio/mpeg', 'x-amphoreus-nonce': NONCE }, body: Buffer.from('ID3-small'),
+      })
+      assert.equal(ok.status, 200)
+      assert.deepEqual(await readdir(join(root, 'seat-sounds', 'cipher')), ['send.mp3'])
+    } finally {
+      await close()
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+/** A slow in-process body: chunks arrive on later ticks, so the temp file's async open races them. */
+function slowBody(chunks: readonly Buffer[]): IncomingMessage {
+  const stream = new PassThrough()
+  void (async () => {
+    for (const chunk of chunks) {
+      await new Promise(resolveTick => setTimeout(resolveTick, 5))
+      stream.write(chunk)
+    }
+    stream.end()
+  })()
+  return stream as unknown as IncomingMessage
+}
+
+test('store.put: write-stream open failures reject instead of crashing the process; racing puts and a put racing remove stay contained', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'amphoreus-seat-snd-race-'))
+  const uncaught: unknown[] = []
+  const onUncaught = (error: unknown): void => { uncaught.push(error) }
+  process.on('uncaughtException', onUncaught)
+  try {
+    // 1) The temp name is already taken (EEXIST on the async open): rejects, does not delete the stranger, no uncaught 'error'.
+    const frozen = new SeatSoundStore(root, { tempToken: () => 'frozen' })
+    await mkdir(join(root, 'seat-sounds', 'anaxa'), { recursive: true })
+    await writeFile(join(root, 'seat-sounds', 'anaxa', '.upload-send-frozen.tmp'), 'stranger')
+    await assert.rejects(frozen.put('anaxa', 'send', 'audio/mpeg', slowBody([Buffer.from('ID3-A'), Buffer.from('aaaa')])), (error: NodeJS.ErrnoException) => error.code === 'EEXIST')
+    assert.deepEqual(await readdir(join(root, 'seat-sounds', 'anaxa')), ['.upload-send-frozen.tmp'], 'the pre-existing file is not ours to remove')
+    assert.equal(frozen.get('anaxa', 'send'), undefined)
+    await rm(join(root, 'seat-sounds', 'anaxa'), { recursive: true, force: true })
+
+    // 2) Concurrent puts on one slot are serialized per hero: both settle, the later call wins, one file remains, no EPERM rename-over race.
+    const store = new SeatSoundStore(root)
+    await store.scan()
+    const both = await Promise.all([
+      store.put('cipher', 'greeting', 'audio/ogg', slowBody([Buffer.from('OggS-1')])),
+      store.put('cipher', 'greeting', 'audio/ogg', slowBody([Buffer.from('OggS-22')])),
+    ])
+    assert.equal(both.length, 2)
+    assert.deepEqual(await readdir(join(root, 'seat-sounds', 'cipher')), ['greeting.ogg'])
+    assert.equal(store.get('cipher', 'greeting')?.bytes, 7, 'second writer wins')
+    // put racing remove on the same hero: serialized too — the remove runs after the put lands, so both settle and the seat ends up empty.
+    const [landed, removed] = await Promise.all([
+      store.put('cipher', 'send', 'audio/mpeg', slowBody([Buffer.from('ID3')])),
+      store.remove('cipher', 'send'),
+    ])
+    assert.equal(landed.slot, 'send')
+    assert.equal(removed, true)
+    assert.equal(store.get('cipher', 'send'), undefined)
+    assert.deepEqual(await readdir(join(root, 'seat-sounds', 'cipher')), ['greeting.ogg'])
+
+    // 3) The temp path's parent is missing (the same ENOENT a concurrent remove() of the hero dir produces between mkdir and open): rejects, prunes the empty dir.
+    const missingParent = new SeatSoundStore(root, { tempToken: () => 'gone/inner' })
+    await assert.rejects(missingParent.put('mydei', 'send', 'audio/wav', slowBody([Buffer.from('RIFF')])), (error: NodeJS.ErrnoException) => error.code === 'ENOENT')
+    assert.equal(missingParent.get('mydei', 'send'), undefined)
+    await assert.rejects(stat(join(root, 'seat-sounds', 'mydei')), /ENOENT/u, 'empty hero directory pruned after the failed put')
+
+    // 4) The cap error is a rejection too (unit level, tiny cap), and the empty directory is pruned.
+    const tiny = new SeatSoundStore(root, { maxBytes: 8 })
+    await assert.rejects(tiny.put('phainon', 'send', 'audio/mpeg', slowBody([Buffer.alloc(6), Buffer.alloc(6)])), SeatSoundTooLargeError)
+    await assert.rejects(stat(join(root, 'seat-sounds', 'phainon')), /ENOENT/u)
+
+    await new Promise(resolveTick => setTimeout(resolveTick, 20))
+    assert.deepEqual(uncaught, [], 'no uncaught exceptions escaped')
+  } finally {
+    process.off('uncaughtException', onUncaught)
     await rm(root, { recursive: true, force: true })
   }
 })

@@ -1,9 +1,9 @@
-import { useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { SEAT_SOUND_DEFAULTS, type SeatSoundInfo, type SeatSoundPrefs, type SeatSoundPrefsPatch, type SeatSoundSlot } from '../shared/api.ts'
 import { HERO_VISUALS, type HeroVisual } from '../shared/heroes.ts'
 import type { AmphoreusKey } from './locales.ts'
 import { seatColorOf } from './seat-model.ts'
-import { slotsForHero } from './seat-sounds.ts'
+import { mergeSeatSoundPatch, slotsForHero } from './seat-sounds.ts'
 import css from './settings.module.css'
 import own from './sound-panel.module.css'
 
@@ -41,6 +41,21 @@ export function SoundPanel({ seatSounds, master, seatNames, busy, t, onUpload, o
   const timers = useRef(new Map<string, number>())
   const inputs = useRef(new Map<string, HTMLInputElement | null>())
   const byKey = new Map(seatSounds.map(item => [`${item.heroId}/${item.slot}`, item]))
+  // Pref writes that land while the settings action lock is busy would be dropped by `run`; hold and flush them instead.
+  const queued = useRef<SeatSoundPrefsPatch | undefined>(undefined)
+  const busyRef = useRef(busy)
+  busyRef.current = busy
+  const emitPrefs = (patch: SeatSoundPrefsPatch): void => {
+    // Read the ref: the debounce timer below fires from a closure taken before `busy` may have flipped.
+    if (busyRef.current) queued.current = mergeSeatSoundPatch(queued.current, patch)
+    else onPrefs(patch)
+  }
+  useEffect(() => {
+    if (busy || queued.current === undefined) return
+    const patch = queued.current
+    queued.current = undefined
+    onPrefs(patch)
+  }, [busy, onPrefs])
 
   const setVolume = (heroId: string, slot: SeatSoundSlot, volume: number): void => {
     const key = `${heroId}/${slot}`
@@ -51,7 +66,7 @@ export function SoundPanel({ seatSounds, master, seatNames, busy, t, onUpload, o
       timers.current.delete(key)
       setDrafts(current => {
         const value = current[key]
-        if (value !== undefined) onPrefs({ seats: { [heroId]: { [slot]: { volume: value } } } })
+        if (value !== undefined) emitPrefs({ seats: { [heroId]: { [slot]: { volume: value } } } })
         const { [key]: _drop, ...rest } = current
         return rest
       })
@@ -91,7 +106,7 @@ export function SoundPanel({ seatSounds, master, seatNames, busy, t, onUpload, o
                 {t('settings.soundPreview')}
               </button>
               <label className={css.switchRow}>
-                <input type="checkbox" checked={prefs.enabled} disabled={busy} onChange={event => onPrefs({ seats: { [hero.heroId]: { [slot]: { enabled: event.currentTarget.checked } } } })} />
+                <input type="checkbox" checked={prefs.enabled} disabled={busy} onChange={event => emitPrefs({ seats: { [hero.heroId]: { [slot]: { enabled: event.currentTarget.checked } } } })} />
                 <span>{t('settings.soundEnabled')}</span>
               </label>
               <span className={own.volume}>
@@ -133,7 +148,7 @@ export function SoundPanel({ seatSounds, master, seatNames, busy, t, onUpload, o
       </div>
       <div className={own.masterRow}>
         <label className={css.switchRow}>
-          <input type="checkbox" checked={master} disabled={busy} onChange={event => onPrefs({ master: event.currentTarget.checked })} />
+          <input type="checkbox" checked={master} disabled={busy} onChange={event => emitPrefs({ master: event.currentTarget.checked })} />
           <span>{master ? t('settings.soundMasterOn') : t('settings.soundMasterOff')}</span>
         </label>
         <span className={css.index}>{t('settings.soundFormats')}</span>

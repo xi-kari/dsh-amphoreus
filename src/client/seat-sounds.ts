@@ -4,7 +4,7 @@
  * DOM tree (detached media elements only), and every input is injectable so the
  * module is unit-testable under node --test without a browser.
  */
-import { SEAT_SOUND_DEFAULTS, SEAT_SOUND_MASTER_DEFAULT, SEAT_SOUND_SLOTS, type AmphoreusState, type SeatSoundSlot } from '../shared/api.ts'
+import { SEAT_SOUND_DEFAULTS, SEAT_SOUND_MASTER_DEFAULT, SEAT_SOUND_SLOTS, type AmphoreusState, type SeatSoundPrefs, type SeatSoundPrefsPatch, type SeatSoundSlot } from '../shared/api.ts'
 import { GLOBAL_SEAT_HERO } from './seat-model.ts'
 import type { SeatWatch } from './seat-watch.ts'
 import type { AmphoreusClientModel } from './state.ts'
@@ -143,6 +143,52 @@ export function slotsForHero(heroId: string): readonly SeatSoundSlot[] {
 /** Ids present in `ids` that `seen` did not contain (one composer send == one new requestId). */
 export function freshSubmissionIds(seen: ReadonlySet<string>, ids: readonly string[]): string[] {
   return ids.filter(id => !seen.has(id))
+}
+
+/** Retired ids never return; past this many remembered ids the set collapses to what is still in flight. */
+export const SEND_SEEN_LIMIT = 64
+
+export interface SendDecision {
+  readonly seen: Set<string>
+  /** True exactly when at least one requestId is new since the previous observation. */
+  readonly play: boolean
+}
+
+/**
+ * Pure step of the send-click sentinel: `seen === undefined` is the mount
+ * observation (remember, never play); afterwards play once per batch that
+ * carries a fresh requestId. Ids that vanish and reappear are not fresh unless
+ * the set was collapsed in between — which only happens above SEND_SEEN_LIMIT,
+ * and the collapse keeps every id still in flight.
+ */
+export function nextSendDecision(seen: ReadonlySet<string> | undefined, ids: readonly string[]): SendDecision {
+  if (seen === undefined) return { seen: new Set(ids), play: false }
+  const fresh = freshSubmissionIds(seen, ids)
+  const next = new Set(seen)
+  for (const id of ids) next.add(id)
+  return { seen: next.size > SEND_SEEN_LIMIT ? new Set(ids) : next, play: fresh.length > 0 }
+}
+
+/** Deep-merge two prefs patches (later wins per leaf; a `null` seat entry replaces the whole seat). */
+export function mergeSeatSoundPatch(base: SeatSoundPrefsPatch | undefined, patch: SeatSoundPrefsPatch): SeatSoundPrefsPatch {
+  if (base === undefined) return patch
+  const seats: Record<string, { greeting?: Partial<SeatSoundPrefs>; send?: Partial<SeatSoundPrefs> } | null> = { ...base.seats }
+  for (const [heroId, entry] of Object.entries(patch.seats ?? {})) {
+    const previous = seats[heroId]
+    if (entry === null || previous === null || previous === undefined) {
+      seats[heroId] = entry
+      continue
+    }
+    seats[heroId] = {
+      ...previous,
+      ...(entry.greeting === undefined ? {} : { greeting: { ...previous.greeting, ...entry.greeting } }),
+      ...(entry.send === undefined ? {} : { send: { ...previous.send, ...entry.send } }),
+    }
+  }
+  return {
+    ...(patch.master ?? base.master) === undefined ? {} : { master: patch.master ?? base.master },
+    ...(Object.keys(seats).length === 0 ? {} : { seats }),
+  }
 }
 
 export interface SeatSoundsOptions {
