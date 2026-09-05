@@ -103,13 +103,14 @@ test('openSeat routes all through the mounted tab or keeps the portal frame, the
   const state = action.indexOf('model.getSnapshot().state')
   assert.ok(all >= 0 && all < close && close < state)
   assert.match(action, /readRememberedTab\(localStorage\) === WORKBENCH_VIEW_ID/u)
+  assert.match(action, /currentSummary\?\.blank === false/u)
   assert.match(action, /enterSeatQueue\.set\(request\)/u)
   assert.match(action, /return false/u)
   assert.doesNotMatch(action, /sessionsFace\.create|seedConversationView|randomUUID/u)
   assert.match(action, /heroVisualById\(heroId\)\?\.skill \?\? state\.seats\.find/)
   assert.match(action, /seatViewsFrom\(/)
   assert.match(action, /view\.sessionIds\.length > 0/)
-  assert.match(action, /sessionsFace\.open\(view\.sessionIds\[0\]!\)/)
+  assert.match(action, /await openBoundSeatSession\(view\.sessionIds\[0\]!, skill\)/)
   assert.match(action, /else await startPortalSeatSession\(skill\)/)
   assert.doesNotMatch(action, /fetch\(|putBinding|deleteBinding/)
 })
@@ -127,6 +128,7 @@ test('openSeat reuses a mounted Workbench, leaves chat in the portal canvas, and
     state?: object
     views?: { skillName: string; sessionIds: string[] }[]
     current?: string
+    currentBlank?: boolean
     remembered?: string
   }) => {
     const trace: string[] = []
@@ -137,10 +139,16 @@ test('openSeat reuses a mounted Workbench, leaves chat in the portal canvas, and
       heroVisualById: (heroId: string) => heroId === 'anaxa' ? { skill: 'amphoreus-anaxa' } : undefined,
       seatViewsFrom: () => options.views ?? [],
       sessionsFace: {
-        list: { getSnapshot: () => ({ current: options.current }) },
+        list: { getSnapshot: () => ({
+          current: options.current,
+          byId: options.current === undefined
+            ? {}
+            : { [options.current]: { blank: options.currentBlank ?? false } },
+        }) },
         create: async () => { throw new Error('blank session must not be created') },
         open: (id: string) => trace.push(`open:${id}`),
       },
+      openBoundSeatSession: async (id: string) => { trace.push(`open:${id}`) },
       enterSeatQueue: { set: (request: object) => trace.push(`queue:${JSON.stringify(request)}`) },
       readRememberedTab: () => options.remembered ?? null,
       WORKBENCH_VIEW_ID: 'amphoreus-workbench',
@@ -167,6 +175,15 @@ test('openSeat reuses a mounted Workbench, leaves chat in the portal canvas, and
   })
   assert.equal(await fromChat.openSeat(null, { dispatchText: '整理一下日志' }), false)
   assert.deepEqual(fromChat.trace, [])
+
+  const blankCurrent = fixture({
+    state: { seats: [] },
+    current: 'session-blank',
+    currentBlank: true,
+    remembered: 'amphoreus-workbench',
+  })
+  assert.equal(await blankCurrent.openSeat(null, { dispatchText: '整理一下日志' }), false)
+  assert.deepEqual(blankCurrent.trace, [])
 
   const noCurrent = fixture({
     state: { seats: [] },

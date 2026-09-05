@@ -145,7 +145,7 @@ test('shared hook retains full replay, strict source checks, dual current subscr
   assert.ok(requestCurrent.indexOf('pushState()') < requestCurrent.indexOf('pushCurrent()'))
 })
 
-test('different-target open remembers chat before navigation and Workbench keeps three direct chat openings', () => {
+test('different-target open remembers chat before navigation and Workbench includes the seat direct-chat request', () => {
   const openCase = bridgeSource.slice(
     bridgeSource.indexOf("case 'amphoreus:open-session'"),
     bridgeSource.indexOf("case 'amphoreus:activate-session'"),
@@ -154,7 +154,7 @@ test('different-target open remembers chat before navigation and Workbench keeps
   const compare = openCase.indexOf('targetId === sessions.list.getSnapshot().current')
   const open = openCase.indexOf('sessions.open(targetId)')
   assert.ok(remember >= 0 && remember < compare && compare < open)
-  assert.equal((bridgeSource.match(/openView\('chat'/g) ?? []).length, 3)
+  assert.equal((bridgeSource.match(/openView\('chat'/g) ?? []).length, 4)
   assert.match(openCase, /handlersRef\.current\.onOpened\?\.\(\)/)
 })
 

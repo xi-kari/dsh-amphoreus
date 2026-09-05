@@ -465,12 +465,13 @@ export class AmphoreusWebApi {
     }
     const old = table.get(sessionId)
     const now = Date.now()
+    const sameSeat = old?.skillName === input.skill && old.face === input.face
     const value = BindingSchema.parse({
       sessionId,
       skillName: input.skill,
-      boundAt: old?.boundAt ?? now,
+      boundAt: sameSeat ? old.boundAt : now,
       source: input.boundBy,
-      injection: { state: this.#config.autoInvoke.enabled ? 'pending' : 'skipped', ...(!this.#config.autoInvoke.enabled ? { reason: 'auto-invoke-disabled' } : {}) },
+      injection: sameSeat ? old.injection : { state: this.#config.autoInvoke.enabled ? 'pending' : 'skipped', ...(!this.#config.autoInvoke.enabled ? { reason: 'auto-invoke-disabled' } : {}) },
       ...(input.face === undefined ? {} : { face: input.face }),
       ...(input.fromSessionId === undefined ? {} : { handoffFrom: { sessionId: input.fromSessionId, seq: input.fromSeq ?? 0 } }),
     })

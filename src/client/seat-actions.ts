@@ -1,8 +1,57 @@
+import { CONVERSATION_PREF_PREFIX, rememberTab, WORKBENCH_VIEW_ID, type KeyValueStore } from './tabmemory.ts'
+
+export function createDirectChatRequests() {
+  let pending: string | undefined
+  const listeners = new Set<() => void>()
+  const publish = (): void => { for (const listener of listeners) listener() }
+  return {
+    getSnapshot: (): string | undefined => pending,
+    subscribe: (listener: () => void): (() => void) => {
+      listeners.add(listener)
+      return () => { listeners.delete(listener) }
+    },
+    request: (sessionId: string): void => { pending = sessionId; publish() },
+    clear: (sessionId: string): void => {
+      if (pending !== sessionId) return
+      pending = undefined
+      publish()
+    },
+  }
+}
+
+export function openDirectSeatChat(
+  deps: {
+    readonly store: KeyValueStore
+    readonly closePortal: () => void
+    readonly activateChat: (sessionId: string) => void
+    readonly requests: ReturnType<typeof createDirectChatRequests>
+    readonly open: (sessionId: string) => void
+  },
+  sessionId: string,
+): void {
+  deps.closePortal()
+  rememberTab(deps.store, 'chat')
+  const key = `${CONVERSATION_PREF_PREFIX}.${sessionId}`
+  let previous: Record<string, unknown> = { draft: '', view: null, viewRequest: null }
+  try {
+    const raw = deps.store.getItem(key)
+    const parsed: unknown = raw === null ? null : JSON.parse(raw)
+    if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) previous = parsed as Record<string, unknown>
+    deps.store.setItem(key, JSON.stringify({ ...previous, view: 'chat', viewRequest: null }))
+  } catch { /* The live view request still works without browser storage. */ }
+  if (previous.view === WORKBENCH_VIEW_ID) deps.requests.request(sessionId)
+  else deps.requests.clear(sessionId)
+  deps.activateChat(sessionId)
+  deps.open(sessionId)
+}
+
 export interface SeatActionDeps {
   readonly nonce: () => string | undefined
   readonly seatDirOf: (skillName: string) => string | undefined
+  readonly ensureSeatWorkspace?: (skillName: string) => Promise<string | undefined>
+  readonly ensureSessionWorkspace?: (sessionId: string, workspaceId: string) => Promise<void>
   readonly sessions: {
-    create(options: { cwd?: string; sessionId?: string }): Promise<string>
+    create(options: { workspaceId?: string; cwd?: string; sessionId?: string }): Promise<string>
     open(id: string): void
   }
 }
@@ -70,13 +119,23 @@ export async function startSeatSession(
     boundBy: options.boundBy ?? 'seat-new',
     ...(options.face === undefined ? {} : { face: options.face }),
   })
+  let createdSession = false
   try {
-    const cwd = options.cwd ?? deps.seatDirOf(skillName)
-    const created = await deps.sessions.create({ sessionId, ...(cwd === undefined ? {} : { cwd }) })
+    const workspaceId = options.cwd === undefined
+      ? await deps.ensureSeatWorkspace?.(skillName)
+      : undefined
+    const cwd = workspaceId === undefined ? options.cwd ?? deps.seatDirOf(skillName) : undefined
+    const created = await deps.sessions.create({
+      sessionId,
+      ...(workspaceId === undefined ? {} : { workspaceId }),
+      ...(cwd === undefined ? {} : { cwd }),
+    })
     if (created !== sessionId) throw new Error(`宿主返回了不同的会话 id（${created}）`)
+    createdSession = true
+    if (workspaceId !== undefined) await deps.ensureSessionWorkspace?.(sessionId, workspaceId)
     if (options.open !== false) deps.sessions.open(sessionId)
   } catch (error) {
-    await deleteBinding(deps, sessionId).catch(() => undefined)
+    if (!createdSession) await deleteBinding(deps, sessionId).catch(() => undefined)
     throw error
   }
   return sessionId

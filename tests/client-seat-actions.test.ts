@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
-import { deleteBinding, putBinding, startSeatSession, type SeatActionDeps } from '../src/client/seat-actions.ts'
+import { createDirectChatRequests, deleteBinding, openDirectSeatChat, putBinding, startSeatSession, type SeatActionDeps } from '../src/client/seat-actions.ts'
+import { CONVERSATION_PREF_PREFIX, WORKBENCH_TAB_KEY, WORKBENCH_VIEW_ID } from '../src/client/tabmemory.ts'
 
 const NONCE = 'seat-action-nonce'
 const SKILL = 'amphoreus-aglaea'
@@ -48,7 +49,7 @@ function deps(overrides: Partial<SeatActionDeps> = {}): SeatActionDeps {
 test('startSeatSession performs PUT then create then open with one preallocated id and seat cwd', async () => {
   const order: string[] = []
   const calls: FetchCall[] = []
-  let createOptions: { cwd?: string; sessionId?: string } | undefined
+  let createOptions: { workspaceId?: string; cwd?: string; sessionId?: string } | undefined
   const fixture = deps({
     sessions: {
       create: async options => {
@@ -82,6 +83,101 @@ test('startSeatSession performs PUT then create then open with one preallocated 
   assert.deepEqual(JSON.parse(String(calls[0]?.init?.body)), { skill: SKILL, boundBy: 'seat-new' })
 })
 
+test('a direct seat conversation joins its registered seat Workspace before opening', async () => {
+  const order: string[] = []
+  let createOptions: { workspaceId?: string; cwd?: string; sessionId?: string } | undefined
+  const fixture = deps({
+    ensureSeatWorkspace: async skillName => {
+      order.push('workspace')
+      assert.equal(skillName, SKILL)
+      return 'workspace-aglaea'
+    },
+    sessions: {
+      create: async options => {
+        order.push('create')
+        createOptions = options
+        return options.sessionId!
+      },
+      open: () => { order.push('open') },
+    },
+  })
+
+  const id = await withFetch(async (_input, init) => {
+    order.push(String(init?.method))
+    return ok()
+  }, () => startSeatSession(fixture, SKILL))
+
+  assert.deepEqual(order, ['PUT', 'workspace', 'create', 'open'])
+  assert.deepEqual(createOptions, { sessionId: id, workspaceId: 'workspace-aglaea' })
+})
+
+test('a failed seat Workspace registration rolls the prebinding back', async () => {
+  const failure = new Error('workspace failed')
+  const order: string[] = []
+  const fixture = deps({
+    ensureSeatWorkspace: async () => {
+      order.push('workspace')
+      throw failure
+    },
+    sessions: {
+      create: async options => {
+        order.push('create')
+        return options.sessionId!
+      },
+      open: () => { order.push('open') },
+    },
+  })
+
+  await withFetch(async (_input, init) => {
+    order.push(String(init?.method))
+    return ok()
+  }, async () => {
+    await assert.rejects(startSeatSession(fixture, SKILL), error => error === failure)
+  })
+
+  assert.deepEqual(order, ['PUT', 'workspace', 'DELETE'])
+})
+
+test('direct seat chat selects chat before opening and keeps its existing draft', () => {
+  const sessionId = 'session-direct'
+  const values = new Map<string, string>([
+    [WORKBENCH_TAB_KEY, WORKBENCH_VIEW_ID],
+    [`${CONVERSATION_PREF_PREFIX}.${sessionId}`, JSON.stringify({ draft: 'unsent text', view: WORKBENCH_VIEW_ID, viewRequest: { view: WORKBENCH_VIEW_ID, focus: 'old' } })],
+  ])
+  const order: string[] = []
+  const requests = createDirectChatRequests()
+  requests.subscribe(() => { if (requests.getSnapshot() !== undefined) order.push('request-chat') })
+  openDirectSeatChat({
+    store: { getItem: key => values.get(key) ?? null, setItem: (key, value) => { values.set(key, value) } },
+    closePortal: () => { order.push('close-portal') },
+    activateChat: id => { assert.equal(id, sessionId); order.push('activate-chat') },
+    requests,
+    open: id => {
+      assert.equal(id, sessionId)
+      assert.equal(values.get(WORKBENCH_TAB_KEY), 'chat')
+      assert.deepEqual(JSON.parse(values.get(`${CONVERSATION_PREF_PREFIX}.${sessionId}`)!), { draft: 'unsent text', view: 'chat', viewRequest: null })
+      order.push('open')
+    },
+  }, sessionId)
+  assert.deepEqual(order, ['close-portal', 'request-chat', 'activate-chat', 'open'])
+  assert.equal(requests.getSnapshot(), sessionId)
+  requests.clear('another-session')
+  assert.equal(requests.getSnapshot(), sessionId)
+  requests.clear(sessionId)
+  assert.equal(requests.getSnapshot(), undefined)
+})
+
+test('a new direct seat chat has no stale request to dismiss a later user-chosen workbench', () => {
+  const values = new Map<string, string>([[WORKBENCH_TAB_KEY, WORKBENCH_VIEW_ID]])
+  const requests = createDirectChatRequests()
+  openDirectSeatChat({
+    store: { getItem: key => values.get(key) ?? null, setItem: (key, value) => { values.set(key, value) } },
+    closePortal: () => {}, activateChat: () => {}, requests, open: () => {},
+  }, 'new-session')
+  assert.equal(requests.getSnapshot(), undefined)
+  assert.equal(JSON.parse(values.get(`${CONVERSATION_PREF_PREFIX}.new-session`)!).view, 'chat')
+})
+
 test('create failure deletes the prebinding, preserves the original error, and never opens', async () => {
   const failure = new Error('create failed')
   const order: string[] = []
@@ -112,7 +208,7 @@ test('create failure deletes the prebinding, preserves the original error, and n
   assert.equal(calls[1]?.init?.body, undefined)
 })
 
-test('a mismatched host id and an open failure both delete the binding and throw', async () => {
+test('a mismatched host id removes the prebinding while an existing session retains identity after open failure', async () => {
   for (const mode of ['mismatch', 'open'] as const) {
     const order: string[] = []
     const openFailure = new Error('open failed')
@@ -137,10 +233,25 @@ test('a mismatched host id and an open failure both delete the binding and throw
         assert.deepEqual(order, ['PUT', 'create', 'DELETE'])
       } else {
         await assert.rejects(startSeatSession(fixture, SKILL), error => error === openFailure)
-        assert.deepEqual(order, ['PUT', 'create', 'open', 'DELETE'])
+        assert.deepEqual(order, ['PUT', 'create', 'open'])
       }
     })
   }
+})
+
+test('a delayed Workspace synchronization keeps the created session binding recoverable', async () => {
+  const order: string[] = []
+  await withFetch(async (_input, init) => { order.push(String(init?.method)); return ok() }, async () => {
+    await assert.rejects(startSeatSession(deps({
+      ensureSeatWorkspace: async () => 'workspace-seat',
+      ensureSessionWorkspace: async () => { order.push('sync'); throw new Error('association pending') },
+      sessions: {
+        create: async options => { order.push('create'); return options.sessionId! },
+        open: () => { order.push('open') },
+      },
+    }), SKILL), /association pending/)
+  })
+  assert.deepEqual(order, ['PUT', 'create', 'sync'])
 })
 
 test('binding errors stay visible and prevent create, while DELETE treats 404 as success', async () => {
@@ -193,9 +304,14 @@ test('nonce absence fails before fetch and open:false leaves the matching create
 test('dispatch options override cwd, preserve face, and keep the prebound session closed', async () => {
   const calls: FetchCall[] = []
   const customDir = 'D:/fixture/source-project'
-  let createOptions: { cwd?: string; sessionId?: string } | undefined
+  let createOptions: { workspaceId?: string; cwd?: string; sessionId?: string } | undefined
+  let workspaceRequests = 0
   let opens = 0
   const fixture = deps({
+    ensureSeatWorkspace: async () => {
+      workspaceRequests += 1
+      return 'workspace-seat'
+    },
     sessions: {
       create: async options => {
         createOptions = options
@@ -216,6 +332,7 @@ test('dispatch options override cwd, preserve face, and keep the prebound sessio
   }))
 
   assert.deepEqual(createOptions, { sessionId: id, cwd: customDir })
+  assert.equal(workspaceRequests, 0)
   assert.deepEqual(JSON.parse(String(calls[0]?.init?.body)), {
     skill: SKILL,
     boundBy: 'dispatch',
@@ -268,11 +385,21 @@ test('putBinding carries handoff lineage without rewriting it in the caller', as
 
 test('workbench and client injection use only the shared skillName seat-session surface', () => {
   const index = readFileSync(new URL('../src/client/index.ts', import.meta.url), 'utf8')
+  const browser = readFileSync(new URL('../src/client/seat-browser.tsx', import.meta.url), 'utf8')
   const workbench = readFileSync(new URL('../src/client/workbench.tsx', import.meta.url), 'utf8')
   const app = readFileSync(new URL('../workbench/app.js', import.meta.url), 'utf8')
   const combined = `${index}\n${workbench}\n${app}`
   assert.doesNotMatch(combined, /\b(?:seatHeroId|bindSeat|seatSkillOf)\b/)
   assert.match(index, /const seatDeps: HandoffDeps/)
+  assert.match(index, /ctx\.workspaces\.create\(\{ path \}\)/u)
+  assert.match(index, /currentOrdinaryWorkspace\(snapshot\.items, seatDirectories, current\)/u)
+  assert.match(index, /currentWorkspace\?\.workspaceId \?\? ensureWorkspaceAt\(dir\)/u)
+  assert.doesNotMatch(index, /ordinary\[0\]\?\.workspaceId/u)
+  assert.match(index, /createWorkspaceSession\(\{ sessionId, workspaceId \}\)/u)
+  assert.match(index, /await openBoundSeatSession\(sessionId, skillName, skillName === undefined\)/u)
+  assert.match(index, /if \(skillName !== undefined\) openDirectSession\(sessionId\)/u)
+  assert.match(browser, /openSession\(sessionId, view\.skillName\)/u)
+  assert.match(browser, /directoryWorkspaces = withoutSeatWorkspaces\(workspaces\.items, seatDirectories\)/u)
   assert.match(index, /startSeatSession: skillName => startSeatSession\(seatDeps, skillName, \{ open: false \}\)/)
   assert.ok((index.match(/\bseatDeps,?/g) ?? []).length >= 4)
   assert.match(workbench, /if \(typeof data\.skillName === 'string' && data\.skillName !== ''\)/)

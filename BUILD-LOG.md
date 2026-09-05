@@ -1304,3 +1304,45 @@
 - 截图文件 SHA256：`portal=c2c8d7baa334cc8d28d3866d8132934b28de7bb76cfedd1a5c488d4d5929adaf`、`seat-anaxa=df0b8f33deec21496a15413731695b31a6fb8c2cf9304bba7e5976580eb84f1d`、`workbench=57c26424f355d64d446809cba88fabb6578791f1ee800e13da805400ad3d8779`、`settings=ed63a404bf1b801ebd95f906223f8c5a64ca4e396d91020baaae689401de6fde`；`docs/screenshots/README.md` 已写尺寸、内容、脱敏与不入包边界。原 F-DoD 的零截图占位门由用户明确纠正为 repo 图片=`4`、tarball 图片=`0`。
 - 偏离与理由：任务书对 npm 11.11 的 publishConfig tag、pnpm 11.7 的 Git build allow key、无 secret 时 tag workflow 三处假设与实测不符，均以不双发、不移动 tag、不增删 dist-tag、保留失败证据的方式收口；首次远程 CI 的三个跨平台问题已修复并由双 OS 复跑证明。
 - 遗留：产品级后续仅为 TD12 已裁决的 CSS fallback 与稳定派生 URL cache-bust；发布历史边界见 TF12 遗留。F 章所要求的任务、远程、安装、恢复与验收全部闭合。
+## 发布后实机缺陷修复：全席征询、首请求身份与席位 Workspace — 2026-09-05 14:28
+- 发布边界：以下三项来自用户在本地 `main` 对已发布成品做真实操作后发现的问题，均发生在不可变的 npm `dsh-amphoreus@0.2.0` 发布之后；本轮没有重发 `0.2.0`、没有移动 `v0.2.0`，修复随下一包版本发布。
+
+### 1. 「全体会议」从单席调度台补成可见的全席征询
+- 修复前事实：任务书与原实现把「全体会议」定义为 `seatId==='all'` 的总览／单席派发面板；`dispatch-pick` 一次只接收一个 `skillName`，「按线派发」也只建第一站。因而用户写一句话后仍必须再点一个承办席，不能让全员分别作答；这不是单席 dispatch 失效，而是名称与真实能力之间的设计缺口。
+- 实现：新增 `amphoreus:broadcast → amphoreus:conference-started / amphoreus:conference-progress`；宿主 bridge 在 `model.refresh()` 后只从可信 snapshot 选取 `status=deployed && hidden!=true` 的唯一 skill，不接收 iframe 自报 targets。每席继续走 `PUT binding → create → dispatch observation → prompt`，`open:false`，最多 `3` 席并行；会议页以 13 张席位卡分别显示待召集／建席／回复中／已回复／失败和最终正文，不自动切换当前会话。
+- 实机中间缺陷与修正：两轮调试中关闭门户会取消剩余调度，首批各 `3` 席仍由宿主完成；后续又实测非当前 session 的 conversation feed 不会自动水合，以及 session `completed` 可先于最终 response 投影；最终让会议观察全局 session-list 的非空 `projectionValues.turnOutline[].response`，只在正文实际出现后结算该席。
+- 最终会议输入：`CONFERENCE-E2E-TURNOUTLINE-FIX-20260905：请每位用一句话说明你是谁，以及你会怎样帮助这个插件变得更好。`；实机产生 session／唯一 skill=`13/13`，同一原文／唯一预期 skill=`13/13`，typed 与 skill 同首 step／skill 先于首条可见回复=`13/13`，角色身份／唯一可见回复=`13/13`，generic=`0/13`、double=`0/13`。
+- 最终 UI：会议结果卡=`13`、done=`13`、failed=`0`，标题区字面为 `13/13 已回复 · 本轮结束`；13 张卡均显示各自最终回复。浏览器可见完成进度按 `0→1→3→4→6→9→11→13` 增长，没有把单个角色答复复制成全员结果。
+- 严格格式边界：最终会议的「一个 assistant 回复」为 `13/13`，角色身份正确为 `13/13`，但把物理换行也计入时，严格单行服从只有 `4/13`；其余回复由外部 persona／台账格式展开为多行。这一项按失败边界原样记录，不影响 13 席调度、身份、去重或最终回复可见性。
+- 生命周期边界：会议汇总只存在当前页面内存；刷新、关闭总览或离开承载视图会取消尚未派出的席位，已经被 DSH 接受的独立 turn 继续按宿主语义收口。调试时产生的取消首批、feed-stall 与投影竞态批次均按各自报告独立清理，不与最终成功批次合并计数。
+
+### 2. 首问「你是谁」由先通用助手后角色的双答改为首请求即角色
+- 修复前 13 席统一真调用：prompt accepted／Harness completed=`13/13 / 13/13`，预期 skill invocation 恰好一次=`13/13`，角色名最终能找到=`13/13`；但第一条可见回复角色正确仅 `1/13`、generic-free=`1/13`、无双回复=`1/13`、skill 先于首答=`1/13`、typed 与 skill 同首 step=`0/13`、唯一可见回复=`1/13`、严格单行=`6/13`。也就是 `12/13` 先答通用 DeepSeek／Coding Agent，再迟到一条角色答复。
+- 根因：旧 `agent/session-start` 启动异步 `skills.get()` 后调用 `agent.inject()`；首个用户消息已被 `agent/pre-step` 接受时，binding 可能稍后被 session-start 标成 `done`，技能卡进入 `next-step` 而没有进入当前模型请求。权威时间线表现为 `typed → reply1 → skill → reply2`，skill 比 typed 晚 `106–220ms`；binding 最终显示 done 并不证明首请求已经携带角色卡。
+- 修复：`agent/session-start` 只同步记住 startup／clear／compact／resume 来源；awaited `agent/pre-step` 成为技能卡唯一提交边界，在当前 accepted decision 内追加对应 `skill-invocation` 后才标记 binding done。显式 `/skill` 同 step 继续去重，resume 继续禁止重复注入，fork／late-binding 仍从 pending 状态走同一 pre-step 路径。
+- 修复后 13 席独立真调用：prompt accepted／Harness completed=`13/13 / 13/13`；第一条可见回复角色正确、generic-free、无双回复、skill 先于首答、typed 与 skill 同首 step、恰好一个预期 skill、恰好一个可见回复、严格单行均为 `13/13`。每席时间线均为 `typed@7 → skill@10 → reply1`；generic=`0/13`、double=`0/13`，墙钟由 `360.068s` 降至 `125.443s`，output tokens 由 `39,406` 降至 `10,827`，stderr 增量=`0 bytes`。
+- 单席复核：直接从那刻夏席新会话询问身份，时间线=`typed@7 → skill@10 → reply1@1769`，预期 skill 一次、skill 先于首答、generic=false、double=false；回复以正式名「阿那克萨戈拉斯」自述角色与评审职责，没有通用模型前答。
+
+### 3. 黄金裔席位空会话取得真实 Workspace ownership 后可单独对话
+- 修复前根因：席位侧栏按 binding 与 session list 列出会话，但 `startSeatSession()` 只用 `{sessionId,cwd:seatDir}` 创建，没有注册或传入 `workspaceId`。DSH 已成功把该 blank session 设为 current，然而 `ConversationRoot` 在 ready 的 `workspaces.items[].sessionIds` 中找不到 owner，于是 `sessionWorkspace=undefined → hero=true → chipTitle=undefined → inert=true`，主区显示「选择工作区」且输入框禁用；侧栏行 active 与主区不可输入可以同时成立。
+- 修复：新建席位会话先选择当前普通 DSH Workspace；没有当前普通 Workspace 时按席位内部目录幂等创建 Workspace，再以 `{sessionId,workspaceId}` 建会话。历史上同 seat cwd、无 ownership 的 blank orphan 在打开前按原目录幂等注册并以同 sessionId adoption；普通目录会话仍只 open、不猜 skill。十三个内部 seat workspace 从「我的目录」过滤，避免与「黄金裔席位」重复展示。
+- 实机：在普通 Workspace `1` 中从赛飞儿席新建空会话，创建后 Workspace chip 仍为 `1`，当前 session 属于该 Workspace，主区没有回到「选择工作区」，composer 可输入并能完成独立角色对话；历史 orphan 打开路径也走 adoption。直接席位身份会话完成后 archive／binding absent／log retained=`1/1/1`。
+- 内部 Workspace 恢复：调试期间创建的内部席位 Workspace 注册共 `4` 个均已删除；唯一新建 blank 测试 session 已官方归档。既有受保护 session 保持 unarchived、binding／日志／nonblank 状态均不变；原用户 Workspace 共 `2` 个（`1`、`缇宝`）原样保留，席位目录与 manifest 未改，stderr=`0 bytes`。
+
+- 最终成功批次清理：修复前身份批次 archive／binding absent／log retained=`13/13 / 13/13 / 13/13`；修复后身份批次=`13/13 / 13/13 / 13/13`；最终全席征询批次=`13/13 / 13/13 / 13/13`。最终会议 active own bindings=`0`，因 observations 无公开 DELETE 路由保留 dispatch 验收记录=`14`，服务 stderr=`0 bytes`；各批次是独立集合，没有把调试批次叠加成虚构总数。
+- 独立调试批次清理：首次取消会议=`3/3 / 3/3 / 3/3`，第二次取消会议=`3/3 / 3/3 / 3/3`，feed-stall 批次=`3/3 / 3/3 / 3/3`，投影顺序竞态主体=`10/10 / 10/10 / 10/10`、尾批=`3/3 / 3/3 / 3/3`；每组三元组依次为 archive／binding absent／log retained，分别由各自报告证明。
+- 回归与运行终态：会议／身份／Workspace 聚焦测试=`38/38` PASS；最终全量 `npm test` → `tests 341; pass 340; fail 0; skipped 1; duration_ms 3067.7204` PASS（exit: `0`）；最终 lib mtime=`2026-09-05 14:27:33`，derive/client/host=`29.34/217.57/200.33 kB`；`npm run verify:dist` → `verify-dist: OK 382 checks` PASS（exit: `0`）。主服务=`PID 74008 / STATUS running / HTTP 200 / stderr 0 bytes`。
+- npm 边界：官方 registry 的 `alpha=0.2.0` 与 `latest=0.2.0`、发布提交及 `v0.2.0` 均未改变；npm `0.2.0` tarball 未重发，以上三项修复仅存在后续 `main`，等待新版本发布。
+
+### 4. 最终运行合同收口与原生提示词调整 — 2026-09-05 15:24
+- Workspace：等待席位、Session、Workspace 首帧 ready；只复用当前普通 Workspace，无当前归属则幂等注册对应 seat 目录。Session 创建后等待独立 Workspace follow 的 membership，必要时官方 create 回读；成功创建后的同步或导航失败保留 binding。已有 owner 不重复 adoption；Windows 路径折叠大小写，POSIX 保留。侧栏新建／打开明确选择 chat、保留 draft、关闭 portal；已挂载 Workbench 经官方 openView 切回对话。
+- 注入：pre-step 只提议卡片，session/event 接受对应 user/message 才记录 done/skipped；KvTable.update 在写队列内检查绑定代际，排队换席与删除不被旧写覆盖；读卡期间换绑时拒绝过时提议。pending 或 done 的 resume 都核查当前绑定之后的日志，日志缺卡则补首次注入。binding 同席同 face 的幂等 PUT 保留已完成注入；换席重新计 boundAt。
+- 原生提示词实机基线：系统首句为 `You are an AI agent powered by DeepSeek Harness.`，deployment persona 另有 `You are a coding agent powered by the deepseek-v4-pro model.`；角色会话现在通过官方 assemble waterfall 替换这两句。cwd、工具说明、运行上下文仍来自宿主；普通会话对照实测保留两句并回复「普通会话正常」。
+- 实机直聊：`UI-FINAL-CIPHER` session `session-69237582-9b50-4370-beef-a2569c037041`，Workspace `cipher`／cwd seat/cipher；从首页点席位 + 后输入框可用，发送后默认对话 Tab，首答单条赛飞儿身份；系统首句为本席身份，原两句消失。此会话保留给用户继续查看。官方 API 的 7 项 Workspace／binding／nonblank 检查全部通过。
+- 会议终态：原 turnOutline 只有 120 字预览且没有成功／失败语义，因此最终改为官方 remote.session.follow 读取完整 assistant/message 和 turn/end.reason。取消发生于 dispatch 未返回时不再反写 running；控制流使用 microtask，不依赖隐藏页会停的 requestAnimationFrame；部分文本后错误、无文本终止、输出上限、超时、关闭订阅均有回归。
+- `CONFERENCE-FINAL-JOURNAL-20260905` 实机暴露遗漏 root remote 服务依赖，UI 13 卡报 `cannot get property "remote" without inject`；该批模型本身完成 13/13、身份正确 13/13、两句原生身份消失 13/13，未将 UI 标绿。按官方客户端同时声明 remote 与 remote.session 后复跑。
+- `CONFERENCE-FINAL-REMOTE-20260905` 最终 UI 字面为 `13/13 已回复 · 本轮结束`，13 卡均 done，逐卡可见完整结尾，所有角色都为单条自身回复；官方日志同文、唯一技能、同首 step、技能先于首答、角色身份、两句原生身份消失、真实 completed 均 13/13，generic=0、double=0。完整原文与长度、SHA256 见本地 final-remote-replies.json。
+- 内容复核进一步发现昔涟、丹恒曾把参考文件错按 seat cwd 查找，真实 read 返回 FS_NOT_FOUND，尽管 skill resourceBase 已带原目录。现按运行时 card.path 与 config.commonPath 在 system identity 明确 persona/common 两个绝对路径，同时告诉独立派发席只答自身、不据本会话只有自己推断其他席位缺席。定向再调用昔涟、丹恒、三月七：3/3 成功读取正确 persona.md，3/3 成功读取正确 common.md，资料缺失误报=0，要求重新召集／误报其他席缺席=0，单回复=3/3，completed=3/3；`RESOURCE_FIX_RESULT=true`，exit 0。角色卡自带回执仍可附在正文后。
+- 最终自动验收：`npm run release:check` → `tests 377; pass 376; fail 0; skipped 1; duration_ms 2783.2196`，build derive/client/host=`29.34/227.54/206.50 kB`，`verify-dist: OK 392 checks`，exit 0；lib 最终 mtime `2026-09-05 15:21:29`。唯一 skip 为未设置 AMPHOREUS_REAL_SUITE 的既有环境合同，另有上述真实模型验收。
+- 最终打包：`npm pack --dry-run --json --ignore-scripts` → 420297 bytes / unpacked 1670249 bytes / 73 files / raster images 0，exit 0。运行 PID=81588、HTTP=200、stderr=0。
+- 精确清理：两轮 final 会议 26 个 Session、参考路径对照 4 个 Session、baseline Anaxa 与 blank Cipher 各 1，共 32 个已官方 archive，binding absent=32/32，画布隐藏=32/32，权威 zstd 日志保留=32/32；最终 Cipher 展示会话保留。外部技能、主项目文件与用户既有 Workspace 未替换；初始化生成的有效 seat Workspace 保留以支持直聊。npm 0.2.0 未重发，发布 tag 不动。

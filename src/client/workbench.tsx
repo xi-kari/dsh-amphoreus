@@ -11,6 +11,7 @@ import type { AmphoreusState, MagazineModeMessage, ThemeTokensMessage } from '..
 import { heroVisualOf } from '../shared/heroes.ts'
 import { promptWithDeferredActivation } from './activation-bridge.ts'
 import { buildStateMessage } from './bridge-state.ts'
+import { conferenceTargets, startConference, type ConferenceDeps, type ConferenceRun } from './conference.ts'
 import { feedFromChat, HARD_TEXT_CAP, liveTextOf } from './conversation-feed.ts'
 import type { EnterSeatQueue } from './enter-seat-queue.ts'
 import { acceptHandoff, dismissHandoff, dispatchTask, type DispatchInput, type HandoffDeps } from './handoff.ts'
@@ -34,12 +35,18 @@ export interface SessionListSnapshot {
     readonly title?: string
     readonly displayTitle: string
     readonly cwd?: string
+    readonly blank?: boolean
+    readonly running?: boolean
+    readonly completed?: boolean
+    readonly projectionValues?: {
+      readonly turnOutline?: readonly { readonly response?: string }[]
+    }
   } | undefined>
   readonly current: string | undefined
 }
 
 export interface SessionsFace {
-  create(opts: { cwd?: string; sessionId?: string }): Promise<string>
+  create(opts: { workspaceId?: string; cwd?: string; sessionId?: string }): Promise<string>
   fork(opts: { sessionId: string; atSeq?: number; increaseTitle?: boolean }): Promise<string>
   open(id: string): void
   binding(id: string): { session: SessionFeedFace } | undefined
@@ -62,6 +69,7 @@ export interface WorkbenchViewInjected {
   readonly workspaces: ObservableSnapshot<WorkspacesPayload>
   readonly conversationFeed: (sessionId: string) => ObservableSnapshot<ChatSnapshot | undefined> | undefined
   readonly sessionFace: (sessionId: string) => SessionFeedFace | undefined
+  readonly followSession: NonNullable<ConferenceDeps['followSession']>
   readonly model: AmphoreusClientModel
   readonly theme: ThemeBridge
   readonly setSeat: (heroId: string | null) => void
@@ -70,6 +78,11 @@ export interface WorkbenchViewInjected {
   readonly seatDeps: HandoffDeps
   readonly enterSeatQueue: EnterSeatQueue
   readonly openPortal?: () => void
+  readonly directChatRequests?: {
+    getSnapshot(): string | undefined
+    subscribe(listener: () => void): () => void
+    clear(sessionId: string): void
+  }
 }
 
 export type WorkbenchViewProps = PropsRuntime<'conversation.view'> & PropsLocale<'amphoreus'> & WorkbenchViewInjected
@@ -152,6 +165,7 @@ export interface WorkbenchBridgeDeps {
   readonly setSeat: (heroId: string | null) => void
   readonly conversationFeed?: (sessionId: string) => ObservableSnapshot<ChatSnapshot | undefined> | undefined
   readonly sessionFace?: (sessionId: string) => SessionFeedFace | undefined
+  readonly followSession?: ConferenceDeps['followSession']
   readonly theme?: ThemeBridge
   readonly magazine?: MagazineBridge
   readonly openChat?: (focus: string) => void
@@ -188,6 +202,7 @@ export function useWorkbenchBridge(
     setSeat,
     conversationFeed,
     sessionFace,
+    followSession,
     theme,
     magazine,
     openChat,
@@ -421,6 +436,7 @@ export function useWorkbenchBridge(
   }, [conversationFeed, reply, sessionFace, sessions])
 
   useEffect(() => {
+    const conferences = new Set<ConferenceRun>()
     const fail = (requestId: string | undefined, error: unknown): void => {
       reply({ type: 'amphoreus:bridge-error', requestId, message: error instanceof Error ? error.message : String(error) })
     }
@@ -479,6 +495,43 @@ export function useWorkbenchBridge(
               if (insertInputRef.current === undefined) throw new Error('当前视图没有输入框')
               insertInputRef.current(data.text)
               return
+            case 'amphoreus:broadcast': {
+              if (typeof data.text !== 'string' || data.text.trim() === '') throw new Error('会议问题为空')
+              if (conversationFeed === undefined || sessionFace === undefined || followSession === undefined) throw new Error('会议回复通道不可用')
+              await model.refresh()
+              const snapshot = model.getSnapshot()
+              if (snapshot.phase !== 'ready' || snapshot.state === undefined || snapshot.error !== undefined) {
+                throw new Error(snapshot.error ?? '席位状态尚未就绪')
+              }
+              // Targets are derived again inside the trusted parent frame. The
+              // iframe cannot add a skill, revive an undeployed seat, or choose
+              // a hidden payload field to widen this broadcast.
+              const targets = conferenceTargets(snapshot.state)
+              const run = startConference({
+                concurrency: 3,
+                textLimit: snapshot.state.effectiveConfig.workbench.cardTextLimit,
+                dispatch: (target, text) => dispatchTask(seatDeps, {
+                  skillName: target.skillName,
+                  text,
+                  from: 'panel',
+                  open: false,
+                }),
+                conversationFeed,
+                sessionFace,
+                followSession,
+                sessionList: sessions.list,
+                emit: progress => reply({ type: 'amphoreus:conference-progress', ...progress }),
+              }, { text: data.text, targets })
+              conferences.add(run)
+              void run.completed.finally(() => conferences.delete(run))
+              reply({
+                type: 'amphoreus:conference-started',
+                requestId: data.requestId,
+                conferenceId: run.conferenceId,
+                targets: run.targets,
+              })
+              return
+            }
             case 'amphoreus:dispatch': {
               if (typeof data.skillName !== 'string' || data.skillName.trim() === '') {
                 throw new Error('缺少派发席位')
@@ -627,8 +680,12 @@ export function useWorkbenchBridge(
       })()
     }
     window.addEventListener('message', onMessage)
-    return () => window.removeEventListener('message', onMessage)
-  }, [conversationFeed, flushEnterSeat, frameRef, model, pushConfig, pushCurrent, pushState, pushWorkspaces, reply, seatDeps, sessionFace, sessions, setSeat, startSeatSession, summaryOf])
+    return () => {
+      window.removeEventListener('message', onMessage)
+      for (const conference of conferences) conference.cancel()
+      conferences.clear()
+    }
+  }, [conversationFeed, flushEnterSeat, followSession, frameRef, model, pushConfig, pushCurrent, pushState, pushWorkspaces, reply, seatDeps, sessionFace, sessions, setSeat, startSeatSession, summaryOf])
 
   useEffect(() => {
     let last: CurrentSessionIdentity | undefined
@@ -662,6 +719,7 @@ export function WorkbenchView({
   workspaces,
   conversationFeed,
   sessionFace,
+  followSession,
   model,
   theme,
   setSeat,
@@ -670,6 +728,7 @@ export function WorkbenchView({
   seatDeps,
   enterSeatQueue,
   openPortal,
+  directChatRequests,
   useInput,
   inputActions,
   openView,
@@ -686,6 +745,20 @@ export function WorkbenchView({
       if (sessions.list.getSnapshot().current === sessionId) rememberTab(localStorage, 'chat')
     }
   }, [sessionId, sessions])
+
+  useEffect(() => {
+    if (directChatRequests === undefined) return
+    const openRequestedChat = (): void => {
+      if (directChatRequests.getSnapshot() !== sessionId) return
+      rememberTab(localStorage, 'chat')
+      openView('chat', 'amphoreus:direct-chat')
+      completeViewRequest()
+      directChatRequests.clear(sessionId)
+    }
+    const stop = directChatRequests.subscribe(openRequestedChat)
+    openRequestedChat()
+    return stop
+  }, [completeViewRequest, directChatRequests, openView, sessionId])
 
   const openChat = useCallback((focus: string): void => {
     rememberTab(localStorage, 'chat')
@@ -713,6 +786,7 @@ export function WorkbenchView({
     setSeat,
     conversationFeed,
     sessionFace,
+    followSession,
     theme,
     magazine,
     openChat,

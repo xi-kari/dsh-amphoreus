@@ -13,10 +13,11 @@ import {
 } from './seat-model.ts'
 import type { AmphoreusClientModel } from './state.ts'
 import css from './seat-browser.module.css'
+import { withoutSeatWorkspaces } from './workspace-routing.ts'
 
 export interface SeatBrowserInjected {
   readonly model: AmphoreusClientModel
-  readonly openSession: (sessionId: string) => void
+  readonly openSession: (sessionId: string, skillName?: string) => Promise<void>
   readonly startSeatSession: (skillName: string) => Promise<string>
   readonly startDirectorySession: (workspaceId: string) => void
   readonly createDirectoryWorkspace: (fallbackPrompt: () => string | null) => Promise<void>
@@ -59,6 +60,8 @@ export function SeatBrowser({
   const deployed = views.filter(view => !view.hidden && view.deployed)
   const undeployed = views.filter(view => !view.hidden && !view.deployed)
   const suiteMissing = snap.state?.suite === undefined || snap.state.suite.level === 'L3'
+  const seatDirectories = (snap.state?.seatDirs ?? []).map(item => item.dir)
+  const directoryWorkspaces = withoutSeatWorkspaces(workspaces.items, seatDirectories)
 
   const run = (operation: () => Promise<unknown>): void => {
     setError(undefined)
@@ -80,7 +83,7 @@ export function SeatBrowser({
     toggleSeat(view.skillName)
     const latest = view.sessionIds[0]
     if (latest === undefined) run(() => startSeatSession(view.skillName))
-    else openSession(latest)
+    else run(() => openSession(latest, view.skillName))
   }
 
   const boundMark = (sessionId: string) => {
@@ -185,7 +188,7 @@ export function SeatBrowser({
                           className={css.sessionRow}
                           type="button"
                           data-active={list.current === sessionId || undefined}
-                          onClick={() => openSession(sessionId)}
+                          onClick={() => run(() => openSession(sessionId, view.skillName))}
                         >
                           <span className={css.sessionName}>{list.byId[sessionId as SessionId]?.displayTitle ?? sessionId}</span>
                         </button>
@@ -227,7 +230,7 @@ export function SeatBrowser({
         </header>
         {directoriesExpanded && (
           <div className={css.directoryList}>
-            {workspaces.items.map(workspace => (
+            {directoryWorkspaces.map(workspace => (
               <div key={workspace.workspaceId} className={css.dir}>
                 <button
                   className={css.dirHead}
@@ -247,7 +250,7 @@ export function SeatBrowser({
                           className={css.sessionRow}
                           type="button"
                           data-active={list.current === sessionId || undefined}
-                          onClick={() => openSession(sessionId)}
+                          onClick={() => run(() => openSession(sessionId))}
                         >
                           <span className={css.sessionName}>{session.displayTitle}</span>
                           {boundMark(sessionId)}

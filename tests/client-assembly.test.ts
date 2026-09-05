@@ -17,6 +17,8 @@ test('TC11 assembles exact dependencies, singleton controllers, and slot order',
     'uiConversation',
     'workspaces',
     'uiWorkspace',
+    'remote',
+    'remote.session',
   ])
 
   const slots = [...client.matchAll(/ctx\.slots\.inject\('([^']+)'/gu)].map(match => match[1])

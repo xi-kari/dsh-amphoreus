@@ -13,9 +13,20 @@
 
 `dsh-amphoreus@0.2.0` 的 A–F 建设与发布验收已经完成；npm 官方 registry 的 `alpha` 与首发自动生成的 `latest` 均指向 `0.2.0`，GitHub 公共仓库、`v0.2.0` 与 Release 均已上线；发布／tag SHA 固定为 `fc754a6ca02f96d4bbd47fe655196c04d611431e`，后续截图与发布流程维护提交为 `15af35baa7fad82a494c45d153b92802fcec7ab1`。本机 profile `web` 仍以 `link:D:/DeepSeek Harness/deepseek插件开发/dsh-amphoreus` 运行，用户可显式安装 `dsh-amphoreus@alpha` 或 `dsh-amphoreus@0.2.0`。
 
-当前已实现运行时技能套件解析与无损更新、13 席工作区与自动注入、全局／逐席视觉、外置素材派生、iframe 工作台、全体会议派发、移交坞／移交边／接通尾页、站位轨与台账；`docs/screenshots/` 已有四张本地实机截图供 GitHub 与 npm README 共用；维护提交 `15af35baa7fad82a494c45d153b92802fcec7ab1` 推送后，两处页面四图均实测完整加载。最终本机构建时间：`lib/index.js`、`lib/client.js`、`lib/derive.js` 均为 2026-09-05 12:45:19。
+当前已实现运行时技能套件解析与无损更新、13 席工作区与首请求注入、全局／逐席视觉、外置素材派生、iframe 工作台、单席派发、全席征询、移交坞／移交边／接通尾页、站位轨与台账；`docs/screenshots/` 已有四张本地实机截图供 GitHub 与 npm README 共用；维护提交 `15af35baa7fad82a494c45d153b92802fcec7ab1` 推送后，两处页面四图均实测完整加载。最终本机构建时间：`lib/index.js`、`lib/client.js`、`lib/derive.js` 均为 2026-09-05 15:21:29。
 
 遗留：B 章的 30+ 轮字面场景以同 route/schema 的 70-position 事务作容量验收；CSS 原色 fallback 按 TD12 的条件裁决保留；稳定 URL 在强制重派生时的 cache-bust 仍待后续版本化。首发 npm tarball 内的 README 已冻结任务书原 `allowBuilds` 短 key，安装 GitHub SHA 时应以当前 GitHub README 的完整 codeload key 为准；`v0.2.0` 的旧 release workflow 在本机发布路径下因无 `NPM_TOKEN` 留有一次 ENEEDAUTH 历史失败，main 已由维护提交 `15af35baa7fad82a494c45d153b92802fcec7ab1` 改为本机预发布／CI token 互斥且幂等的后续流程。其余代码与发布动作遗留为无。
+
+### 0.2 发布后实机修复（仓库 main，尚未进入 npm `0.2.0`）
+
+- 席位直聊已等待三个首帧与真实 Workspace membership，明确切回对话 Tab；角色 system prompt 替换两句通用身份并附技能参考文件的绝对路径；首卡只有进入会话日志后才记 done，取消、拒绝与恢复均可重试。最终验收为 `377 tests / 376 pass / 0 fail / 1 skip`、`verify-dist 392`；真实会议 `13/13`，参考路径问题三席定向复测全部正确读取两份文件，普通会话对照保留原生身份。
+
+
+- 用户实机发现三项关联问题：原“全体会议”只有单席派发；席位空白会话没有 Workspace ownership，打开后落入“选择工作区”的禁用输入态；异步 `session-start` 技能卡会错过首个请求，形成先通用助手、后角色的双回复。
+- 修复后，席位新会话优先加入当前普通 DSH Workspace；历史同 cwd 的空席位会话在打开前幂等注册原目录并 adoption。实机从 Workspace `1` 新建赛飞儿席，主区保持 `1`、输入框可用，不再跳主页；内部席位 Workspace 不在“我的目录”重复展示。
+- 技能卡只在 awaited `agent/pre-step` 提交。修复前统一 13 席真调用为 `12/13` 通用首答、`12/13` 双可见回复、`0/13` typed 与 skill 同首 step；修复后为 `13/13` 同首 step、`13/13` skill 先于首个可见回复、generic=`0/13`、双回复=`0/13`、唯一角色回复=`13/13`。
+- 新“全席征询”从可信运行态取得 13 个唯一已部署 skill，以最多 3 席并行建立独立会话，并用官方 `remote.session.follow` 读取非当前会话的完整回复与真实 `turn/end` 状态。最终实机同一句话得到 `13/13 已回复 · 本轮结束`；13 席同文、角色身份、唯一 skill、无通用首答与无双答均为 `13/13`。严格单行只有 `4/13`，这是外部 persona／输出格式服从问题，不是调度或重复回复。
+- 会议汇总是页面内存态；离开页面会取消未派出的席位，已被 DSH 接受的独立 turn 继续按宿主语义收口。已发布 npm `0.2.0` 保持原 tarball；这些修复随后续包版本发布。
 
 [已失效 2026-09-05] 包 `dsh-amphoreus` 已有可装可启的双半侧骨架：已 `link:` 装进 profile `web`，`dsh web` 启动后宿主行挂载、浏览器 bundle 进入启动图并被 `/plugins` 路由 200 下发、stderr 为空 **[实测]**。业务模块（技能桥接、席位、注入、观察、Web 通道、首帧、主题壁纸、工作台、设置区）**一个都还没写**，只有类型契约 `src/host/suite/types.ts`。服务当前仍在运行（PID 见 `.runtime/deepseek-harness.pid`），改完 host 代码需 Stop/Start，改完 client 需重建 `lib/client.js` 并刷新页面（无 `pnpm run dev:web` 时 HMR 不会自动生效）。
 
@@ -155,7 +166,7 @@
 - npm `11.11.0` 实测会让裸 `npm publish` 选择 `latest`，没有按 `publishConfig.tag=alpha` 执行；真实发布用显式 `--tag alpha --access public --registry https://registry.npmjs.org`，以后也必须如此。
 - pnpm `11.7.0` 的 GitHub SHA 安装要求 `allowBuilds` key 为 `dsh-amphoreus@https://codeload.github.com/xi-kari/dsh-amphoreus/tar.gz/<40位SHA>`；任务书与首发 npm README 的 `dsh-amphoreus: true` 实测不生效，当前 GitHub README 已纠正。
 - 仓库没有 `NPM_TOKEN`，故 `0.2.0` 走本机发布。推 tag 后旧 release workflow 的质量门与版本门均通过，但无条件 publish 因空 token 得 ENEEDAUTH；main 的新流程先查 version、`gitHead` 与 `alpha`，当前 registry 三项均与发布提交匹配，因此同一发布输入会选择 skip；只有 E404 且存在 token 时才发布，其他异常 fail closed，避免双发。
-- npm 页面会把 README 的相对截图地址解析为 `raw.githubusercontent.com/xi-kari/dsh-amphoreus/HEAD/docs/screenshots/*.png`；四张 PNG 已随 main 的 `15af35b` 入库，不进 `package.json.files`。2026-09-05 推送后复核 GitHub README 与 npm package 页面四图均 `complete=true`，natural size 为门户 `1600×1400`、其余三图各 `1600×1200`；维护 CI run `33945149159` 的 Ubuntu／Windows 均 success。npm `0.2.0` 页面正文仍显示 tarball 冻结的旧「截图待补」句，但四个图片元素均已恢复；设置截图公开前把三处本机路径替换为占位值，全部截图不含启动令牌。
+- npm 页面会把 README 的相对截图地址解析为 `raw.githubusercontent.com/xi-kari/dsh-amphoreus/HEAD/docs/screenshots/*.png`；四张 PNG 已随 main 的 `15af35b` 入库，不进 `package.json.files`。2026-09-05 推送后复核 GitHub README 与 npm package 页面四图均 `complete=true`，natural size 为门户 `1600×1400`、其余三图各 `1600×1200`；维护 CI run `33945149159` 的 Ubuntu／Windows 均 success。npm `0.2.0` 页面正文仍显示 tarball 冻结的旧「截图待补」句，但四个图片元素均已恢复；设置截图公开前把三处本机路径替换为占位值，全部截图不含启动令牌。发布后全席征询、首请求角色注入与席内直聊修复只属于后续 main，尚未进入不可变 npm `0.2.0`。
 
 ### 6.1 E 章运行与人工验收（2026-09-05）
 
@@ -282,6 +293,9 @@ Vendoring 版 `/amphoreus/workbench/` 返回 200；iframe 在 `conversation.view
 - 新事实 [实测]：amphdemo 以 npm `0.2.0` 安装后 bundles=`base→web-app→dsh-amphoreus`，六项 peer 全走 fallback；dump=`526/527/533`，3090 auth=`303`、boot=`2`、state=`L0 13 true`、bundle=`window.__ModuleLoader__.load({`、mark=`200`、stderr=`0`。结束后 profile 依赖、workspace 文件、3090 与主 web 两份 hash 全恢复，3080 保持运行。
 - 新事实 [实测]：amphgit 用 `github:xi-kari/dsh-amphoreus#fc754a6…` 首次按预期失败；name-only allow key 复试仍失败，复制 pnpm 输出的完整 `dsh-amphoreus@https://codeload.github.com/.../<SHA>` 后 prepare 成功生成 `lib/client.js`，dump 命中 `id: amphoreus`，pnpm=`11.7.0`。结束后插件与 allow key 均移除、主 web hash 不变；GitHub Release `dsh-amphoreus 0.2.0` 已发布。
 - 新事实 [实测]：用户指出 README 四图均为缺失占位后，主服务按 Stop/Start 重跑为 PID `47328`、HTTP `200`、stderr=`0`；Playwright 实机生成 `portal/seat-anaxa/workbench/settings.png` 四图。修复前 npm DOM 四图均指 GitHub `HEAD` raw 且 naturalWidth=`0`；维护提交 `15af35b` 推入 main 后，四个 GitHub raw URL 均 HTTP `200`，GitHub README 与 npm package 页面四图都 `complete=true`，natural size=`1600×1400,1600×1200,1600×1200,1600×1200`，维护 CI run `33945149159` 双系统 success；无需重发不可变 npm tarball。
+- 发布后实机复核 [修复]：13 席统一身份测试在旧注入路径上 `12/13` 先通用助手、`12/13` 双回复，权威日志证明 skill 晚于 typed `106–220ms`；改为 pre-step 唯一提交后，13 席均为 `typed@7→skill@10→单个角色回复`，generic=`0`、double=`0`，墙钟 `360.068s→125.443s`，output tokens `39,406→10,827`。
+- 发布后实机复核 [修复]：席内新建先取得当前普通 Workspace 的 `workspaceId`；浏览器在 Workspace `1` 新建赛飞儿席后仍显示 `1` 且 composer 可输入。旧同 cwd orphan 在打开前 adoption；内部 seat workspace 从“我的目录”过滤。
+- 发布后实机复核 [新增]：全席征询以 3 路并发推进 13 席，曾真实发现两层终态聚合缺陷（非当前 conversation feed 不水合；`completed` 先于 response 投影），最终改用全局 `turnOutline` 并等待非空 response。浏览器最终显示 `13/13 已回复 · 本轮结束`；13 个 session／skill／同文／角色身份均唯一正确，generic 与 double 均为 `0`。
 - 偏离设计：TF2 将宿主包归入 peerDependencies；TF9 的独立 npm-ci 又发现三个仅开发期 runtime peer 缺失，只将 `dsh-invariants/dsh-scope/dsh-storage` 补入 devDependencies。项目级 `.npmrc` 使用 `legacy-peer-deps=true`，六项 overrides 防止 rc 漂移。TF9 用完整 no-hardlinks clone 代替不完整复制回退；默认复用主 DSH_HOME，只验证 profile 依赖、bundle、端口与进程隔离，storage/session 仍属同一 home。TF10 保留陪聊免逐轮回执并以工作场另证 receipt；稳定工作台 HTML 壳返回 200/boot disabled，权威 index 关闭时返回 503。TF12 因 npm `11.11.0` 不执行 `publishConfig.tag` 而显式传 `--tag alpha`；GitHub 安装按 pnpm 实际完整 codeload key 取代任务书短 key。无 secret 的本机发布后 tag 仍触发旧 workflow，唯一 publish 步 ENEEDAUTH；包与 dist-tag 已由 registry 独立证明，main 流程已修为两路径互斥。
 - 遗留：首发 npm tarball 内 README 的 GitHub `allowBuilds` 短 key 已随不可变 `0.2.0` 冻结，当前 GitHub README 已改为实测完整 key；`v0.2.0` 的旧 release run `33942640293` 保留 ENEEDAUTH 历史结果，后续 tag 使用 main 的幂等路径选择。除此之外，TF12 发布动作无遗留。
 - `amphoreus:*` 消息清单以 `grep -o "'amphoreus:[a-z-]*'" workbench/app.js src/client/workbench.tsx | sort -u` 实测为准，M1 核对与数字见 §7。

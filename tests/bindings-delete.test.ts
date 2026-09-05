@@ -195,3 +195,32 @@ test('DELETE uses the table result directly and leaves existing binding contract
   assert.match(source, /boundBy: z\.enum\(\['seat-new', 'seat-enter', 'handoff', 'handoff-fork', 'fork-inherit', 'manual', 'dispatch'\]\)/)
   assert.doesNotMatch(source, /WorkbenchThread|SeatResolver/)
 })
+
+test('repeating a binding preserves accepted injection while a changed seat face starts a new binding', async () => {
+  const { bindings, server, origin } = await fixture()
+  const path = `${origin}/amphoreus/api/bindings/${SESSION_A}`
+  const put = (face?: string) => fetch(path, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json', 'x-amphoreus-nonce': NONCE },
+    body: JSON.stringify({ skill: SKILL, boundBy: 'seat-enter', ...(face === undefined ? {} : { face }) }),
+  })
+  try {
+    const original: BindingRecord = { ...binding(SESSION_A), injection: { state: 'done', at: 2 } }
+    bindings.values.set(SESSION_A, original)
+    const repeated = await put()
+    assert.equal(repeated.status, 200)
+    const same = (await repeated.json() as { binding: BindingRecord }).binding
+    assert.equal(same.boundAt, 1)
+    assert.deepEqual(same.injection, original.injection)
+
+    const changed = await put('dialogue')
+    assert.equal(changed.status, 200)
+    const next = (await changed.json() as { binding: BindingRecord }).binding
+    assert.ok(next.boundAt > original.boundAt)
+    assert.equal(next.face, 'dialogue')
+    assert.deepEqual(next.injection, { state: 'pending' })
+  } finally {
+    server.close()
+    await once(server, 'close')
+  }
+})

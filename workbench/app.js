@@ -85,7 +85,7 @@ const VIEWPORT_MARGIN = 1400
 const state = {
   index: new Map(), indexRevision: 0, indexRequest: 0, eventSource: null, persistenceHydrated: false, bootstrapped: false, mapOpenPending: false, workspace: null, activeId: null, selectedCardId: null, mode: BOOT_MODE === 'portal' ? 'portal' : 'canvas', zoom: 1, currentDsh: null, currentSessionId: null, tabEntered: false, tabEntryKey: null, sidebarCollapsed: false,
   // Seat portal: hero seats from the host (chronicle art, palette, folder).
-  seats: [], sessionsById: new Map(), assetsConfigured: false, seatId: BOOT_MODE === 'portal' ? null : restoredSeatId, cardFlightPending: false, cardTextLimit: WORKBENCH_CONFIG.cardTextLimit, magazineMode: 'light', amph: null, dispatch: { text: '', suggestions: [], pending: false, lastError: '' }, dispatchLaneCollapsed: false, ledgerOpen: false,
+  seats: [], sessionsById: new Map(), assetsConfigured: false, seatId: BOOT_MODE === 'portal' ? null : restoredSeatId, cardFlightPending: false, cardTextLimit: WORKBENCH_CONFIG.cardTextLimit, magazineMode: 'light', amph: null, dispatch: { text: '', suggestions: [], pending: false, lastError: '' }, conference: { id: null, question: '', starting: false, seats: [] }, dispatchLaneCollapsed: false, ledgerOpen: false,
   unprojectable: new Map(),
   historyBySession: new Map(), historyRevisionBySession: new Map(), historyCompleteBySession: new Map(), pendingReplies: new Map(), pendingRpc: new Map(), liveReplies: new Map(),
   draft: null, error: '', branchAnchors: new Map(), cardPositions: new Map(), legacyPositionKeys: new Set(), collapsedCardIds: new Set(), quickPhrases: [...DEFAULT_QUICK_PHRASES], quickPhraseEditorOpen: false,
@@ -1663,7 +1663,7 @@ function firstStationDeployed(pipeline) {
 
 function seatChip(candidate, action) {
   const deployed = deployedSkill(candidate.skill)
-  const disabled = !deployed || state.dispatch.pending
+  const disabled = !deployed || state.dispatch.pending || state.conference.starting
   const face = typeof candidate.face === 'string' && candidate.face !== ''
     ? ` data-face="${escapeHtml(candidate.face)}"`
     : ''
@@ -1685,18 +1685,61 @@ function dispatchSuggestHtml() {
   return `${hints}<details class="dispatch-all"><summary>全部席位</summary>${allDeployedSeats().map(candidate => seatChip(candidate, 'dispatch-pick')).join('')}</details>`
 }
 
+function conferenceActive() {
+  return state.conference.starting || state.conference.seats.some(seat => (
+    seat.phase === 'queued' || seat.phase === 'dispatching' || seat.phase === 'running'
+  ))
+}
+
+function conferenceStatusLabel(phase) {
+  if (phase === 'queued') return '待召集'
+  if (phase === 'dispatching') return '正在建席'
+  if (phase === 'running') return '正在回复'
+  if (phase === 'done') return '已回复'
+  return '失败'
+}
+
+function renderConferenceResults() {
+  const conference = state.conference
+  if (conference.id === null && !conference.starting) return ''
+  const done = conference.seats.filter(seat => seat.phase === 'done').length
+  const failed = conference.seats.filter(seat => seat.phase === 'failed').length
+  const total = conference.seats.length
+  const cards = conference.seats.map(seat => {
+    const body = seat.phase === 'failed'
+      ? `<p class="conference-error">${escapeHtml(seat.error || '该席未完成')}</p>`
+      : typeof seat.text === 'string' && seat.text !== ''
+        ? `<div class="conference-reply">${renderMarkdown(seat.text)}</div>`
+        : `<p class="conference-wait">${seat.phase === 'queued' ? '等待调度…' : seat.phase === 'dispatching' ? '正在创建专属会话…' : '等待角色作答…'}</p>`
+    const open = (seat.phase === 'done' || seat.phase === 'failed') && typeof seat.sessionId === 'string' && seat.sessionId !== ''
+      ? `<button type="button" data-action="open-conference-session" data-session="${escapeHtml(seat.sessionId)}">打开会话</button>`
+      : ''
+    return `<article class="conference-card phase-${escapeHtml(seat.phase)}" data-conference-skill="${escapeHtml(seat.skillName)}"><header>${stickerOrInitial(seat.skillName, 'chip')}<strong>${escapeHtml(seat.displayName)}</strong><span>${conferenceStatusLabel(seat.phase)}</span>${open}</header>${body}</article>`
+  }).join('')
+  const summary = conference.starting
+    ? '正在取得已部署席位…'
+    : conferenceActive()
+      ? `${done}/${total} 已回复${failed > 0 ? ` · ${failed} 失败` : ''}`
+      : `${done}/${total} 已回复${failed > 0 ? ` · ${failed} 失败` : ''} · 本轮结束`
+  return `<section class="conference-results" aria-label="全席征询结果"><header class="conference-head"><div><strong>全席征询</strong><span>${escapeHtml(conference.question)}</span></div><small>${escapeHtml(summary)}</small></header><div class="conference-grid">${cards}</div></section>`
+}
+
 function renderDispatchPanel() {
   if (state.seatId !== 'all' || state.mode !== 'canvas') return ''
   const pipelines = state.amph?.effectiveConfig?.pipelinesEnabled === true
     ? state.amph?.pipelines ?? []
     : []
+  const deployedCount = allDeployedSeats().length
+  const busy = state.dispatch.pending || state.conference.starting
   return `<section class="dispatch-panel" aria-label="派发">
     <form class="dispatch-form" data-dispatch-form>
       <label class="dispatch-kicker">派发</label>
-      <textarea maxlength="4000" rows="2" placeholder="一句话说明任务，选择承办席后发出…" data-dispatch-input${state.dispatch.pending ? ' disabled' : ''}>${escapeHtml(state.dispatch.text)}</textarea>
+      <textarea maxlength="4000" rows="2" placeholder="一句话说明任务，可派给一席，也可征询全席…" data-dispatch-input${busy ? ' disabled' : ''}>${escapeHtml(state.dispatch.text)}</textarea>
+      <div class="conference-action"><button type="button" data-action="conference-start" ${deployedCount === 0 || state.dispatch.pending || conferenceActive() ? 'disabled' : ''}>${state.conference.starting ? '正在召集…' : `全席征询 · ${deployedCount} 席`}</button><small>同一句话分别发送给每个已部署席位，最多 3 席并行</small></div>
     </form>
     <div class="dispatch-suggest">${dispatchSuggestHtml()}</div>
-    <div class="dispatch-lines">${pipelines.map(pipeline => `<div class="dispatch-line"><strong>${escapeHtml(pipeline.name)}</strong>${pipeline.stations.map(stationBadge).join('<i class="arrow" aria-hidden="true">→</i>')}<button type="button" class="dispatch-line-go" data-action="dispatch-pipeline" data-pipeline="${escapeHtml(pipeline.name)}" ${firstStationDeployed(pipeline) && !state.dispatch.pending ? '' : 'disabled title="第一站未部署"'}>按线派发</button></div>`).join('')}</div>
+    <div class="dispatch-lines">${pipelines.map(pipeline => `<div class="dispatch-line"><strong>${escapeHtml(pipeline.name)}</strong>${pipeline.stations.map(stationBadge).join('<i class="arrow" aria-hidden="true">→</i>')}<button type="button" class="dispatch-line-go" data-action="dispatch-pipeline" data-pipeline="${escapeHtml(pipeline.name)}" ${firstStationDeployed(pipeline) && !busy ? '' : 'disabled title="第一站未部署或派发正忙"'}>按线派发</button></div>`).join('')}</div>
+    ${renderConferenceResults()}
   </section>`
 }
 
@@ -2579,6 +2622,28 @@ app.addEventListener('click', async event => {
     if (button.dataset.action === 'close-portal') { post('amphoreus:close'); return }
     if (button.dataset.action === 'open-portal') { post('amphoreus:open-portal'); return }
     if (button.dataset.action === 'show-portal') { showPortal(); return }
+    if (button.dataset.action === 'conference-start') {
+      const text = state.dispatch.text.trim()
+      if (text === '') return setError('先写一句会议问题')
+      if (conferenceActive()) return setError('上一轮全席征询仍在进行')
+      state.conference = { id: null, question: text, starting: true, seats: [] }
+      state.error = ''
+      render()
+      try {
+        await dshRpc('amphoreus:broadcast', { text })
+        state.dispatch = { text: '', suggestions: [], pending: false, lastError: '' }
+        state.conference.starting = false
+        render()
+      } catch (error) {
+        state.conference.starting = false
+        throw error
+      }
+      return
+    }
+    if (button.dataset.action === 'open-conference-session' && typeof button.dataset.session === 'string') {
+      await openDshSession(button.dataset.session)
+      return
+    }
     if (button.dataset.action === 'dispatch-pick') {
       const text = state.dispatch.text.trim()
       const skillName = button.dataset.skill
@@ -2832,6 +2897,45 @@ app.addEventListener('submit', event => {
   void sendMessage(thread, text).catch(setError)
 })
 
+const CONFERENCE_PHASES = new Set(['queued', 'dispatching', 'running', 'done', 'failed'])
+
+function applyConferenceStarted(data) {
+  if (typeof data.conferenceId !== 'string' || !Array.isArray(data.targets)) return false
+  const seats = data.targets.flatMap(target => {
+    if (typeof target?.skillName !== 'string' || typeof target?.displayName !== 'string') return []
+    return [{
+      skillName: target.skillName,
+      displayName: target.displayName,
+      phase: 'queued',
+      sessionId: null,
+      text: '',
+      error: '',
+    }]
+  })
+  state.conference = {
+    id: data.conferenceId,
+    question: state.conference.question,
+    starting: false,
+    seats,
+  }
+  scheduleViewRefresh()
+  return true
+}
+
+function applyConferenceProgress(data) {
+  if (typeof data.conferenceId !== 'string' || data.conferenceId !== state.conference.id) return false
+  if (typeof data.skillName !== 'string' || !CONFERENCE_PHASES.has(data.phase)) return false
+  const seat = state.conference.seats.find(candidate => candidate.skillName === data.skillName)
+  if (seat === undefined) return false
+  seat.phase = data.phase
+  if (typeof data.displayName === 'string' && data.displayName !== '') seat.displayName = data.displayName
+  if (typeof data.sessionId === 'string' && data.sessionId !== '') seat.sessionId = data.sessionId
+  if (typeof data.text === 'string') seat.text = data.text
+  if (typeof data.error === 'string') seat.error = data.error
+  scheduleViewRefresh()
+  return true
+}
+
 function completeMapOpen() {
   if (state.mode === 'thread') state.mode = 'canvas'
   render()
@@ -2896,6 +3000,8 @@ window.addEventListener('message', event => {
   if (data.type === 'amphoreus:workspaces') {
     applyWorkspaces(data)
   }
+  if (data.type === 'amphoreus:conference-started') applyConferenceStarted(data)
+  if (data.type === 'amphoreus:conference-progress') applyConferenceProgress(data)
   if (data.type === 'amphoreus:current-session') {
     const previousId = state.currentDsh?.id
     state.currentDsh = data.session
@@ -2978,7 +3084,7 @@ window.addEventListener('message', event => {
       }
     }
   }
-  if (data.type === 'amphoreus:forked-session' || data.type === 'amphoreus:created-session' || data.type === 'amphoreus:message-sent' || data.type === 'amphoreus:dispatched' || data.type === 'amphoreus:handoff-accepted' || data.type === 'amphoreus:handoff-dismissed') settleRpc(data.requestId, data.session ?? data)
+  if (data.type === 'amphoreus:forked-session' || data.type === 'amphoreus:created-session' || data.type === 'amphoreus:message-sent' || data.type === 'amphoreus:dispatched' || data.type === 'amphoreus:conference-started' || data.type === 'amphoreus:handoff-accepted' || data.type === 'amphoreus:handoff-dismissed') settleRpc(data.requestId, data.session ?? data)
   if (data.type === 'amphoreus:bridge-error') { settleRpc(data.requestId, undefined, new Error(data.message)); if (data.requestId === undefined) setError(data.message) }
 })
 

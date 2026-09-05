@@ -250,17 +250,20 @@ Windows 用户需确认当前 shell 如何展开 `~`。更新有两种方式：
 
 显示名与职责在运行时来自技能卡 description 与分派表；这里的常用名只帮助读者识别视觉席位。
 
-## 现状（0.2.0 发布态）
+## 现状（0.2.0 后续 main 修复态）
 
-完整工作流是：打开十三席门户 → 进席 → 在此席新建会话 → 首轮自动注入当前技能卡 → 识别回执 → 在总览画布派发或移交。未经明确点击，移交不会接受或切换，移交物也不会自动发送；技能卡缺席时不代演，界面显示套件提供的缺席标准行。
+> 本节的全席征询、首请求角色注入与席内直聊修复属于 `0.2.0` 发布后的仓库 `main` 状态；已发布的 npm `0.2.0` tarball 保持不变，下一个包版本才会携带这些修复。
+
+完整工作流是：打开十三席门户 → 进席 → 在当前 DSH 工作区中建立该席会话 → 首个模型请求内自动注入当前技能卡 → 识别回执 → 在总览画布单席派发、全席征询或移交。未经明确点击，移交不会接受或切换，移交物也不会自动发送；技能卡缺席时不代演，界面显示套件提供的缺席标准行。
 
 - 从 `skillRoots` 在运行时解析技能套件，并提供目录监听、内容指纹与显式降级。
-- 建立 13 席黄金裔席位表与席位目录；席内新会话在首轮一次性注入对应技能卡。
+- 建立 13 席黄金裔席位表与席位目录；席内新会话加入当前真实 DSH Workspace，并在首个 accepted pre-step 内一次性注入对应技能卡。
+- 席位会话使用对应角色身份，替换宿主默认的通用助手与 coding-agent 身份声明；工作目录、工具说明和运行上下文继续有效。普通会话保留宿主原提示词。
 - 提供 `/amphoreus/*` Web API，并以进程级 nonce 与 Host 门保护写请求。
 - 提供首帧壁纸层、全局昔涟主题层、品牌三槽和设置区。
 - 提供 13 席 light/dark token、共享 SVG 纹样、`light`／`full` 杂志版式，以及可重建的本地 WebP 派生缓存；视觉层设置可即时切换并显示后台派生进度。
 
-`M3` 总空间派发、移交与台账现已完成；当前可复核边界见下方 `## 已知限制`。
+`M3` 总空间派发、全席征询、移交与台账现已完成。发布后实机复核又修复了席位空白会话无 Workspace 而不能输入，以及技能卡迟到导致“先通用助手、后角色”双回复的两个问题；当前可复核边界见下方 `## 已知限制`。
 
 - 正文与会话列表不经宿主路由，宿主只保留 seq 索引（B 章）。
 
@@ -268,7 +271,8 @@ Windows 用户需确认当前 shell 如何展开 `~`。更新有两种方式：
 
 iframe 画布基于 dsh-synapse 的 MIT 实现改造，完整署名与改动边界见致谢和 NOTICE。
 
-- 全体会议 chip 进入总空间；派发面板按技能套件的词面匹配给出建议承办席，派发泳道展示已经创建的下游会话。
+- 全体会议 chip 进入总空间；单席派发按技能套件的词面匹配给出建议承办席，派发泳道展示已经创建的下游会话。
+- “全席征询”把同一句问题分别发给每个已部署席位，最多 3 席并行；会议页逐席读取官方会话日志，以完整回复和真实结束状态汇总排队、运行、完成与失败，不自动切换当前会话。
 - 移交坞只在存在待处理移交时出现；用户明确点击接受后才切换到下游，未点击时不接受、不切换，也不自动发送移交内容。
 - 会话头的站位轨来自运行时流水线，可从已部署站位继续派发；详情末尾的接通中卡展示当前待处理移交。
 - 侧栏台账跟随画布当前选中的线程，集中展示运行时解析出的记录，并提供席位记忆便签与“插入到输入框”操作。
@@ -276,17 +280,17 @@ iframe 画布基于 dsh-synapse 的 MIT 实现改造，完整署名与改动边�
 
 ### 数据
 
-`observations` 的键为 `${sessionId}:${seq}:${kind}`，使同一条助手消息产生的不同记录不会互相覆盖；其中 `dispatch` 表示显式派发记录，其 `seq` 固定为 `0`。记录通过 `/amphoreus/api/observations` 读取或创建，并通过 `/amphoreus/api/observations/:key` 更新；席位便签通过 `/amphoreus/api/memory/:skill` 读写。席位绑定、派发、移交和记忆均写入插件的 storage domain，不写自定义会话事件。
+`observations` 的键为 `${sessionId}:${seq}:${kind}`，使同一条助手消息产生的不同记录不会互相覆盖；其中 `dispatch` 表示显式派发记录，其 `seq` 固定为 `0`。记录通过 `/amphoreus/api/observations` 读取或创建，并通过 `/amphoreus/api/observations/:key` 更新；席位便签通过 `/amphoreus/api/memory/:skill` 读写。全席征询每席继续写一条普通 dispatch observation，本轮 13 席汇总状态仅存在当前浏览器页。席位绑定、派发、移交和记忆均写入插件的 storage domain，不写自定义会话事件。
 
 ### 消息
 
-iframe 发给宿主页的新消息包括 `amphoreus:dispatch`、`amphoreus:accept-handoff`、`amphoreus:dismiss-handoff`、`amphoreus:insert-input`；既有 `amphoreus:open-seat` 增加了可选的 `dispatchText`。宿主页回推 `amphoreus:state`、`amphoreus:enter-seat`、`amphoreus:dispatched`、`amphoreus:handoff-accepted`、`amphoreus:handoff-dismissed`，失败继续使用 `amphoreus:bridge-error`。
+iframe 发给宿主页的新消息包括 `amphoreus:dispatch`、`amphoreus:broadcast`、`amphoreus:accept-handoff`、`amphoreus:dismiss-handoff`、`amphoreus:insert-input`；既有 `amphoreus:open-seat` 增加了可选的 `dispatchText`。宿主页回推 `amphoreus:state`、`amphoreus:enter-seat`、`amphoreus:dispatched`、`amphoreus:conference-started`、`amphoreus:conference-progress`、`amphoreus:handoff-accepted`、`amphoreus:handoff-dismissed`，失败继续使用 `amphoreus:bridge-error`。
 
 ## 席位与目录
 
-黄金裔席位是会话的承办绑定维度，唯一事实来自会话 ID 到 skill name 的绑定；“我的目录”继续使用 DSH 官方工作区维度，表示会话所在目录，两者互不替代。
+黄金裔席位是会话的承办绑定维度，唯一事实来自会话 ID 到 skill name 的绑定；“我的目录”继续使用 DSH 官方工作区维度（Workspace），表示会话所在目录。新建席位会话优先加入当前会话所属的普通 Workspace；没有当前归属时，以该席的内部目录建立 Workspace。席位与目录仍是两个可独立查验的维度。
 
-在席内新建会话时，插件先预生成会话 ID 并写入席位绑定，再用该 ID 创建会话；创建或打开失败时回滚预绑定。由已有会话 fork 出的子会话继承父席。昔涟席代表全体会议与全局视觉层，进入时不切换逐席壁纸或主题 token。
+在席内新建会话时，插件先预生成会话 ID 并写入席位绑定，再以真实 `workspaceId` 创建会话，等待工作区关联可见后打开。创建失败时回滚预绑定；会话已创建后的同步或导航失败保留绑定，便于再次打开。历史上仅有 cwd 而没有 Workspace ownership 的空席位会话，在打开前按原席位目录幂等注册并 adoption。黄金裔侧栏入口直接打开“对话”页。由已有会话 fork 出的子会话继承父席。昔涟席代表全体会议与全局视觉层，进入时不切换逐席壁纸或主题 token。
 
 ## 开发
 
@@ -310,6 +314,7 @@ npm run assets:check -- "<assetsRoot>"
 4. “记住 Tab”在插件热重载或会话回到空白态时可能被误记为“对话”；下次进入工作台 Tab 后会自愈。
 5. 派生素材使用稳定 `.webp` URL 与一天私有缓存；强制重做后，已经打开的浏览器页可能需要刷新才能立即看见新图。
 6. DSH alpha.4 的空白会话不渲染会话视图；从对话 Tab 打开总览再进入“全体会议”或使用“去派发”时，总空间画布因此留在门户覆盖层内承载，不新建空白宿主会话。
+7. 全席征询的 13 席汇总是页面内存态；刷新、关闭总览或离开承载该工作台的视图会结束本轮未派出的调度，已经被 DSH 接受的独立会话则按各自的 turn 继续收口。
 
 ## 致谢
 

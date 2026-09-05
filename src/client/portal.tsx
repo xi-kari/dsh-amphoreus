@@ -27,6 +27,9 @@ export interface PortalOverlayInjected {
   readonly model: WorkbenchBridgeDeps['model']
   readonly sessions: SessionsFace
   readonly workspaces: WorkbenchBridgeDeps['workspaces']
+  readonly conversationFeed: NonNullable<WorkbenchBridgeDeps['conversationFeed']>
+  readonly sessionFace: NonNullable<WorkbenchBridgeDeps['sessionFace']>
+  readonly followSession: NonNullable<WorkbenchBridgeDeps['followSession']>
   readonly startSeatSession: WorkbenchBridgeDeps['startSeatSession']
   readonly seatDeps: WorkbenchBridgeDeps['seatDeps']
   readonly setSeat: WorkbenchBridgeDeps['setSeat']
@@ -65,6 +68,9 @@ export function PortalOverlay({
   model,
   sessions,
   workspaces,
+  conversationFeed,
+  sessionFace,
+  followSession,
   startSeatSession,
   seatDeps,
   setSeat,
@@ -79,6 +85,9 @@ export function PortalOverlay({
     sessions,
     model,
     workspaces,
+    conversationFeed,
+    sessionFace,
+    followSession,
     startSeatSession,
     seatDeps,
     setSeat,

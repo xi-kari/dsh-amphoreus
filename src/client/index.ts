@@ -1,6 +1,7 @@
 /** dsh-amphoreus browser half. Components receive injected faces, never ctx. */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-api-session-controller/client'
+import type {} from '@deepseek-ai/dsh-api-session-controller/remote'
 import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-chat/client'
@@ -23,7 +24,7 @@ import { SeatNameplate } from './nameplate.tsx'
 import { PipelineRail } from './pipeline-rail.tsx'
 import { PortalFooterAction, PortalOverlay, type PortalFooterInjected, type PortalOverlayInjected } from './portal.tsx'
 import { createPortalStore } from './portal-store.ts'
-import { startSeatSession } from './seat-actions.ts'
+import { createDirectChatRequests, openDirectSeatChat, startSeatSession } from './seat-actions.ts'
 import { SeatBrowser, type SeatBrowserInjected } from './seat-browser.tsx'
 import { seatViewsFrom } from './seat-model.ts'
 import { AmphoreusSettings } from './settings.tsx'
@@ -32,6 +33,7 @@ import { readRememberedTab, seedConversationView, WORKBENCH_VIEW_ID } from './ta
 import { createSeatLayer, readDswTokens, registerGlobalTheme, registerSeatTheme } from './theme.ts'
 import { WorkbenchView, type SessionsFace, type WorkbenchViewInjected } from './workbench.tsx'
 import { createWorkspacesSource } from './workspaces-source.ts'
+import { currentOrdinaryWorkspace, orphanSeatWorkspacePath, syncWorkspaceSession, waitForReadySnapshot } from './workspace-routing.ts'
 import { heroVisualById } from '../shared/heroes.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -41,7 +43,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   }
 }
 
-export const inject = ['slots', 'locale', 'theme', 'sessions', 'uiConversation', 'workspaces', 'uiWorkspace']
+export const inject = ['slots', 'locale', 'theme', 'sessions', 'uiConversation', 'workspaces', 'uiWorkspace', 'remote', 'remote.session']
 
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'amphoreus: dictionaries')
@@ -68,16 +70,95 @@ export function apply(ctx: ClientContext): void {
   const portal = createPortalStore()
   const openPortal = portal.open
   const enterSeatQueue = createEnterSeatQueue()
+  const directChatRequests = createDirectChatRequests()
   const workspaces = createWorkspacesSource(
     ctx.sessions.list as unknown as Parameters<typeof createWorkspacesSource>[0],
     model,
   )
+  const sessionsFace = ctx.sessions as unknown as SessionsFace
+  const sessionList = ctx.sessions.list as unknown as {
+    getSnapshot(): { phase: 'pending' | 'ready' }
+    subscribe(listener: () => void): () => void
+  }
+  const ensureWorkspaceAt = async (path: string): Promise<string> => (
+    await ctx.workspaces.create({ path })
+  ).workspaceId
+  const ensureSeatWorkspace = async (skillName: string): Promise<string | undefined> => {
+    await Promise.all([
+      waitForReadySnapshot(model, '席位'),
+      waitForReadySnapshot(sessionList, '会话'),
+      waitForReadySnapshot(ctx.workspaces.list, '工作区'),
+    ])
+    const dir = model.getSnapshot().state?.seatDirs.find(item => item.skillName === skillName)?.dir
+    if (dir === undefined) throw new Error('席位目录尚未就绪，请重新部署此席位')
+    const snapshot = ctx.workspaces.list.getSnapshot()
+    const seatDirectories = (model.getSnapshot().state?.seatDirs ?? []).map(item => item.dir)
+    const current = sessionsFace.list.getSnapshot().current
+    const currentWorkspace = currentOrdinaryWorkspace(snapshot.items, seatDirectories, current)
+    return currentWorkspace?.workspaceId ?? ensureWorkspaceAt(dir)
+  }
+  const createWorkspaceSession: HandoffDeps['sessions']['create'] = async options => {
+    const sessionId = await sessionsFace.create(options)
+    if (options.workspaceId !== undefined) await syncWorkspaceSession(ctx.workspaces, options.workspaceId, sessionId)
+    return sessionId
+  }
   const seatDeps: HandoffDeps = {
     nonce: () => model.getSnapshot().state?.nonce ?? window.__AMPHOREUS_BOOT__?.nonce,
     seatDirOf: skillName => model.getSnapshot().state?.seatDirs.find(directory => directory.skillName === skillName)?.dir,
-    sessions: ctx.sessions as unknown as HandoffDeps['sessions'],
+    ensureSeatWorkspace,
+    ensureSessionWorkspace: (sessionId, workspaceId) => syncWorkspaceSession(ctx.workspaces, workspaceId, sessionId),
+    sessions: {
+      create: options => sessionsFace.create(options),
+      open: sessionId => sessionsFace.open(sessionId),
+      fork: options => sessionsFace.fork(options),
+      binding: sessionId => sessionsFace.binding(sessionId),
+    },
   }
-  const sessionsFace = ctx.sessions as unknown as SessionsFace
+  type SessionFeed = Exclude<ReturnType<WorkbenchViewInjected['sessionFace']>, undefined>
+  const sessionAdapter = ctx.sessions as unknown as {
+    binding(id: SessionId): { session: SessionFeed } | undefined
+  }
+  const conversationFeed: NonNullable<WorkbenchViewInjected['conversationFeed']> = sessionId => {
+    try {
+      return ctx.uiConversation.binding(sessionId as SessionId).target('chat')
+    } catch {
+      return undefined
+    }
+  }
+  const sessionFace: NonNullable<WorkbenchViewInjected['sessionFace']> = sessionId => (
+    sessionAdapter.binding(sessionId as SessionId)?.session
+  )
+  const followSession: NonNullable<WorkbenchViewInjected['followSession']> = (sessionId, signal) => (
+    ctx.remote.session.follow({ address: { kind: 'session', sessionId: sessionId as SessionId }, maxMessages: 50 }, signal)
+  )
+  const openBoundSeatSession = async (sessionId: string, skillName?: string, open = true): Promise<void> => {
+    if (skillName === undefined) {
+      if (open) sessionsFace.open(sessionId)
+      return
+    }
+    await Promise.all([
+      waitForReadySnapshot(model, '席位'),
+      waitForReadySnapshot(sessionList, '会话'),
+      waitForReadySnapshot(ctx.workspaces.list, '工作区'),
+    ])
+    const summary = sessionsFace.list.getSnapshot().byId[sessionId]
+    const seatDir = orphanSeatWorkspacePath(
+      ctx.workspaces.list.getSnapshot().items, sessionId, summary?.cwd, seatDeps.seatDirOf(skillName),
+    )
+    if (seatDir !== undefined) {
+      const workspaceId = await ensureWorkspaceAt(seatDir)
+      const adopted = await createWorkspaceSession({ sessionId, workspaceId })
+      if (adopted !== sessionId) throw new Error(`宿主返回了不同的会话 id（${adopted}）`)
+    }
+    if (open) sessionsFace.open(sessionId)
+  }
+  const openDirectSession = (sessionId: string): void => openDirectSeatChat({
+    store: localStorage,
+    closePortal: portal.close,
+    activateChat: id => ctx.uiConversation.binding(id as SessionId).activate('chat'),
+    requests: directChatRequests,
+    open: id => sessionsFace.open(id),
+  }, sessionId)
   const startPortalSeatSession = (skillName: string): Promise<string> => startSeatSession(seatDeps, skillName)
   const openSeat = async (
     heroId: string | null,
@@ -90,7 +171,9 @@ export function apply(ctx: ClientContext): void {
         ...(dispatchText ? { dispatchText } : {}),
       }
       const current = sessionsFace.list.getSnapshot().current
-      if (current !== undefined && readRememberedTab(localStorage) === WORKBENCH_VIEW_ID) {
+      const currentSummary = current === undefined ? undefined : sessionsFace.list.getSnapshot().byId[current]
+      if (current !== undefined && currentSummary?.blank === false
+        && readRememberedTab(localStorage) === WORKBENCH_VIEW_ID) {
         portal.close()
         enterSeatQueue.set(request)
         return true
@@ -109,7 +192,7 @@ export function apply(ctx: ClientContext): void {
       sessionsFace.list.getSnapshot() as unknown as Parameters<typeof seatViewsFrom>[1],
       ctx.workspaces.list.getSnapshot(),
     ).find(candidate => candidate.skillName === skill)
-    if (view !== undefined && view.sessionIds.length > 0) sessionsFace.open(view.sessionIds[0]!)
+    if (view !== undefined && view.sessionIds.length > 0) await openBoundSeatSession(view.sessionIds[0]!, skill)
     else await startPortalSeatSession(skill)
     return true
   }
@@ -168,8 +251,15 @@ export function apply(ctx: ClientContext): void {
     locale: NS,
     inject: (): SeatBrowserInjected => ({
       model,
-      openSession: sessionId => (ctx.sessions as unknown as { open(id: SessionId): void }).open(sessionId as SessionId),
-      startSeatSession: skillName => startSeatSession(seatDeps, skillName),
+      openSession: async (sessionId, skillName) => {
+        await openBoundSeatSession(sessionId, skillName, skillName === undefined)
+        if (skillName !== undefined) openDirectSession(sessionId)
+      },
+      startSeatSession: async skillName => {
+        const sessionId = await startSeatSession(seatDeps, skillName, { open: false })
+        openDirectSession(sessionId)
+        return sessionId
+      },
       startDirectorySession: workspaceId => ctx.uiWorkspace.startSession(workspaceId as WorkspaceId),
       createDirectoryWorkspace: async fallbackPrompt => {
         let path: string | null
@@ -222,6 +312,9 @@ export function apply(ctx: ClientContext): void {
       model,
       sessions: sessionsFace,
       workspaces,
+      conversationFeed,
+      sessionFace,
+      followSession,
       startSeatSession: startPortalSeatSession,
       seatDeps,
       setSeat: seatTheme.hint,
@@ -233,10 +326,6 @@ export function apply(ctx: ClientContext): void {
 
   if (workbenchEnabled) {
     // Workbench as a second conversation view (id/order shape mirrors ui-trajectory).
-    type SessionFeed = Exclude<ReturnType<WorkbenchViewInjected['sessionFace']>, undefined>
-    const sessionAdapter = ctx.sessions as unknown as {
-      binding(id: SessionId): { session: SessionFeed } | undefined
-    }
     ctx.slots.inject('conversation.view', () => ctx.slots.register({
       name: 'conversation.view',
       id: 'amphoreus-workbench',
@@ -246,14 +335,10 @@ export function apply(ctx: ClientContext): void {
       inject: (): WorkbenchViewInjected => ({
         sessions: ctx.sessions as unknown as WorkbenchViewInjected['sessions'],
         workspaces,
-        conversationFeed: (sessionId) => {
-          try {
-            return ctx.uiConversation.binding(sessionId as SessionId).target('chat')
-          } catch {
-            return undefined
-          }
-        },
-        sessionFace: sessionId => sessionAdapter.binding(sessionId as SessionId)?.session,
+        conversationFeed,
+        sessionFace,
+        followSession,
+        directChatRequests,
         model,
         theme: themeBridge,
         setSeat: seatTheme.hint,
