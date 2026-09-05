@@ -37,6 +37,7 @@ export interface AmphoreusConfig {
   sync: { source: string; ref: string; keepBackups: number }
   trustedHosts: string[]
   // @anchor config-type
+  memory: { inject: boolean; autoNote: boolean; injectLimit: number; command: string }
 }
 
 /** Runtime value for nested-object defaults; schemastery fills inner defaults from an empty object (verified on 3.18.2). */
@@ -100,4 +101,11 @@ export const Config: z<AmphoreusConfig> = z.object({
   }).default(EMPTY_OBJECT),
   trustedHosts: z.array(z.string()).default([]),
   // @anchor config-schema
+  memory: z.object({
+    // 席位记忆：注入到席位提示词、允许角色回合末留言、注入条数上限、用户留言的斜杠命令名。
+    inject: z.boolean().default(true),
+    autoNote: z.boolean().default(true),
+    injectLimit: z.natural().max(50).default(8),
+    command: z.string().default('remember'),
+  }).default(EMPTY_OBJECT),
 })

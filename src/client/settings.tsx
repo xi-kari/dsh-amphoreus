@@ -2,6 +2,7 @@ import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots
 import { useRef, useState, useSyncExternalStore, type CSSProperties } from 'react'
 import { GrammarPanel } from './grammar-panel.tsx'
 import { WallpaperPanel } from './wallpaper-panel.tsx'
+import { MemoryPanel } from './memory-panel.tsx'
 import { seatColorOf } from './seat-model.ts'
 import type { AmphoreusClientModel } from './state.ts'
 import css from './settings.module.css'
@@ -13,7 +14,7 @@ export interface AmphoreusSettingsInjected {
 
 export type AmphoreusSettingsProps = PropsRuntime<'settings.section'> & PropsLocale<'amphoreus'> & AmphoreusSettingsInjected
 
-type SettingsAction = 'reparse' | 'magazine-light' | 'magazine-full' | 'magazine-reset' | 'derive' | 'derive-force' | 'grammar' | 'wallpaper'
+type SettingsAction = 'reparse' | 'magazine-light' | 'magazine-full' | 'magazine-reset' | 'derive' | 'derive-force' | 'grammar' | 'wallpaper' | 'memory'
 // @anchor settings-actions
 
 export function AmphoreusSettings({ model, t }: AmphoreusSettingsProps) {
@@ -198,6 +199,18 @@ export function AmphoreusSettings({ model, t }: AmphoreusSettingsProps) {
             onPlacement={(heroId, patch) => { void run('wallpaper', () => model.setCustomWallpaperPlacement(heroId, patch)) }}
           />
           {/* @anchor settings-panels */}
+          <MemoryPanel
+            seats={state.seats.filter(seat => seat.status === 'deployed' && seat.hidden !== true)
+              .sort((a, b) => (a.userOrder ?? a.order) - (b.userOrder ?? b.order))
+              .map(seat => ({ skillName: seat.skillName, displayName: seat.userDisplayName ?? suite?.cards.find(card => card.name === seat.skillName)?.displayName ?? seat.displayName }))}
+            memory={state.memory}
+            config={state.effectiveConfig.memory}
+            busy={busy}
+            t={t}
+            onAdd={(skill, text) => { void run('memory', () => model.addMemoryNote(skill, text)) }}
+            onDelete={(skill, id) => { void run('memory', () => model.deleteMemoryNote(skill, id)) }}
+            onSettings={(skill, patch) => { void run('memory', () => model.setMemorySettings(skill, patch)) }}
+          />
 
           <section className={css.panel} aria-labelledby="amphoreus-workbench">
             <div className={css.sectionHeading}><h2 id="amphoreus-workbench">{t('settings.workbenchHeading')}</h2></div>

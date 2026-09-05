@@ -38,6 +38,7 @@ export function fixtureConfig(): AmphoreusConfig {
     suiteWatch: { mode: 'off', pollMs: 15000, debounceMs: 800 }, validate: { enabled: false, python: 'python' },
     sync: { source: 'fixture', ref: 'main', keepBackups: 3 }, trustedHosts: [],
     // @anchor fixture-config
+    memory: { inject: true, autoNote: true, injectLimit: 8, command: 'remember' },
   }
 }
 

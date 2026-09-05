@@ -13,6 +13,7 @@ function config(assetsRoot: string): AmphoreusConfig {
     workbench: { enabled: true, host: 'iframe', defaultView: 'chat', cardTextLimit: 8000, autoProjection: true },
     suiteWatch: { mode: 'off', pollMs: 15_000, debounceMs: 800 }, validate: { enabled: false, python: 'python' },
     sync: { source: '', ref: '', keepBackups: 3 }, trustedHosts: [],
+    memory: { inject: true, autoNote: true, injectLimit: 8, command: 'remember' },
   }
 }
 

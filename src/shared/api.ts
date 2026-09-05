@@ -239,10 +239,35 @@ export interface AmphoreusState {
     readonly dispatchHints: boolean
     readonly pipelinesEnabled: boolean
     // @anchor effective-config-type-fields
+    /** Seat memory pipeline knobs as configured (per-seat overrides live in MemoryRecord.settings). */
+    readonly memory: MemoryPublicConfig
   }
 }
 
 // @anchor shared-types
+
+/** Seat memory: hard cap of one note (code points), applied to user and seat notes alike. */
+export const SEAT_NOTE_MAX_CHARS = 200
+/** Plugin-owned line prefix a seat uses to leave a note at turn end (`留言：<text>`, ASCII colon also accepted). */
+export const SEAT_NOTE_MARKER = '留言：'
+/** Default number of notes injected into the seat prompt when neither config nor the seat record says otherwise. */
+export const SEAT_NOTE_INJECT_LIMIT_DEFAULT = 8
+
+/** Effective per-seat memory switches (config defaults merged under the seat record's overrides). */
+export interface MemorySettings {
+  /** Inject stored notes into the seat's system prompt. */
+  readonly inject: boolean
+  /** Ask the seat to leave a `留言：` line at turn end and capture it. */
+  readonly autoNote: boolean
+  /** Newest-last cap of notes injected (0 disables injection without clearing notes). */
+  readonly injectLimit: number
+}
+
+/** `config.memory` as published to the client. */
+export interface MemoryPublicConfig extends MemorySettings {
+  /** Slash command name (without the slash) that appends a user note to the bound seat. */
+  readonly command: string
+}
 
 declare global {
   interface Window {

@@ -154,6 +154,22 @@ export const zh = {
   'settings.credit': '工作台源自 dsh-synapse v0.4.1（MIT，liangmianya），经改造；原始许可见包内 NOTICE。',
   'view.workbench': '工作台',
   // @anchor zh-keys
+  'settings.memoryHeading': '席位记忆',
+  'settings.memoryHint': '开拓者手记与各席回合末的留言。注入席位提示词时会标明这是插件保存的上下文，不是事实层。',
+  'settings.memoryCount': '{n} 条',
+  'settings.memoryInject': '注入提示词',
+  'settings.memoryInjectTip': '开启后，本席最近的记忆会随系统提示词一起送入模型，并标注为非事实层的插件上下文。',
+  'settings.memoryAutoNote': '回合末留言',
+  'settings.memoryAutoNoteTip': '开启后，会提示角色在回合结束前单独一行写「留言：」，插件把它保存到这里；不会改写会话记录。',
+  'settings.memoryInjectLimit': '注入条数',
+  'settings.memoryEmpty': '本席还没有记忆。',
+  'settings.memoryAuthorSeat': '本席',
+  'settings.memoryAuthorUser': '开拓者',
+  'settings.memoryAuthorLegacy': '手记',
+  'settings.memoryDelete': '删除',
+  'settings.memoryAdd': '记下',
+  'settings.memoryPlaceholder': '写一条要让本席下次记得的话（Ctrl/⌘+Enter 提交）',
+  'settings.memoryCommandHint': '在已绑定席位的会话里也可以输入 /{command} <内容> 直接留言。',
 } as const
 
 export type AmphoreusKey = keyof typeof zh
@@ -313,6 +329,22 @@ export const en: Record<AmphoreusKey, string> = {
   'settings.credit': 'The workbench derives from dsh-synapse v0.4.1 (MIT, liangmianya), adapted; original license in NOTICE.',
   'view.workbench': 'Workbench',
   // @anchor en-keys
+  'settings.memoryHeading': 'Seat memory',
+  'settings.memoryHint': 'Trailblazer notes and each seat\'s end-of-turn notes. When injected into the seat prompt they are labelled as plugin-owned context, not the factual layer.',
+  'settings.memoryCount': '{n} notes',
+  'settings.memoryInject': 'Inject into prompt',
+  'settings.memoryInjectTip': 'When on, this seat\'s latest notes travel with the system prompt, labelled as non-factual plugin context.',
+  'settings.memoryAutoNote': 'Note at turn end',
+  'settings.memoryAutoNoteTip': 'When on, the seat is asked to end its turn with a single "留言：" line, which the plugin stores here; the session log is never rewritten.',
+  'settings.memoryInjectLimit': 'Injected notes',
+  'settings.memoryEmpty': 'No memory for this seat yet.',
+  'settings.memoryAuthorSeat': 'Seat',
+  'settings.memoryAuthorUser': 'Trailblazer',
+  'settings.memoryAuthorLegacy': 'Ledger',
+  'settings.memoryDelete': 'Delete',
+  'settings.memoryAdd': 'Remember',
+  'settings.memoryPlaceholder': 'Something this seat should remember next time (Ctrl/⌘+Enter to submit)',
+  'settings.memoryCommandHint': 'In a session bound to a seat you can also type /{command} <text> to leave a note directly.',
 }
 
 export const NS = 'amphoreus'
