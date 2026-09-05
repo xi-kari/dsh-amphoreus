@@ -88,7 +88,10 @@ test('GET visual-scheme exports only the three visual prefs, sparse, as an attac
 
     const head = await fetch(`${h.origin}${PATH}`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-amphoreus-nonce': NONCE }, body: '{}' })
     assert.equal(head.status, 405)
-    assert.equal(head.headers.get('allow'), 'PUT')
+    assert.equal(head.headers.get('allow'), 'GET, PUT', 'Allow lists every served method (RFC 9110 §10.2.1)')
+    const del = await fetch(`${h.origin}${PATH}`, { method: 'DELETE', headers: { 'x-amphoreus-nonce': NONCE } })
+    assert.equal(del.status, 405)
+    assert.equal(del.headers.get('allow'), 'GET, PUT')
   } finally {
     await h.close()
   }

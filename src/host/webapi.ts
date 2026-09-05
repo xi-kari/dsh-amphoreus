@@ -386,7 +386,11 @@ export class AmphoreusWebApi {
           }, { 'content-disposition': `attachment; filename="${VISUAL_SCHEME_FILENAME}"` })
           return
         }
-        if (!method(request, response, 'PUT')) return
+        if (request.method !== 'PUT') {
+          response.writeHead(405, { allow: 'GET, PUT' })
+          response.end()
+          return
+        }
         const parsedScheme = VisualSchemeInput.safeParse(await readJson(request, MAX_SCHEME_BODY_BYTES))
         if (!parsedScheme.success) {
           json(response, 400, { error: zodError(parsedScheme.error) })

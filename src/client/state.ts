@@ -198,27 +198,30 @@ export class AmphoreusClientModel {
 
   // @anchor client-model-methods
 
-  /** Download the stored visual prefs (magazine mode, grammar, wallpaper placements) as a JSON file. */
+  /**
+   * Download the stored visual prefs (magazine mode, grammar, wallpaper placements) as a JSON file.
+   * A GET probe surfaces auth / HTTP failures as errors first; the download itself is handed to the
+   * browser's download manager via a same-origin `<a download>` (the route sends the attachment
+   * header) — the platform's session-log export does the same, and no object URL means no
+   * revocation race on browsers that resolve `blob:` URLs asynchronously after `click()`.
+   */
   async exportVisualScheme(): Promise<void> {
     const response = await fetch('/amphoreus/api/prefs/visual-scheme', { credentials: 'include', cache: 'no-store' })
     if (!response.ok) throw new Error(`视觉方案导出失败（HTTP ${response.status}）`)
-    const blob = await response.blob()
-    const url = URL.createObjectURL(blob)
-    try {
-      const anchor = document.createElement('a')
-      anchor.href = url
-      anchor.download = 'amphoreus-visual-scheme.json'
-      anchor.rel = 'noopener'
-      anchor.click()
-    } finally {
-      URL.revokeObjectURL(url)
-    }
+    const anchor = document.createElement('a')
+    anchor.href = '/amphoreus/api/prefs/visual-scheme'
+    anchor.download = 'amphoreus-visual-scheme.json'
+    anchor.rel = 'noopener'
+    anchor.click()
   }
 
   /** Restore a visual scheme file: replaces the three visual prefs, leaves everything else alone. */
   async importVisualScheme(file: File): Promise<void> {
     const nonce = this.#snapshot.state?.nonce ?? window.__AMPHOREUS_BOOT__?.nonce
     if (nonce === undefined) throw new Error('首帧 nonce 尚未就绪')
+    // Mirrors MAX_SCHEME_BODY_BYTES (64 KiB) on the host so an oversized pick never reaches the network;
+    // the server's 413 below stays as the backstop.
+    if (file.size > 64 * 1024) throw new Error('视觉方案文件过大（上限 64 KiB）')
     const text = await file.text()
     let scheme: unknown
     try {

@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 import { AmphoreusClientModel } from '../src/client/state.ts'
 import { en, zh } from '../src/client/locales.ts'
+import { reduceSchemeStatus, SCHEME_STATUS_IDLE, type SchemeStatus } from '../src/client/scheme-status.ts'
 
 const panel = readFileSync(new URL('../src/client/scheme-panel.tsx', import.meta.url), 'utf8')
 const settings = readFileSync(new URL('../src/client/settings.tsx', import.meta.url), 'utf8')
@@ -55,6 +56,7 @@ test('settings mounts the scheme panel after the anchor and extends the action u
   assert.match(slice, /run\('scheme-export', \(\) => model\.exportVisualScheme\(\)\)/u)
   assert.match(slice, /run\('scheme-import', \(\) => model\.importVisualScheme\(file\)\)/u)
   assert.match(slice, /errored=\{actionError !== undefined\}/u)
+  assert.match(slice, /acting=\{activeAction !== undefined\}/u)
   // The visual→workbench slice of settings.tsx itself still holds no raw inputs (the file input lives in scheme-panel.tsx).
   const visual = settings.indexOf('aria-labelledby="amphoreus-visual"')
   assert.doesNotMatch(settings.slice(visual, workbench), /<input|<textarea/u)
@@ -65,7 +67,10 @@ test('client model export/import use the visual-scheme route with the shared fet
   const end = state.indexOf('close(): void')
   const block = state.slice(start, end)
   assert.match(block, /fetch\('\/amphoreus\/api\/prefs\/visual-scheme', \{ credentials: 'include', cache: 'no-store' \}\)/u)
-  assert.match(block, /URL\.createObjectURL\(blob\)[\s\S]*anchor\.download = 'amphoreus-visual-scheme\.json'[\s\S]*URL\.revokeObjectURL\(url\)/u)
+  // Same-origin <a download> like the platform's session-log export; no object URL, so nothing to revoke.
+  assert.match(block, /anchor\.href = '\/amphoreus\/api\/prefs\/visual-scheme'[\s\S]*anchor\.download = 'amphoreus-visual-scheme\.json'[\s\S]*anchor\.click\(\)/u)
+  assert.doesNotMatch(block, /createObjectURL|revokeObjectURL|\.blob\(\)/u)
+  assert.match(block, /file\.size > 64 \* 1024/u)
   assert.match(block, /async importVisualScheme\(file: File\)/u)
   assert.match(block, /await file\.text\(\)/u)
   assert.match(block, /'视觉方案文件不是有效 JSON'/u)
@@ -100,10 +105,14 @@ test('importVisualScheme maps JSON parse failures and HTTP statuses to localized
   })
   try {
     const model = new AmphoreusClientModel()
-    const file = (text: string) => ({ text: async () => text }) as unknown as File
+    const file = (text: string, size = text.length) => ({ size, text: async () => text }) as unknown as File
 
     await assert.rejects(model.importVisualScheme(file('{not json')), /视觉方案文件不是有效 JSON/u)
     assert.equal(calls.length, 0, 'invalid JSON never reaches the network')
+    await assert.rejects(model.importVisualScheme(file('{"version":1}', 64 * 1024 + 1)), /过大（上限 64 KiB）/u)
+    assert.equal(calls.length, 0, 'oversized files are rejected before reading or uploading them')
+    await assert.rejects(model.importVisualScheme(file('{"version":1}', 5 * 1024 * 1024)), /过大/u)
+    assert.equal(calls.length, 0)
 
     status = 400
     await assert.rejects(model.importVisualScheme(file('{"version":1,"grammar":{"frostScale":3}}')), /视觉方案文件无效：grammar\.frostScale/u)
@@ -129,29 +138,34 @@ test('importVisualScheme maps JSON parse failures and HTTP statuses to localized
   }
 })
 
-test('exportVisualScheme downloads the GET body through a temporary object URL', async () => {
+test('exportVisualScheme probes the route, then hands the same-origin URL to <a download> (no object URL)', async () => {
   const oldFetch = globalThis.fetch
   const oldDocument = Object.getOwnPropertyDescriptor(globalThis, 'document')
   const oldCreate = URL.createObjectURL
   const oldRevoke = URL.revokeObjectURL
   const events: string[] = []
+  let status = 200
   const anchor: Record<string, unknown> = { click: () => { events.push(`click ${String(anchor.href)} ${String(anchor.download)}`) } }
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
-    events.push(`fetch ${String(input)} ${String(init?.cache)}`)
-    return { ok: true, status: 200, blob: async () => ({ size: 12, type: 'application/json' }) } as unknown as Response
+    events.push(`fetch ${String(input)} ${String(init?.cache)} ${String(init?.credentials)}`)
+    return { ok: status >= 200 && status < 300, status, blob: async () => { throw new Error('blob must not be read') } } as unknown as Response
   }) as typeof fetch
-  Object.defineProperty(globalThis, 'document', { configurable: true, value: { createElement: () => anchor } })
-  URL.createObjectURL = () => { events.push('create'); return 'blob:amphoreus/1' }
-  URL.revokeObjectURL = url => { events.push(`revoke ${url}`) }
+  Object.defineProperty(globalThis, 'document', { configurable: true, value: { createElement: () => anchor, body: { appendChild: () => { throw new Error('no appendChild') } } } })
+  URL.createObjectURL = () => { throw new Error('no object URL') }
+  URL.revokeObjectURL = () => { throw new Error('no object URL') }
   try {
     const model = new AmphoreusClientModel()
     await model.exportVisualScheme()
     assert.deepEqual(events, [
-      'fetch /amphoreus/api/prefs/visual-scheme no-store',
-      'create',
-      'click blob:amphoreus/1 amphoreus-visual-scheme.json',
-      'revoke blob:amphoreus/1',
+      'fetch /amphoreus/api/prefs/visual-scheme no-store include',
+      'click /amphoreus/api/prefs/visual-scheme amphoreus-visual-scheme.json',
     ])
+    assert.equal(anchor.rel, 'noopener')
+
+    events.length = 0
+    status = 401
+    await assert.rejects(model.exportVisualScheme(), /HTTP 401/u)
+    assert.deepEqual(events, ['fetch /amphoreus/api/prefs/visual-scheme no-store include'], 'no download is triggered when the probe fails')
     model.close()
   } finally {
     globalThis.fetch = oldFetch
@@ -160,4 +174,38 @@ test('exportVisualScheme downloads the GET body through a temporary object URL',
     if (oldDocument === undefined) delete (globalThis as { document?: unknown }).document
     else Object.defineProperty(globalThis, 'document', oldDocument)
   }
+})
+
+test('scheme status reducer: success after a clean run, suppressed on error, cleared by the next action or error', () => {
+  const step = (status: SchemeStatus, active: 'export' | 'import' | undefined, acting: boolean, errored: boolean) =>
+    reduceSchemeStatus(status, { active, acting, errored })
+  const idle = SCHEME_STATUS_IDLE
+
+  // Idle renders (including SSE refreshes, which are not actions) keep the same object.
+  assert.equal(step(idle, undefined, false, false), idle)
+
+  // export → finished cleanly → success line.
+  const exporting = step(idle, 'export', true, false)
+  assert.deepEqual(exporting, { running: 'export', done: undefined })
+  assert.equal(step(exporting, 'export', true, false), exporting, 'stable while running')
+  const exported = step(exporting, undefined, false, false)
+  assert.deepEqual(exported, { running: undefined, done: 'export' })
+  assert.equal(step(exported, undefined, false, false), exported, 'a background refresh keeps the success line')
+
+  // import → finished with the page-level error → no success line.
+  const importing = step(exported, 'import', true, false)
+  assert.deepEqual(importing, { running: 'import', done: undefined }, 'starting a scheme action clears the old line')
+  assert.deepEqual(step(importing, undefined, false, true), idle)
+
+  // import → clean → then an unrelated action (grammar slider) starts → line clears immediately …
+  const imported = step(step(idle, 'import', true, false), undefined, false, false)
+  assert.deepEqual(imported, { running: undefined, done: 'import' })
+  assert.equal(step(imported, undefined, true, false), idle)
+  // … and stays clear when that unrelated action fails (no stale success next to the error line).
+  assert.equal(step(step(imported, undefined, true, false), undefined, false, true), idle)
+  // An error appearing without an action also clears it.
+  assert.equal(step(imported, undefined, false, true), idle)
+
+  // Swapping the errored branch would be caught: errored completion must never show a line.
+  assert.equal(step({ running: 'export', done: undefined }, undefined, false, true).done, undefined)
 })

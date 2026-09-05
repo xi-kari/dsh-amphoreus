@@ -1,16 +1,20 @@
 import { useEffect, useRef, useState } from 'react'
 import type { AmphoreusKey } from './locales.ts'
+import { reduceSchemeStatus, SCHEME_STATUS_IDLE, type SchemeAction } from './scheme-status.ts'
 import css from './settings.module.css'
+
+export type { SchemeAction } from './scheme-status.ts'
 
 type Translate = (key: AmphoreusKey, params?: Record<string, unknown>) => string
 
-export type SchemeAction = 'export' | 'import'
-
 export interface SchemePanelProps {
+  /** Disables the controls (any action running or a refresh in flight). */
   readonly busy: boolean
+  /** True while *any* settings action runs; clears a lingering success line. */
+  readonly acting: boolean
   /** Which scheme action the settings page is currently running (drives the button labels). */
   readonly active: SchemeAction | undefined
-  /** True when the page-level action line is showing an error (suppresses the success line). */
+  /** True when the page-level action line is showing an error (suppresses / clears the success line). */
   readonly errored: boolean
   readonly t: Translate
   readonly onExport: () => void
@@ -25,23 +29,15 @@ const ACCEPT = 'application/json,.json'
  * the file. The file input is visually hidden and triggered by the import button, like the
  * wallpaper panel. A success line appears once the running action has finished; failures
  * are surfaced by the page-level action error line, and the success line is suppressed then.
+ * The line goes away again when another action starts or an error appears (see scheme-status.ts).
  */
-export function SchemePanel({ busy, active, errored, t, onExport, onImport }: SchemePanelProps) {
+export function SchemePanel({ busy, acting, active, errored, t, onExport, onImport }: SchemePanelProps) {
   const input = useRef<HTMLInputElement | null>(null)
-  const [done, setDone] = useState<SchemeAction | undefined>(undefined)
-  const previous = useRef<SchemeAction | undefined>(undefined)
+  const [status, setStatus] = useState(SCHEME_STATUS_IDLE)
 
   useEffect(() => {
-    if (active !== undefined) {
-      previous.current = active
-      setDone(undefined)
-      return
-    }
-    if (previous.current !== undefined) {
-      setDone(errored ? undefined : previous.current)
-      previous.current = undefined
-    }
-  }, [active, errored])
+    setStatus(previous => reduceSchemeStatus(previous, { active, acting, errored }))
+  }, [active, acting, errored])
 
   return (
     <section className={css.panel} aria-labelledby="amphoreus-scheme" data-amph-scheme-panel="">
@@ -73,9 +69,9 @@ export function SchemePanel({ busy, active, errored, t, onExport, onImport }: Sc
           {active === 'import' ? t('settings.schemeImporting') : t('settings.schemeImport')}
         </button>
       </div>
-      {done === undefined
+      {status.done === undefined
         ? null
-        : <p className={css.hintLine} role="status" aria-live="polite">{t(done === 'import' ? 'settings.schemeImported' : 'settings.schemeExported')}</p>}
+        : <p className={css.hintLine} role="status" aria-live="polite">{t(status.done === 'import' ? 'settings.schemeImported' : 'settings.schemeExported')}</p>}
     </section>
   )
 }

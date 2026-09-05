@@ -201,6 +201,7 @@ export function AmphoreusSettings({ model, t }: AmphoreusSettingsProps) {
           {/* @anchor settings-panels */}
           <SchemePanel
             busy={busy}
+            acting={activeAction !== undefined}
             active={activeAction === 'scheme-export' ? 'export' : activeAction === 'scheme-import' ? 'import' : undefined}
             errored={actionError !== undefined}
             t={t}
