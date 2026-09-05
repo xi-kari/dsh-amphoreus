@@ -1076,7 +1076,7 @@
 - 偏离与理由：任务书锁命令在包根因 npm 11 对现有大规模 junction idealTree 的内存占用退出 `134`；为同时保留原命令参数与“不碰 junction”边界，在包根 `.tmp` 下隔离生成并按哈希复制唯一锁文件，随后以受界路径检查清理，产物内容满足全部原验收断言。
 - 遗留：远程仓与 npm 包尚未创建/发布，按任务书留给 TF12；TF9 路径 B 若实测 fallback 缺宿主 peer，再按任务书回退四个 DSH 包并记录。
 ## TF3：发布产物、纯度与 tarball 白名单机检 — 2026-09-05 09:04
-- commit: PENDING-TASK
+- commit: 103d7b3
 - 动手前核对：实际重读任务书 `sed -n '4637,4666p'` 对应段；确认 HEAD=`f66fa6e`、工作树 clean、TF2 的 `verify:dist` 脚本入口已提交但实现文件尚不存在，`package.json.files` 不含 `scripts/verify-dist.mjs` PASS
 - 验收：
   - `npm run build` → derive/client/host=`28.87/205.78/199.59 kB` PASS（exit: `0`）
@@ -1092,3 +1092,16 @@
 - 人工断言：✓ Windows 通过显式 `ComSpec /d /s /c` 调用常量 npm pack 命令，避免 Node `shell:true` 的 DEP0190 警告；✓ npm JSON 前缀按首个 `[` 剥离；✓ 所有失败均整理为 `verify-dist: FAIL <原因>`，不输出脚本堆栈；✓ 未加入 `package.json.files`，未生成 tgz。
 - 偏离与理由：任务书按单行字面量检查 footer，但当前 tsdown 0.22.2 将同一 footer 格式化为多行；先删除 sourcemap、再归一空白后检查任务书完整语义，既接受格式化差异，也不放宽 `return module.exports` 或双层闭合要求。Windows 任务书示例的 `shell:true` 会在 Node 24 打 DEP0190；改为显式执行 `ComSpec` 与常量命令，保留 npm.cmd 兼容且无动态 shell 输入。
 - 遗留：无。
+## TF4：平台模块防漂移测试优先读取发布声明 — 2026-09-05 09:13
+- commit: PENDING-TASK
+- 动手前核对：实际执行任务书 `sed -n '4667,4700p'`；确认旧测试只读 junction 的 `src/platform.ts`，而发布包 files 不含 src、但 `lib/types/platform.d.ts` 存在且含同一八项；本机两候选同时存在 PASS
+- 验收：
+  - 候选探针 → `.d.ts/.ts=true/true`，实际首选路径=`node_modules/@deepseek-ai/dsh-client-web/lib/types/platform.d.ts` PASS
+  - `node --test tests/platform-modules.test.ts` → `tests 1; pass 1; fail 0; skipped 0; duration_ms 129.4611` PASS（exit: `0`）
+  - 解析正则同时兼容 d.ts 的 `: readonly ["…"]` 与源码的 `= ['…']`，缺文件/缺声明均给具体路径；最终仍以 `assert.deepEqual` 锁定顺序、数量和值，没有降为包含关系 PASS
+  - 全量 `npm test` → `tests 326; pass 325; fail 0; skipped 1; duration_ms 2804.1713` PASS（exit: `0`）
+  - `npm run build` → derive/client/host=`28.87/205.78/199.59 kB` PASS；`npm run verify:dist` → `verify-dist: OK 377 checks` PASS（各 exit: `0`）
+  - `git diff --check` → 无空白错误 PASS（exit: `0`）
+- 人工断言：✓ 不移动/删除 junction 的 src 做模拟；✓ 发布态只有 d.ts 的独立 npm-ci 复核留 TF9；✓ 不删除测试、不放宽 PLATFORM_MODULES。
+- 偏离与理由：无。
+- 遗留：发布物无 src 的真实文件系统形态由 TF9 独立 npm-ci 克隆复核。
