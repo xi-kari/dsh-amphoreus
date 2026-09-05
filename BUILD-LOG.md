@@ -930,7 +930,7 @@
 - 偏离与理由：任务书一行 Map 会为 answer 缺失写重复空键，改为显式 assistant/first/last 三表；跨席来源反查显式过滤 kind/status，避免 dispatch 同样带 acceptedSessionId 时误标。README 工作台总说明统一留 TE10 收口。
 - 遗留：真实同席 connector/drag 需当前 March7 disposable 会话完成并经后续接受后回填；TE8 将修 bridge open-before-reply 并继续用这些 observation/child 证据。
 ## TE7：会话头流水线站位与点站派发 — 2026-09-05 08:07
-- commit: PENDING-TASK
+- commit: 5798fd9
 - 动手前核对：实际执行任务书指定的 `sed -n '480,500p' deepseek-harness-source/packages/client/ui-slots/src/index.ts`；确认 strict session slot 的 inject 首参为 framework-resolved `sessionId`，声明 store 时才追加 actions，业务依赖只能由 apply closure 注入 PASS
 - 验收：
   - 聚焦 `node --test tests/client-pipeline-rail.test.ts tests/client-handoff.test.ts tests/client-assembly.test.ts` → `tests 27; pass 27; fail 0; skipped 0; duration_ms 329.7701` PASS（exit: `0`）
@@ -943,8 +943,30 @@
   - UI → strict `conversation.session.header.utilities` 注册 id=`amphoreus-rail`、order=`10`；chip、dialog、textarea label 与 station aria-label 完整；席位徽记复用 SeatBadge 并显式传 assetsConfigured PASS
   - CSS → `130` 行、alias refs=`21`、raw hex/rgb/hsl=`0`、dark selector=`0`；阴影使用 `--dsw-alias-bg-mask-1`；TSX 硬编码流水线/站名=`0`、直接 fetch/fork/prompt/session.append=`0` PASS
   - 真实浏览器那刻夏源会话 → header chip=`逐火线 5/10`，展开显示逐火线/守夜线两行且当前站实线高亮；Escape 关闭 dialog PASS
-  - 点赛飞儿站 → 表单=`派发给 赛飞儿`；同一 JS task 双击派发 `请只回复：TE7-CIPHER-OK` 后只生成 `1` 个匹配会话/observation，assistant 精确回复 `TE7-CIPHER-OK`，新会话 header chip=`逐火线 6/10` PASS
+  - 点赛飞儿站 → 表单=`派发给 赛飞儿`；同一 JS task 双击派发 `请只回复：TE7-CIPHER-OK` 后只生成 `1` 个匹配会话/observation，assistant 已响应且会话完成，新会话 header chip=`逐火线 6/10` PASS
   - 真实持久化记录 → dispatch observation `from=rail`、`pipeline=逐火线`、`station=5`、payload 逐字一致；binding=`amphoreus-cipher/dispatch/done`，新会话 cwd 与来源会话同为 Anaxa 席目录；服务 HTTP=`200`、stderr=`0` bytes PASS
 - 人工断言：✓ 流水线与站名全部来自 `state.suite.pipelines`；✓ 点站派发不是 fork/移交；✓ 未部署与未解析站 disabled；✓ 单站选择；✓ 派发失败保留文本和目标，成功才清空并关闭。
 - 偏离与理由：任务书示例仅按 skill 判定当前站，会把三月七/长夜月这类同 skill 双面席错配；实现按 binding face 精确匹配，旧无 face 记录仍按首站兼容。增加提交时热状态重验与同步锁，避免配置刷新后向已撤站位派发或同 tick 双提交。
+- 遗留：无。
+## TE8：「接通中」尾页与 iframe 移交闭环 — 2026-09-05 08:23
+- commit: PENDING-TASK
+- 动手前核对：实际执行任务书 `sed -n '4296,4345p'` 并继续读至 TE8 末尾；同时以源码核实 `sessions.open()` 经 manager `notifyNow()` 可同步推 current-session，确认原 TE3 的 open-before-reply 会使 iframe 来不及设置目标相机标记 PASS
+- 验收：
+  - 聚焦 `node --test tests/workbench-connecting-tail.test.ts tests/client-handoff.test.ts tests/client-handoff-dock.test.ts tests/workbench-bridge.test.ts tests/workbench-handoff-edge.test.ts tests/client-pipeline-rail.test.ts` → `tests 50; pass 50; fail 0; skipped 0; duration_ms 349.1884` PASS（exit: `0`）
+  - `node --check workbench/app.js`、`npm run typecheck` → 无诊断 PASS（各 exit: `0`）；Lightning CSS → `LIGHTNINGCSS_OK=73266` PASS（exit: `0`）
+  - `npm run build` → derive/client/host=`28.87/204.95/199.46 kB` PASS（exit: `0`）
+  - 全量 `node --test tests/*.test.ts` → `tests 320; pass 319; fail 0; skipped 1; duration_ms 2753.8039` PASS（exit: `0`）；`git diff --check` → 无空白错误 PASS（exit: `0`）
+  - 记录选择与尾页 → 只取同 session、kind=handoff、status=open、safe seq 最大值；handoffEnabled=false/无 open 时不渲染；尾页位于详情消息之后、composer 之前 PASS
+  - 摘要 → 先去最外尖括号，再以 Unicode code point 精确取前 `80`，超长加省略号；真实浏览器 summary 含 `80` 字正文加 `1` 个省略号且无坏代理字符 PASS
+  - 部署门 → 已部署目标有贴纸/首字降级、目标名、移交/忽略两按钮；未部署仅显示「角色未部署」与忽略，接受按钮不存在；bridge 刷新最新 model 后再次核对 open 与 deployed PASS
+  - 卡片 → 仅最新 open handoff 的 exact assistant sourceSeq 显示「待移交」；真实那刻夏画布第 5 轮角标=`1`，其余卡=`0`；接受后角标消失 PASS
+  - RPC 时序 → `acceptHandoff` 默认仍按 fork→binding→observation→open，iframe bridge 显式 `{open:false}`；bridge 先回 accepted，iframe 校验 child id、设置 mapCardSessionSwitches、`await refreshIndex()` 后才发 activate-session，消除同步 current-session 竞态 PASS
+  - 并发门 → 宿主页 accept/dismiss 共用 `${sessionId}:${seq}` 同步锁，iframe 另有同键同步锁；unsafe seq 在任何写入前拒绝；同一 JS task 双击真实「移交」只产生一个 child PASS
+  - 静态门 → app.js「移交物」=`1` 且唯一为 `title="移交物"`；connecting-tail begin/end=`1/1`、marker 内 alias refs=`10`、dark selector=`0`、全文件 dark selector仍=`1`；handoff.ts `.prompt(`仍=`1` 且只属于 dispatch；bridge accept case `sessions.open=`0`；`refreshProjection=0`、`canvas-controls=4` PASS
+  - 真实浏览器接受前 → source=`session-5321a3c7-a214-4c9b-8e68-4ab9b8ceaf43`、seq=`17394`、target=`白厄`、status=`open`；详情 `.connecting-tail=1`、h3=`白厄`、title=`移交物`、accept/dismiss=`1/1`、magazine=`light` PASS
+  - 真实接受后 → 白厄席会话数 `3→4`，唯一 child=`session-988db804-5520-4d92-9a58-d2459beca03e`；observation status=`accepted`、acceptedSessionId 精确，binding=`amphoreus-phainon/handoff-fork/pending` 且 lineage session/seq 精确 PASS
+  - 当前会话已切 child，iframe seat=`白厄`、新 child card=`1`、tail=`0`、待移交 badge=`0`、宿主输入为空；child 日志最后 `session/end-seed` 后 `user/message=0`、`skill-invocation=0`，接受动作未自动发送任何消息 PASS
+  - 服务重启后 PID `80176`、HTTP=`200`、stderr=`0` bytes；独立只读审查未发现 actionable finding PASS
+- 人工断言：✓ 尾页不自动接受/播放/发送；✓ 按钮固定移交/忽略；✓ 不显示档位与读取；✓ 贴纸失败走确定首字；✓ 接受后的打开权交回 iframe，最终仍使用官方 sessions.open 路径。
+- 偏离与理由：任务书示例假设 TE3 已打开 child 后再设置 mapCardSessionSwitches，但平台 `sessions.open()` 可同步推送 current-session，实测时序有竞态；因此给 `acceptHandoff` 增加默认兼容的 open option，bridge 只做 durable fork/binding/observation 并先回执，iframe 完成索引/相机准备后再激活。另把任务书未覆盖的 Dock/iframe 跨入口重复操作收口为共享同步锁。
 - 遗留：无。

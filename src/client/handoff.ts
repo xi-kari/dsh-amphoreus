@@ -41,6 +41,32 @@ export const observationKey = (
   observation: Pick<ObservationRecord, 'sessionId' | 'seq' | 'kind'>,
 ): string => `${observation.sessionId}:${observation.seq}:${observation.kind}`
 
+const handoffActions = new Set<string>()
+
+function handoffActionKey(observation: Pick<ObservationRecord, 'sessionId' | 'seq'>): string {
+  if (typeof observation.sessionId !== 'string' || observation.sessionId === '') {
+    throw new Error('缺少移交会话')
+  }
+  if (!Number.isSafeInteger(observation.seq) || observation.seq < 0) {
+    throw new Error('移交序号无效')
+  }
+  return `${observation.sessionId}:${observation.seq}`
+}
+
+async function withHandoffAction<T>(
+  observation: Pick<ObservationRecord, 'sessionId' | 'seq'>,
+  action: () => Promise<T>,
+): Promise<T> {
+  const key = handoffActionKey(observation)
+  if (handoffActions.has(key)) throw new Error('移交正在处理')
+  handoffActions.add(key)
+  try {
+    return await action()
+  } finally {
+    handoffActions.delete(key)
+  }
+}
+
 export const putObservation = (
   deps: HandoffDeps,
   key: string,
@@ -101,29 +127,39 @@ export async function dispatchTask(deps: HandoffDeps, input: DispatchInput): Pro
   return sessionId
 }
 
-export async function acceptHandoff(deps: HandoffDeps, observation: ObservationRecord): Promise<string> {
+export interface AcceptHandoffOptions {
+  readonly open?: boolean
+}
+
+export async function acceptHandoff(
+  deps: HandoffDeps,
+  observation: ObservationRecord,
+  options: AcceptHandoffOptions = {},
+): Promise<string> {
   if (observation.kind !== 'handoff' || observation.status !== 'open') {
     throw new Error('该移交不可接受')
   }
   if (!observation.targetSkillName) throw new Error('移交目标无法解析（未部署）')
-  const child = await deps.sessions.fork({
-    sessionId: observation.sessionId,
-    atSeq: observation.seq,
-    increaseTitle: true,
+  return withHandoffAction(observation, async () => {
+    const child = await deps.sessions.fork({
+      sessionId: observation.sessionId,
+      atSeq: observation.seq,
+      increaseTitle: true,
+    })
+    await putBinding(deps, child, {
+      skill: observation.targetSkillName!,
+      boundBy: 'handoff-fork',
+      fromSessionId: observation.sessionId,
+      fromSeq: observation.seq,
+      ...(observation.targetFace ? { face: observation.targetFace } : {}),
+    })
+    await putObservation(deps, observationKey(observation), {
+      status: 'accepted',
+      acceptedSessionId: child,
+    })
+    if (options.open !== false) deps.sessions.open(child)
+    return child
   })
-  await putBinding(deps, child, {
-    skill: observation.targetSkillName,
-    boundBy: 'handoff-fork',
-    fromSessionId: observation.sessionId,
-    fromSeq: observation.seq,
-    ...(observation.targetFace ? { face: observation.targetFace } : {}),
-  })
-  await putObservation(deps, observationKey(observation), {
-    status: 'accepted',
-    acceptedSessionId: child,
-  })
-  deps.sessions.open(child)
-  return child
 }
 
 export async function dismissHandoff(
@@ -133,5 +169,7 @@ export async function dismissHandoff(
   if (observation.kind !== 'handoff' || observation.status !== 'open') {
     throw new Error('该移交不可忽略')
   }
-  await putObservation(deps, observationKey(observation), { status: 'dismissed' })
+  await withHandoffAction(observation, () => (
+    putObservation(deps, observationKey(observation), { status: 'dismissed' })
+  ))
 }

@@ -306,6 +306,15 @@ test('acceptHandoff forks, binds lineage and face, patches the encoded key, then
   assert.equal(prompts, 0)
 })
 
+test('acceptHandoff keeps its open-by-default contract but can defer activation for the iframe bridge', async () => {
+  const opened: string[] = []
+  const fixture = deps({ open: id => { opened.push(id) } })
+  await withFetch(async () => response(), async () => {
+    assert.equal(await acceptHandoff(fixture, handoff(), { open: false }), CHILD_ID)
+  })
+  assert.deepEqual(opened, [])
+})
+
 test('acceptHandoff rejects invalid records before fork or fetch', async () => {
   let forks = 0
   let fetches = 0
@@ -314,6 +323,8 @@ test('acceptHandoff rejects invalid records before fork or fetch', async () => {
     await assert.rejects(acceptHandoff(fixture, handoff({ kind: 'receipt' })), /该移交不可接受/)
     await assert.rejects(acceptHandoff(fixture, handoff({ status: 'accepted' })), /该移交不可接受/)
     await assert.rejects(acceptHandoff(fixture, handoff({ targetSkillName: null })), /移交目标无法解析/)
+    await assert.rejects(acceptHandoff(fixture, handoff({ seq: -1 })), /移交序号无效/)
+    await assert.rejects(acceptHandoff(fixture, handoff({ seq: Number.MAX_SAFE_INTEGER + 1 })), /移交序号无效/)
   })
   assert.equal(forks, 0)
   assert.equal(fetches, 0)
@@ -394,6 +405,28 @@ test('dismissHandoff rejects stale accepted or dismissed records without a PUT',
   await withFetch(async () => { fetches += 1; return response() }, async () => {
     await assert.rejects(dismissHandoff(deps(), handoff({ status: 'accepted' })), /该移交不可忽略/)
     await assert.rejects(dismissHandoff(deps(), handoff({ status: 'dismissed' })), /该移交不可忽略/)
+  })
+  assert.equal(fetches, 0)
+})
+
+test('accept and dismiss share a synchronous session-seq lock', async () => {
+  let releaseFork!: (value: string) => void
+  const fixture = deps({
+    fork: () => new Promise(resolve => { releaseFork = resolve }),
+  })
+  await withFetch(async () => response(), async () => {
+    const accepting = acceptHandoff(fixture, handoff(), { open: false })
+    await Promise.resolve()
+    await assert.rejects(dismissHandoff(fixture, handoff()), /移交正在处理/)
+    releaseFork(CHILD_ID)
+    assert.equal(await accepting, CHILD_ID)
+  })
+})
+
+test('dismissHandoff rejects an unsafe sequence before writing', async () => {
+  let fetches = 0
+  await withFetch(async () => { fetches += 1; return response() }, async () => {
+    await assert.rejects(dismissHandoff(deps(), handoff({ seq: Number.NaN })), /移交序号无效/)
   })
   assert.equal(fetches, 0)
 })

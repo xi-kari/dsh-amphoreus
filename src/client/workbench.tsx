@@ -16,7 +16,7 @@ import type { EnterSeatQueue } from './enter-seat-queue.ts'
 import { acceptHandoff, dismissHandoff, dispatchTask, type DispatchInput, type HandoffDeps } from './handoff.ts'
 import { beginScrollRequest, safeOptionalInteger, scrollToTurn } from './scroll-to-turn.ts'
 import { bindingIndex, currentSeatOf } from './seat-model.ts'
-import type { AmphoreusClientSnapshot } from './state.ts'
+import type { AmphoreusClientModel } from './state.ts'
 import { rememberTab, WORKBENCH_VIEW_ID } from './tabmemory.ts'
 import type { BridgedTokens } from './theme.ts'
 import css from './workbench.module.css'
@@ -62,7 +62,7 @@ export interface WorkbenchViewInjected {
   readonly workspaces: ObservableSnapshot<WorkspacesPayload>
   readonly conversationFeed: (sessionId: string) => ObservableSnapshot<ChatSnapshot | undefined> | undefined
   readonly sessionFace: (sessionId: string) => SessionFeedFace | undefined
-  readonly model: ObservableSnapshot<AmphoreusClientSnapshot>
+  readonly model: AmphoreusClientModel
   readonly theme: ThemeBridge
   readonly setSeat: (heroId: string | null) => void
   readonly magazine: MagazineBridge
@@ -144,7 +144,7 @@ interface BridgeMessage {
 
 export interface WorkbenchBridgeDeps {
   readonly sessions: SessionsFace
-  readonly model: ObservableSnapshot<AmphoreusClientSnapshot>
+  readonly model: AmphoreusClientModel
   readonly workspaces: ObservableSnapshot<WorkspacesPayload>
   readonly startSeatSession: (skillName: string) => Promise<string>
   readonly seatDeps: HandoffDeps
@@ -509,14 +509,26 @@ export function useWorkbenchBridge(
               }
               const seq = safeOptionalInteger(data.seq)
               if (seq === undefined) throw new Error('移交序号无效')
-              const observation = model.getSnapshot().state?.observations.find(candidate =>
+              await model.refresh()
+              const snapshot = model.getSnapshot()
+              if (snapshot.phase !== 'ready' || snapshot.state === undefined || snapshot.error !== undefined) {
+                throw new Error(snapshot.error ?? '移交状态尚未就绪')
+              }
+              const observation = snapshot.state.observations.find(candidate =>
                 candidate.sessionId === data.sessionId
                 && candidate.seq === seq
                 && candidate.kind === 'handoff'
                 && candidate.status === 'open')
               if (observation === undefined) throw new Error('移交记录不存在')
               if (data.type === 'amphoreus:accept-handoff') {
-                const id = await acceptHandoff(seatDeps, observation)
+                const deployed = observation.targetSkillName !== null
+                  && observation.targetSkillName !== undefined
+                  && snapshot.state.seats.some(candidate => (
+                    candidate.skillName === observation.targetSkillName
+                    && candidate.status === 'deployed'
+                  ))
+                if (!deployed) throw new Error('角色未部署')
+                const id = await acceptHandoff(seatDeps, observation, { open: false })
                 reply({ type: 'amphoreus:handoff-accepted', requestId: data.requestId, session: summaryOf(id) })
               } else {
                 await dismissHandoff(seatDeps, observation)

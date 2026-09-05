@@ -52,7 +52,7 @@ test('state and enter-seat messages recompute suggestions, defer full replacemen
   assert.match(enterCase, /BOOT_MODE === 'portal'/u)
   assert.match(enterCase, /updateDispatchSuggestions\(data\.dispatchText\)/u)
   assert.match(enterCase, /enterSeat\(workspaceId\)/u)
-  assert.match(source, /data\.type === 'amphoreus:dispatched'\) settleRpc/u)
+  assert.match(source, /data\.type === 'amphoreus:dispatched' \|\| data\.type === 'amphoreus:handoff-accepted'/u)
 })
 
 test('deferred state refresh preserves focused input and renders the latest non-suggestion state after blur', () => {

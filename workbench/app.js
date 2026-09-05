@@ -104,6 +104,7 @@ const threadListTitle = thread => thread.dshSessionTitle ?? thread.title ?? ques
 
 const canvasDirty = new Set()
 const canvasPendingPayloads = new Set()
+const handoffRpcBusy = new Set()
 let canvasTimer = 0
 let canvasSaveChain = Promise.resolve()
 let canvasLastOperation = Promise.resolve()
@@ -1276,6 +1277,40 @@ function handoffFromBadge(card, thread) {
   return `<span class="card-handoff-from" title="移交自另一席">移交自 ${escapeHtml(sourceName)}</span>`
 }
 
+function openHandoffOf(sessionId) {
+  if (typeof sessionId !== 'string' || sessionId === '') return undefined
+  return (state.amph?.observations ?? [])
+    .filter(observation => observation?.sessionId === sessionId
+      && observation.kind === 'handoff'
+      && observation.status === 'open'
+      && Number.isSafeInteger(observation.seq)
+      && observation.seq >= 0)
+    .sort((left, right) => right.seq - left.seq)[0]
+}
+
+function handoffSummary(value) {
+  const codePoints = Array.from(String(value ?? '').replace(/^<|>$/g, ''))
+  return { text: codePoints.slice(0, 80).join(''), truncated: codePoints.length > 80 }
+}
+
+function renderConnectingTail(thread) {
+  if (state.amph?.effectiveConfig?.handoffEnabled !== true) return ''
+  const observation = openHandoffOf(thread.dshSessionId)
+  if (observation === undefined) return ''
+  const seat = state.seats.find(candidate => candidate.skillName === observation.targetSkillName)
+  const deployed = deployedSkill(observation.targetSkillName)
+  const name = observation.targetDisplayName ?? seat?.displayName ?? '?'
+  const initial = Array.from(String(name))[0] ?? '?'
+  const summary = handoffSummary(observation.payload)
+  const key = `${observation.sessionId}:${observation.seq}`
+  const busy = handoffRpcBusy.has(key)
+  return `<section class="connecting-tail${deployed ? '' : ' absent'}" data-magazine="${escapeHtml(state.amph.effectiveConfig.magazineMode ?? 'light')}" aria-label="接通中" aria-busy="${busy}">
+    <div class="connecting-silhouette">${seat?.stickerUrl ? `<img src="${escapeHtml(seat.stickerUrl)}" alt="">` : `<i style="--hue:${seat?.hue ?? hashHue(observation.targetSkillName ?? '')}">${escapeHtml(initial)}</i>`}</div>
+    <div class="connecting-copy"><p class="connecting-kicker">${deployed ? '黄金裔接通中…' : '角色未部署'}</p><h3>${escapeHtml(name)}</h3><p class="connecting-summary" title="移交物">${escapeHtml(summary.text)}${summary.truncated ? '…' : ''}</p></div>
+    <div class="connecting-actions">${deployed ? `<button class="primary" type="button" data-action="accept-handoff" data-session="${escapeHtml(observation.sessionId)}" data-seq="${observation.seq}"${busy ? ' disabled' : ''}>移交</button>` : ''}<button type="button" data-action="dismiss-handoff" data-session="${escapeHtml(observation.sessionId)}" data-seq="${observation.seq}"${busy ? ' disabled' : ''}>忽略</button></div>
+  </section>`
+}
+
 function conversationCard(card, graph) {
   const seatInfo = seatOfCard(card)
   const cardThread = state.workspace?.threads.find(item => item.id === card.dshThreadId)
@@ -1286,6 +1321,10 @@ function conversationCard(card, graph) {
     ? '<span class="card-dispatched" title="由全体会议派发">派发</span>'
     : ''
   const handoffBadge = handoffFromBadge(card, cardThread)
+  const openHandoff = typeof cardThread?.dshSessionId === 'string' ? openHandoffOf(cardThread.dshSessionId) : undefined
+  const openHandoffBadge = Number.isSafeInteger(card.answer?.sourceSeq) && openHandoff?.seq === card.answer.sourceSeq
+    ? '<span class="card-handoff-open">待移交</span>'
+    : ''
   const selected = card.id === state.selectedCardId ? 'selected' : ''
   const source = card.parentId === null ? 'DSH 会话' : card.turnIndex === 0 ? 'DSH 分支' : '追问'
   const continueButton = card.canContinue === true
@@ -1301,7 +1340,7 @@ function conversationCard(card, graph) {
     <button class="node-handle" data-drag-card="${card.id}" aria-label="拖动 ${escapeHtml(card.question)}" title="拖动卡片"></button>
     ${continueButton}${foldButton}${branchButton}
     <div class="thread-card-head"><span class="topic-dot"></span>${badge}<button class="thread-title" data-action="show-thread" data-thread="${card.dshThreadId}" data-card="${escapeHtml(card.id)}" title="查看完整会话：${escapeHtml(card.question)}">${escapeHtml(card.question)}</button></div>
-    <div class="thread-meta"><span>${source}</span>${seatInfo.face ? `<span class="card-seat-face">${escapeHtml(seatInfo.face)}</span>` : ''}<span>第 ${card.turnIndex + 1} 轮</span>${dispatchedBadge}${handoffBadge}${card.error === null ? '' : '<span class="card-error-status">失败</span>'}${unprojectableBadge}${card.processCount > 0 ? `<span class="card-process-count">工具 ${card.processCount}</span>` : ''}</div>
+    <div class="thread-meta"><span>${source}</span>${seatInfo.face ? `<span class="card-seat-face">${escapeHtml(seatInfo.face)}</span>` : ''}<span>第 ${card.turnIndex + 1} 轮</span>${dispatchedBadge}${handoffBadge}${openHandoffBadge}${card.error === null ? '' : '<span class="card-error-status">失败</span>'}${unprojectableBadge}${card.processCount > 0 ? `<span class="card-process-count">工具 ${card.processCount}</span>` : ''}</div>
     <div class="thread-answer">${card.placeholder ? '<p class="thread-answer-empty">选中此会话后加载正文</p>' : card.answer === null ? (card.error === null ? '<p class="thread-answer-empty">等待助手回复</p>' : '') : card.answer.pending && card.answer.text === '' ? '<p class="thread-answer-pending">正在回复</p>' : `${renderMarkdown(clampCardText(card.answer.text))}${card.answer.pending ? '<p class="thread-answer-pending">正在回复</p>' : ''}`}${card.error === null ? '' : `<p class="thread-answer-error" title="${escapeHtml(card.error.text)}">本轮失败：${escapeHtml(card.error.text)}</p>`}</div>
     <footer><button data-action="show-thread" data-thread="${card.dshThreadId}" data-card="${escapeHtml(card.id)}" title="查看完整会话" aria-label="查看完整会话"><svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="M2 8.5 8 2.5l6 6V13.5a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5Z"/><path d="M6.2 14v-3.6a1.8 1.8 0 0 1 3.6 0V14" /></svg>详情</button><button data-action="open-dsh" data-thread="${card.dshThreadId}" data-seq="${Number.isInteger(card.sourceSeq) ? card.sourceSeq : ''}" data-turn="${Number.isInteger(card.turn) ? card.turn : ''}" title="在 DSH 中打开" aria-label="在 DSH 中打开"><svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3.5H4.5A1.5 1.5 0 0 0 3 5v6.5A1.5 1.5 0 0 0 4.5 13H11a1.5 1.5 0 0 0 1.5-1.5V9"/><path d="M9.5 3.5h3v3M12.4 3.6 7.5 8.5"/></svg>DSH</button><button data-action="archive-thread" data-thread="${card.dshThreadId}" title="归档此会话" aria-label="归档此会话"><svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 5h11M5.5 7v5.5a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1V7"/><path d="M4 5 5 2.8a.7.7 0 0 1 .6-.4h4.8a.7.7 0 0 1 .6.4L12 5M6 9.5h4"/></svg>归档</button></footer>
   </article>`
@@ -1888,7 +1927,7 @@ function renderThread() {
   const seat = seatForCurrentView()
   const detailTitle = seatTitleOf(state.seatId ?? 'all')
   const detailVolume = String(seat?.volume ?? '').padStart(2, '0')
-  return `<section class="detail-view" data-title="${escapeHtml(detailTitle)}" data-volume="${detailVolume}"><header class="detail-head" data-title="${escapeHtml(detailTitle)}" data-volume="${detailVolume}"><div class="detail-head-title"><div class="detail-head-meta"><span class="detail-badge">${thread.parentId === null ? '会话' : '分支'}</span>${thread.dshSessionTitle ?? thread.title ? `<span class="detail-subtitle">${escapeHtml(thread.dshSessionTitle ?? thread.title)}</span>` : ''}</div><h1>${escapeHtml(questionFor(thread))}</h1></div><div class="detail-head-actions"><button data-action="open-dsh" data-thread="${thread.id}" data-seq="${Number.isInteger(latestAssistantSeq) ? latestAssistantSeq : ''}" data-turn="${Number.isInteger(latestAssistantTurn) ? latestAssistantTurn : ''}" title="在原生对话中打开此会话">在 DSH 中打开</button><button data-action="open-branch" data-thread="${thread.id}" title="基于最新回答创建分支">创建分支</button><button class="primary" data-action="show-canvas">返回画布</button></div></header><div class="detail-scroll">${messages.map(message => threadMessage(thread, message)).join('') || '<div class="note-empty">等待这条会话的第一条消息。</div>'}</div><form class="message-composer" data-compose="${thread.id}"><textarea maxlength="4000" placeholder="继续当前会话…" ${waiting ? 'disabled' : ''}></textarea><button class="primary" type="submit" ${waiting ? 'disabled' : ''}>${waiting ? '等待回复' : '发送'}</button></form></section>`
+  return `<section class="detail-view" data-title="${escapeHtml(detailTitle)}" data-volume="${detailVolume}"><header class="detail-head" data-title="${escapeHtml(detailTitle)}" data-volume="${detailVolume}"><div class="detail-head-title"><div class="detail-head-meta"><span class="detail-badge">${thread.parentId === null ? '会话' : '分支'}</span>${thread.dshSessionTitle ?? thread.title ? `<span class="detail-subtitle">${escapeHtml(thread.dshSessionTitle ?? thread.title)}</span>` : ''}</div><h1>${escapeHtml(questionFor(thread))}</h1></div><div class="detail-head-actions"><button data-action="open-dsh" data-thread="${thread.id}" data-seq="${Number.isInteger(latestAssistantSeq) ? latestAssistantSeq : ''}" data-turn="${Number.isInteger(latestAssistantTurn) ? latestAssistantTurn : ''}" title="在原生对话中打开此会话">在 DSH 中打开</button><button data-action="open-branch" data-thread="${thread.id}" title="基于最新回答创建分支">创建分支</button><button class="primary" data-action="show-canvas">返回画布</button></div></header><div class="detail-scroll">${messages.map(message => threadMessage(thread, message)).join('') || '<div class="note-empty">等待这条会话的第一条消息。</div>'}${renderConnectingTail(thread)}</div><form class="message-composer" data-compose="${thread.id}"><textarea maxlength="4000" placeholder="继续当前会话…" ${waiting ? 'disabled' : ''}></textarea><button class="primary" type="submit" ${waiting ? 'disabled' : ''}>${waiting ? '等待回复' : '发送'}</button></form></section>`
 }
 
 // ---- Seat portal（英雄纪卡牌门户） --------------------------------------------
@@ -2551,6 +2590,39 @@ app.addEventListener('click', async event => {
       if (heroId !== null) await enterSeat(`seat:${heroId}`)
       return
     }
+    if (button.dataset.action === 'accept-handoff' || button.dataset.action === 'dismiss-handoff') {
+      const sessionId = button.dataset.session
+      const seq = optionalSafeInteger(button.dataset.seq)
+      if (typeof sessionId !== 'string' || sessionId === '') throw new Error('缺少移交会话')
+      if (seq === undefined) throw new Error('移交序号无效')
+      const observation = openHandoffOf(sessionId)
+      if (observation === undefined || observation.seq !== seq) throw new Error('移交记录已变化，请刷新后重试')
+      if (button.dataset.action === 'accept-handoff' && !deployedSkill(observation.targetSkillName)) {
+        throw new Error('角色未部署')
+      }
+      const key = `${sessionId}:${seq}`
+      if (handoffRpcBusy.has(key)) return
+      handoffRpcBusy.add(key)
+      try {
+        if (button.dataset.action === 'accept-handoff') {
+          const session = await dshRpc('amphoreus:accept-handoff', { sessionId, seq })
+          if (typeof session?.id !== 'string' || session.id === '') throw new Error('移交响应缺少会话')
+          state.mapCardSessionSwitches.add(session.id)
+          try {
+            await refreshIndex()
+          } catch (error) {
+            state.mapCardSessionSwitches.delete(session.id)
+            throw error
+          }
+          post('amphoreus:activate-session', { sessionId: session.id })
+        } else {
+          await dshRpc('amphoreus:dismiss-handoff', { sessionId, seq })
+        }
+      } finally {
+        handoffRpcBusy.delete(key)
+      }
+      return
+    }
     if (button.dataset.action === 'enter-seat' && typeof button.dataset.workspace === 'string') {
       if (BOOT_MODE === 'portal') {
         post('amphoreus:open-seat', { heroId: button.dataset.workspace.startsWith('seat:') ? button.dataset.workspace.slice(5) : null })
@@ -2812,7 +2884,7 @@ window.addEventListener('message', event => {
       }
     }
   }
-  if (data.type === 'amphoreus:forked-session' || data.type === 'amphoreus:created-session' || data.type === 'amphoreus:message-sent' || data.type === 'amphoreus:dispatched') settleRpc(data.requestId, data.session ?? data)
+  if (data.type === 'amphoreus:forked-session' || data.type === 'amphoreus:created-session' || data.type === 'amphoreus:message-sent' || data.type === 'amphoreus:dispatched' || data.type === 'amphoreus:handoff-accepted' || data.type === 'amphoreus:handoff-dismissed') settleRpc(data.requestId, data.session ?? data)
   if (data.type === 'amphoreus:bridge-error') { settleRpc(data.requestId, undefined, new Error(data.message)); if (data.requestId === undefined) setError(data.message) }
 })
 

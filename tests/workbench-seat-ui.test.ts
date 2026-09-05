@@ -84,7 +84,7 @@ test('conversation cards render known stickers and unknown generic badges withou
   }
   context.globalThis = context
   vm.createContext(context)
-  vm.runInContext(`${functionSource('hashHue')}\n${functionSource('seatOfCard')}\n${functionSource('handoffFromBadge')}\n${functionSource('conversationCard')}\nglobalThis.__conversationCard = conversationCard`, context)
+  vm.runInContext(`${functionSource('hashHue')}\n${functionSource('seatOfCard')}\n${functionSource('handoffFromBadge')}\n${functionSource('openHandoffOf')}\n${functionSource('conversationCard')}\nglobalThis.__conversationCard = conversationCard`, context)
   const conversationCard = context.globalThis.__conversationCard as (card: Record<string, unknown>, graph: { childCounts: Map<string, number> }) => string
   const card = (thread: string) => ({
     id: `${thread}:turn:1`,

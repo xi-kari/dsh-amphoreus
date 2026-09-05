@@ -188,14 +188,19 @@ test('TE3 bridge validates dispatch, routes handoff RPC, and shares seatDeps wit
     bridgeSource.indexOf("case 'amphoreus:accept-handoff'"),
     bridgeSource.indexOf("case 'amphoreus:create-session'"),
   )
-  assert.match(handoffCase, /model\.getSnapshot\(\)\.state\?\.observations\.find/)
+  assert.match(handoffCase, /await model\.refresh\(\)/)
+  assert.match(handoffCase, /const snapshot = model\.getSnapshot\(\)/)
+  assert.match(handoffCase, /snapshot\.state\.observations\.find/)
   assert.match(handoffCase, /candidate\.kind === 'handoff'/)
   assert.match(handoffCase, /candidate\.status === 'open'/)
   assert.match(handoffCase, /移交记录不存在/)
-  assert.match(handoffCase, /acceptHandoff\(seatDeps, observation\)/)
+  assert.match(handoffCase, /snapshot\.state\.seats\.some/)
+  assert.match(handoffCase, /candidate\.status === 'deployed'/)
+  assert.match(handoffCase, /acceptHandoff\(seatDeps, observation, \{ open: false \}\)/)
   assert.match(handoffCase, /dismissHandoff\(seatDeps, observation\)/)
   assert.match(handoffCase, /type: 'amphoreus:handoff-accepted'/)
   assert.match(handoffCase, /type: 'amphoreus:handoff-dismissed'/)
+  assert.doesNotMatch(handoffCase, /sessions\.open\(/)
 
   assert.match(clientSource, /const seatDeps: HandoffDeps/)
   assert.ok((clientSource.match(/\n\s+seatDeps,/g) ?? []).length >= 2)
