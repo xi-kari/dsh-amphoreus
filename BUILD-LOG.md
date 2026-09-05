@@ -1382,3 +1382,4 @@
 - 主页壁纸：`heroes.ts` 增 `homeWallpaperDir`、`HOME_WALLPAPER_ROOT`、`GLOBAL_WALLPAPER_DIRS`（昔涟壁纸迁到 13黄金裔壁纸/ 下仍兼容）、`HOME_WALLPAPER_PARKED`；`derive.ts` 增 `home` kind（扫文件夹、≤12、清理多余）。本机派生 46 张。
 - 品牌：`brand-shell.ts`（标题/favicon/manifest 重写与恢复）、`brand-icon.ts`（原创 δ 图形 data URI）、词典 翁法罗斯 → δ-me13、字标 XIII → CHRYSOS；问候 `greetings.ts` 13 席×3 时段；`seat-watch.ts` 镜像 body 席位属性。
 - 构建：tsdown 的 lightningcss 显式 targets，避免 backdrop-filter 只剩 -webkit- 前缀。测试 415 项通过（+7 文件）。实机：刻律德菈席 2px 锐角玻璃、棋盘 rim、壁纸 blur 6px、0101 电报带、专属问候与贴纸均已验证。
+- 用户裁决（同日晚）：壁纸保持清晰（13 席 `wallpaper.blurPx` 归 0）；主页壁纸横版优先——`selectHomeWallpapers` 在派生阶段按 `magick identify` 的宽高筛选，有横版只取横版（最宽优先），无横版才取竖版；赛飞儿/万敌/白厄暂停主页壁纸（`HOME_WALLPAPER_PARKED`）。注意：改 `derive.ts` 后必须重启服务，否则宿主进程内的旧派生代码在下一次服务端派生时会把已清理的竖版补回。输入框右上角新增席位贴纸吉祥物（纯 CSS，reactive/static/off）。
