@@ -1139,7 +1139,7 @@
 - 偏离与理由：任务书配置 keys-ok 示例只列 16 个名字，而实际 config.ts 有 23 个顶层键；按“以当时 config.ts 为准”扩大到全部顶层与嵌套叶键。端到端清单链接按任务书先写入，目标文件由 TF10 创建，静检将它与四张故意缺席截图列为预期缺失。
 - 遗留：GitHub 安装方式仍须 TF12 实测；失败时按任务书删除该方式并记录 HANDOFF。其余无。
 ## TF7：外置素材清单自检 — 2026-09-05 09:31
-- commit: PENDING-TASK
+- commit: fc1e460
 - 动手前核对：实际执行任务书 `sed -n '4857,4883p'`，并逐项读取 heroes.ts 的五个导出与 webapi 四目录命名；确认 required=`6+13×4=58`、optional=`13+1+12+2+4=32`，package files 不含 check-assets PASS
 - 验收：
   - 无参数 `node scripts/check-assets.mjs` → `Usage: node scripts/check-assets.mjs "<assetsRoot>"`、exit=`2` PASS
@@ -1152,5 +1152,21 @@
   - 全量 `npm test` → `tests 326; pass 325; fail 0; skipped 1; duration_ms 3040.4853` PASS（exit: `0`）
   - `npm run build` → derive/client/host=`28.87/205.78/199.59 kB` PASS（exit: `0`）；`git diff --check` PASS（exit: `0`）
 - 人工断言：✓ 不下载、复制、重采样或写结果；✓ 只输出状态与汇总；✓ 不把仓库开发辅助脚本塞入 npm 包。
+- 偏离与理由：无。
+- 遗留：无。
+## TF8：发布署名与 vendoring 归属核对 — 2026-09-05 09:34
+- commit: PENDING-TASK
+- 动手前核对：实际执行任务书 `sed -n '4884,4912p'`；确认 `settings.credit=2`、设置区仓库链接=`1`、`app.js` 的消息名字面量 `'synapse:`=`0`、宿主 `workbench.json|node:fs`=`0`、DSH 色彩 token 引用=`400`、handoff connector=`1`，三处历史条件与 A/B/D/E 章节前置均成立 PASS
+- 改动：仅在 NOTICE 的 Changes 段末尾、`Original license text follows.` 之前追加任务书指定的 `mark.svg` 原创替换句；未改 MIT 原文、版权行、既有 Changes 措辞、设置区 DOM/locales/CSS 或 vendoring 文件头 PASS
+- 验收：
+  - `npm run build` → derive/client/host=`28.87/205.78/199.59 kB` PASS（exit: `0`）
+  - 全量 `npm test` → `tests 326; pass 325; fail 0; skipped 1; duration_ms 2773.9264` PASS（exit: `0`）
+  - `npm run verify:dist` → `verify-dist: OK 377 checks` PASS（exit: `0`）
+  - 静态署名门 → `settings.credit=2`、`liangmianya/dsh-synapse=1`；NOTICE 的 `original artwork/in-memory seq index/no session text/magazine 'full' layout` 精确=`1/1/1/1`；NOTICE 中不属于非官方声明的 `DeepSeek` 行=`0` PASS
+  - 条件句门 → `app_synapse=0`、`host_disk_matches=0`、`css_dsw_refs=400`、`handoff_connector=1` PASS
+  - 文件头复核 → `mark.svg`、`src/host/workbench.ts`、`workbench/app.js`、`workbench/styles.css` 均保留 vendoring/移植归属头；未改这些文件 PASS
+  - 真实浏览器：刷新本地 DSH 设置页，依次打开「设置」→「翁法罗斯」；`a[href="https://github.com/liangmianya/dsh-synapse"]` 的 `textContent` 实测为 `github.com/liangmianya/dsh-synapse` PASS
+  - `git diff --name-only` 在写日志前仅为 `NOTICE`；`git diff --check` 无空白错误 PASS（exit: `0`）
+- 人工断言：✓ 署名只存在于设置页、README、NOTICE 的发布归属位置；✓ 对话气泡与名牌未新增署名；✓ 原 upstream MIT 正文未改。
 - 偏离与理由：无。
 - 遗留：无。
