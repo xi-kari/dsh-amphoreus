@@ -37,6 +37,8 @@ export interface DeriveResult {
 export interface DeriveRuntime {
   readonly probe: (magick: string) => Promise<string | undefined>
   readonly convert: (magick: string, args: readonly string[], input: Buffer) => Promise<Buffer>
+  /** Pixel size of an image (via `magick identify`); undefined when unknown. Optional: legacy runtimes omit it. */
+  readonly measure?: (magick: string, input: Buffer) => Promise<{ width: number; height: number } | undefined>
 }
 
 interface SourceFile {
@@ -220,7 +222,37 @@ function runMagick(magick: string, args: readonly string[], input: Buffer): Prom
   })
 }
 
-const DEFAULT_RUNTIME: DeriveRuntime = { probe: probeMagick, convert: runMagick }
+async function measureImage(magick: string, input: Buffer): Promise<{ width: number; height: number } | undefined> {
+  try {
+    const output = await runMagick(magick, ['-', '-format', '%w %h', 'info:'], input)
+    const match = /^(\d+)\s+(\d+)/u.exec(output.toString('utf8').trim())
+    if (match === null) return undefined
+    return { width: Number(match[1]), height: Number(match[2]) }
+  } catch {
+    return undefined
+  }
+}
+
+const DEFAULT_RUNTIME: DeriveRuntime = { probe: probeMagick, convert: runMagick, measure: measureImage }
+
+/** Landscape threshold: width/height at or above this counts as a horizontal wallpaper. */
+export const LANDSCAPE_RATIO = 1.2
+
+/**
+ * Choose the home wallpapers to derive: every landscape file (widest first) when at least one
+ * exists, otherwise all portraits by name (user rule 2026-09-05: prefer horizontal art, fall back
+ * to vertical only when there is nothing else). Files whose size cannot be read count as portrait.
+ */
+export function selectHomeWallpapers(
+  files: readonly { name: string; width?: number; height?: number }[],
+): string[] {
+  const ratio = (file: { width?: number; height?: number }): number =>
+    file.width !== undefined && file.height !== undefined && file.height > 0 ? file.width / file.height : 0
+  const landscapes = files.filter(file => ratio(file) >= LANDSCAPE_RATIO)
+    .sort((left, right) => ratio(right) - ratio(left) || left.name.localeCompare(right.name, 'en'))
+  if (landscapes.length > 0) return landscapes.map(file => file.name)
+  return [...files].sort((left, right) => left.name.localeCompare(right.name, 'en')).map(file => file.name)
+}
 
 function isErrno(error: unknown, code: string): boolean {
   return typeof error === 'object' && error !== null && 'code' in error && (error as NodeJS.ErrnoException).code === code
@@ -468,7 +500,19 @@ export async function deriveAssets(options: DeriveOptions, runtime: DeriveRuntim
     ]
     const jobs: { source: readonly string[]; target: string; current: string; args: readonly string[] }[] = []
     for (const { owner, folder } of owners) {
-      const files = await listHomeWallpapers(assetsRoot, folder)
+      const names = await listHomeWallpapers(assetsRoot, folder)
+      // Landscape first: the shell picks index 0 unless a session seed says otherwise, so the
+      // widest image becomes home-00 and portraits only appear when no landscape exists.
+      const measured = await Promise.all(names.map(async name => {
+        try {
+          const source = await sourceFile(assetsRoot, HOME_WALLPAPER_ROOT, folder, name)
+          const size = runtime.measure === undefined ? undefined : await runtime.measure(magick, await readSource(source))
+          return { name, ...(size ?? {}) }
+        } catch {
+          return { name }
+        }
+      }))
+      const files = selectHomeWallpapers(measured)
       files.forEach((file, index) => jobs.push({
         source: [HOME_WALLPAPER_ROOT, folder, file],
         target: derivedHomeWallpaperPath(cacheDir, owner, index),

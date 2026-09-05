@@ -355,6 +355,37 @@
   opacity: var(--amph-motif-opacity, .1);
 }
 
+/* ---------- Mascot: the seat's signature sticker perched on the composer's top-right corner.
+   Pure CSS (background-image from --amph-mascot-url); `reactive` lifts on focus/hover, `static`
+   sits still, `off` renders nothing. Never intercepts pointer events. ---------- */
+[data-amph-grammar] [data-amph-inputbar] {
+  position: relative;
+}
+[data-amph-grammar]:not([data-amph-mascot='off']) [data-amph-inputbar]::after {
+  content: '';
+  position: absolute;
+  right: 14px;
+  top: -34px;
+  width: 56px;
+  height: 56px;
+  background: var(--amph-mascot-url, none) center / contain no-repeat;
+  filter: drop-shadow(0 2px 4px color-mix(in srgb, var(--amph-accent2) 35%, transparent));
+  pointer-events: none;
+  z-index: 9;
+  transform-origin: 50% 100%;
+  transition: transform 220ms var(--amph-ease);
+}
+[data-amph-grammar][data-amph-mascot='reactive'] [data-amph-inputbar]:has([data-composer-card]:focus-within)::after,
+[data-amph-grammar][data-amph-mascot='reactive'] [data-amph-inputbar]:hover::after {
+  transform: translateY(-4px) rotate(-4deg) scale(1.06);
+}
+[data-amph-grammar] [data-amph-inputbar]:has([data-amph-stats])::after {
+  top: -30px;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-amph-grammar] [data-amph-inputbar]::after { transition: none; }
+}
+
 /* ---------- Page-edge fades: content melts into the viewport edges ---------- */
 [data-amph-grammar] [data-amph-fade] {
   position: fixed;

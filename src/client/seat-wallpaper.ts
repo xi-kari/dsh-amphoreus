@@ -48,6 +48,8 @@ export function seatWallpaperCandidates(
   assets: SeatWallpaperAssets,
 ): readonly string[] {
   const homes = HOME_WALLPAPER_PARKED.includes(hero.heroId) ? [] : homeWallpaperKeys(assets.derived, hero.heroId)
+  // derive.ts only emits landscapes when the folder has any (portraits otherwise), so rotating by
+  // session seed over the whole derived set already honours "horizontal first".
   const home = homes.length === 0
     ? undefined
     : derivedUrlOf(homes[homeWallpaperIndex(assets.homeSeed, homes.length)]!, assets.derivedVersion)

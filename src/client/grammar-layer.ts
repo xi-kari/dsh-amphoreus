@@ -21,6 +21,8 @@ export interface GrammarLayerInputs {
   readonly subscribeTheme: (listener: () => void) => () => void
   readonly prefs: () => GrammarPrefs | undefined
   readonly subscribePrefs: (listener: () => void) => () => void
+  /** Derived asset keys + assetsRoot presence (for the mascot sticker); optional. */
+  readonly assets?: () => { readonly derived: readonly string[]; readonly assetsConfigured: boolean } | undefined
 }
 
 export type { GrammarSnapshot } from './grammar-vars.ts'
@@ -42,11 +44,13 @@ export function createGrammarLayer(inputs: GrammarLayerInputs): GrammarLayer {
 
   function compute(): GrammarSnapshot {
     const heroId = inputs.seat.getSnapshot()
+    const assets = inputs.assets?.()
     return {
       heroId,
       dark: inputs.isDark(),
       prefs: inputs.prefs() ?? GRAMMAR_DEFAULTS,
       grammar: seatGrammarOf(heroId),
+      ...(assets === undefined ? {} : { derived: assets.derived, assetsConfigured: assets.assetsConfigured }),
     }
   }
 

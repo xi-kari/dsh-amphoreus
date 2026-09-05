@@ -82,6 +82,10 @@ export function apply(ctx: ClientContext): void {
     subscribeTheme: themeBridge.subscribe,
     prefs: () => model.getSnapshot().state?.effectiveConfig.grammar,
     subscribePrefs: listener => model.subscribe(listener),
+    assets: () => {
+      const state = model.getSnapshot().state
+      return state === undefined ? undefined : { derived: state.assets.derived, assetsConfigured: state.effectiveConfig.assetsConfigured }
+    },
   })
   ctx.effect(() => () => grammarLayer.dispose(), 'amphoreus: grammar layer')
   const grammarBridge = {

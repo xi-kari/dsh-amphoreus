@@ -4,8 +4,10 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { test } from 'node:test'
 import {
+  LANDSCAPE_RATIO,
   MAX_HOME_WALLPAPERS,
   deriveAssets,
+  selectHomeWallpapers,
   derivedHomeWallpaperPath,
   listHomeWallpapers,
   resolveGlobalWallpaperDir,
@@ -125,4 +127,18 @@ test('seat wallpaper candidates prefer a seeded home wallpaper, then the wide co
   assert.match(seeded[0]!, /^\/amphoreus\/derived\/anaxa\/home-0[01]\.webp$/u)
   assert.equal(seeded[0], `/amphoreus/derived/anaxa/home-${String(homeWallpaperIndex('session-xyz', 2)).padStart(2, '0')}.webp`)
   assert.deepEqual(seatWallpaperCandidates(anaxa, { derived: ['anaxa/cover-169.webp'], assetsConfigured: false }), ['/amphoreus/derived/anaxa/cover-169.webp'])
+})
+
+test('home wallpaper selection prefers every landscape (widest first) and falls back to portraits only when none exist', () => {
+  assert.ok(LANDSCAPE_RATIO > 1)
+  const mixed = [
+    { name: 'b-portrait.jpg', width: 1000, height: 2000 },
+    { name: 'a-wide.jpg', width: 3840, height: 2160 },
+    { name: 'c-ultrawide.png', width: 4500, height: 2250 },
+    { name: 'd-unknown.png' },
+  ]
+  assert.deepEqual(selectHomeWallpapers(mixed), ['c-ultrawide.png', 'a-wide.jpg'])
+  assert.deepEqual(selectHomeWallpapers([{ name: 'z.png', width: 1000, height: 1800 }, { name: 'y.png', width: 700, height: 980 }]), ['y.png', 'z.png'])
+  assert.deepEqual(selectHomeWallpapers([{ name: 'square.png', width: 1000, height: 1000 }]), ['square.png'], 'square counts as portrait but is the only option')
+  assert.deepEqual(selectHomeWallpapers([]), [])
 })
