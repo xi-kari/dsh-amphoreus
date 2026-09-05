@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { once } from 'node:events'
-import { mkdtemp, readdir, rm } from 'node:fs/promises'
-import { createServer } from 'node:http'
+import { mkdir, mkdtemp, readdir, rm, symlink, writeFile } from 'node:fs/promises'
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -153,4 +153,43 @@ test('a custom image outranks derived home wallpapers in the seat candidate chai
   })
   assert.equal(candidates[0], '/amphoreus/custom-wallpaper/anaxa/wallpaper.png?v=1')
   assert.equal(candidates[1], '/amphoreus/derived/anaxa/home-00.webp')
+})
+
+test('serve resolves containment against the canonical root: a junction/symlinked or short-name dataDir still serves its own files', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'amphoreus-wp-link-'))
+  try {
+    const real = join(root, 'real-data')
+    const link = join(root, 'link-data')
+    await mkdir(join(real, 'custom-wallpapers', 'castorice'), { recursive: true })
+    await writeFile(join(real, 'custom-wallpapers', 'castorice', 'wallpaper.png'), 'PNG-castorice')
+    let linked = true
+    try {
+      await symlink(real, link, 'junction')
+    } catch {
+      linked = false // no link privilege on this machine: only the direct half is checked
+    }
+    const fakeResponse = () => {
+      const calls: Array<{ status: number; headers: Record<string, string> }> = []
+      return {
+        calls,
+        response: {
+          writeHead(status: number, headers: Record<string, string>) { calls.push({ status, headers }) },
+          end() {},
+        } as unknown as ServerResponse,
+      }
+    }
+    for (const dataDir of linked ? [real, link] : [real]) {
+      const store = new CustomWallpaperStore(dataDir)
+      await store.scan()
+      assert.equal(store.list().length, 1, dataDir)
+      const { calls, response } = fakeResponse()
+      const served = await store.serve({ method: 'HEAD', headers: {} } as unknown as IncomingMessage, response, 'castorice', 'wallpaper.png')
+      assert.equal(served, true, `${dataDir}: a record the state advertises must be servable`)
+      assert.equal(calls[0]?.status, 200)
+      assert.equal(calls[0]?.headers['content-length'], '13')
+      assert.equal(await store.serve({ method: 'HEAD', headers: {} } as unknown as IncomingMessage, fakeResponse().response, 'castorice', 'wallpaper.mp4'), false)
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
 })

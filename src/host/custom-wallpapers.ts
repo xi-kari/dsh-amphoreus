@@ -7,7 +7,7 @@
 import { createReadStream } from 'node:fs'
 import { mkdir, readdir, realpath, rename, rm, stat, writeFile } from 'node:fs/promises'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { extname, join, resolve } from 'node:path'
+import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { pipeline } from 'node:stream/promises'
 import { createWriteStream } from 'node:fs'
 
@@ -49,8 +49,17 @@ export function customWallpaperKind(file: string): 'image' | 'video' {
   return VIDEO_EXTENSIONS.has(extname(file).slice(1).toLowerCase()) ? 'video' : 'image'
 }
 
+/** `child` is `root` or below it (both already canonical); case-folded on Windows like the other host helpers. */
+function contained(root: string, child: string): boolean {
+  const fold = (value: string): string => process.platform === 'win32' ? value.toLowerCase() : value
+  const rel = relative(fold(resolve(root)), fold(resolve(child)))
+  return rel === '' || (!rel.startsWith(`..${sep}`) && rel !== '..' && !isAbsolute(rel))
+}
+
 export class CustomWallpaperStore {
   readonly #root: string
+  /** `realpath(#root)` (lazily resolved, falls back to #root): serve() compares realpath'd files against THIS, so a junction/symlink/8.3 dataDir still contains its own files. */
+  #realRoot: string | undefined
   #index = new Map<string, CustomWallpaperRecord>()
 
   constructor(dataDir: string) {
@@ -59,8 +68,18 @@ export class CustomWallpaperStore {
 
   get root(): string { return this.#root }
 
+  /** Canonical root for containment checks; a missing root (nothing uploaded yet) keeps the configured path. */
+  async #canonicalRoot(): Promise<string> {
+    if (this.#realRoot === undefined) {
+      this.#realRoot = await realpath(this.#root).catch(() => undefined)
+      if (this.#realRoot === undefined) return this.#root
+    }
+    return this.#realRoot
+  }
+
   /** Rescan `<root>/<heroId>/wallpaper.<ext>`; unknown names are ignored. */
   async scan(): Promise<void> {
+    this.#realRoot = undefined
     const next = new Map<string, CustomWallpaperRecord>()
     let heroes: string[] = []
     try {
@@ -145,7 +164,7 @@ export class CustomWallpaperStore {
     if (record === undefined || record.file !== file) return false
     const path = join(this.#root, heroId, file)
     const real = await realpath(path).catch(() => undefined)
-    if (real === undefined || !real.toLowerCase().startsWith(resolve(this.#root).toLowerCase())) return false
+    if (real === undefined || !contained(await this.#canonicalRoot(), real)) return false
     const info = await stat(real)
     const headers: Record<string, string> = {
       'content-type': record.mime,
