@@ -1242,3 +1242,65 @@
 - 人工断言：✓ 不删 HANDOFF 原文；✓ 不改第 1–4 行或 §7；✓ 不生成第二个 `## 7`；✓ 不回改设计文档、AGENTS 或用户记忆；✓ 不把设计文档整段复制进 HANDOFF。
 - 偏离与理由：任务书 §9 写「scripts/ 五个脚本」，实际 `git ls-files scripts` 为六个；按发布态真值全部列出。原 §3 的 `02–07 未生成` 已被本任务书自身推翻，保留原字面并加失效前缀。
 - 遗留：TF12 的远程创建、双系统 CI、npm alpha 发布、两类安装抽测与 GitHub Release。
+## TF12：发布执行与发布后核对 — 2026-09-05 12:08
+- commit: fc754a6；tag: `v0.2.0`
+- 动手前核对：实际执行任务书 `sed -n '5049,5080p'`，并读取其后 F 章完成定义 `5081–5105`；TF1–TF11 已提交，E2E 未勾项=`0`，工作树 clean，首次 `npm run release:check` → `tests 326/pass 325/fail 0/skipped 1`、build=`28.87/205.87/199.59 kB`、`verify-dist: OK 377 checks` PASS
+- 发布文档与提交：
+  - 新增 `docs/RELEASE-0.2.0.md`；一句话定位、`@alpha`／`@0.2.0` 安装、bundle 重启、仅兼容 alpha.4、素材自备、非官方声明、dsh-synapse 致谢齐全；HANDOFF §8 A–F 六条遗留原文=`6/6`，`WB-[0-9]|第四梯队=0/0`，docs 不进 package files／70 文件 tarball PASS
+  - TF11 commit 回填为 `95bdf01`；按任务书生成 `release: dsh-amphoreus 0.2.0` 提交。首次远程 CI 暴露跨平台路径问题后，在尚无 tag 时把修复与回归测试 amend 进同一 TF12 提交，最终 SHA=`fc754a6ca02f96d4bbd47fe655196c04d611431e`，保持一任务一提交 PASS
+- GitHub：
+  - `gh repo create xi-kari/dsh-amphoreus --public --source . --remote origin --push` → public repo；description 为任务书指定中文，topics=`deepseek-harness,dsh-plugin,star-rail` PASS
+  - 首次 CI run `33941645035`：Ubuntu `326/pass324/fail1/skip1`，失败因测试在 POSIX 注入 Windows 盘符；Windows `326/pass323/fail2/skip1`，失败因 `realpath` 与短路径／junction 拼写混用使 overlap 门漏判、readSkillPath 错拒合法路径 PASS（失败被真实记录，未标绿）
+  - 修复：derive 对缺失 cache 从最近存在祖先 realpath 后重建尾段；reader 对输入文件先 realpath 再 relative；测试加入 junction 回归并改用 host-native env root。别名最小 harness 从 `overlap=false/read=undefined` 变为 `overlap=true/read=amphoreus-testcard-a`；聚焦=`21/21`，全量=`327/pass326/fail0/skip1` PASS
+  - 修复后 CI run `33942052490` → Ubuntu job `101241266763` 与 Windows job `101241266984` 全步骤 success；workflow conclusion=`success` PASS
+- npm 发布：
+  - 仓库 `NPM_TOKEN` 计数=`0`，本机初始 `npm whoami` 为 ENEEDAUTH；用户在官方 npm 登录页手工完成账号与 WebAuthn，复核 `npm whoami=xi-kari` PASS
+  - 第一次 publish 因调用 PATH 未含 Node，prepare 子进程输出 `'npm' is not recognized`，未发布；按总纲精简 PATH 复跑。npm `11.11.0` 的裸 publish/dry-run 实测显示 `tag latest`，未授权前主动取消；显式 `--tag alpha` 后页面再认证，CLI 输出 `+ dsh-amphoreus@0.2.0` PASS
+  - registry → `alpha=0.2.0`、首发自动 `latest=0.2.0`；未执行 dist-tag add/rm。`dist.unpackedSize=1569891`；远程 dry-run=`70 files / 394.4 kB / 1.6 MB`，`.png|.jpg|SKILL.md=0` PASS
+  - 本地与远端 `v0.2.0` 均指 `fc754a6ca02f96d4bbd47fe655196c04d611431e`；GitHub Release URL=`https://github.com/xi-kari/dsh-amphoreus/releases/tag/v0.2.0`，非 draft／非 prerelease PASS
+- npm 形态重装：
+  - amphdemo 从空依赖安装 `dsh-amphoreus@0.2.0`，dependency=`0.2.0`，bundles=`base→web-app→dsh-amphoreus`，六项 peer=`6/6 fallback`；dump=`526:# == dsh-amphoreus`、`527:id`、`533:dataDir` PASS
+  - 3090 → auth=`303`、boot=`2`、state=`L0 13 true`、bundle 前缀=`window.__ModuleLoader__.load({`、mark=`200`、stderr bytes／禁词=`0/0` PASS
+  - 检查脚本前几轮分别暴露 dump 注释含 profile patch 后缀与 `curl|head` 在 pipefail 下的断管；改成真实来源 grep 与先下载再 head，最终 `TF12_NPM_PROFILE_OK`。结束后 amphdemo 依赖／bundles／workspace 恢复，3090=`0`，主 3080 running；web manifest/patch SHA=`e8e30fc…/db10860…` 未变 PASS
+- GitHub SHA 形态抽测：
+  - amphgit 首次 add `github:xi-kari/dsh-amphoreus#fc754a6…` → `ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED`，lib=false；按任务书 name-only `dsh-amphoreus: true` 复试仍失败，未虚报 PASS
+  - pnpm `11.7.0` 实际提示 key 为 `dsh-amphoreus@https://codeload.github.com/xi-kari/dsh-amphoreus/tar.gz/<SHA>`；复制精确 key 后第二次 add exit=`0`，prepare 运行，`lib/client.js=true`，dependency 含完整 40 位 SHA，bundles 末项正确，dump `526/527` PASS
+  - 结束后 amphgit 插件、allow key 与临时输出移除；profile 保留 base/web-app，workspace SHA=`ae7c5b68…`、主 web 两 SHA 均恢复，3080 running、3090 clear，未创建会话或改 sessions PASS
+- 发布控制流修正：无 secret 的本机发布后推 tag 仍触发旧 release.yml；run `33942640293` 的 release:check 与 tag/version 门 success，唯一 `npm publish --provenance` 因空 token 得 ENEEDAUTH。包已经由本机路径成功发布且 registry 可独立证明，没有双发。main 的 workflow 已改为先判远端版本／alpha：本机预发布则成功跳过，E404+token 才发布，其他状态 fail closed；publish 命令也显式 `--tag alpha`。
+- 文档回写：GitHub README 将失效的 name-only allow key 改为 `v0.2.0` 实测完整 codeload key，并明确 SHA 变化时复制新提示；维护发布命令改为显式 `--tag alpha --access public --registry`。HANDOFF §0/§5/§6/§8 F/§9 同步真实发布态、历史失败与恢复边界 PASS
+- 最终本地 `npm run release:check` → `tests 327; pass 326; fail 0; skipped 1; duration_ms 2639.8995`；build derive/client/host=`29.34/205.87/200.42 kB`；`verify-dist: OK 377 checks`；三份 lib mtime=`2026-09-05 12:06:20` PASS
+- 人工断言：✓ 没有提交 tgz、令牌、cookie、原图或技能正文；✓ 没有移动／强推发布 tag；✓ 没有增删 latest；✓ GitHub 抽测不是可选项；✓ 主 web profile、权威 sessions、AGENTS 与用户记忆未改。
+- 偏离与理由：① npm 11.11 不执行声明的 publish tag，必须显式 `--tag alpha`；② pnpm 11.7 的 GitHub build allow key 是包名加完整 codeload URL/SHA，而非任务书短 key；③ 本机发布路径仍触发旧 tag workflow，保留真实失败并修后续幂等控制流；④ 首次真实 CI 揭示三个跨平台路径缺陷，修生产边界而非跳过 Windows 或放宽断言。
+- 遗留：npm `0.2.0` tarball 内 README 已冻结旧 GitHub allow key，当前 GitHub README 已纠正；旧 release run 的 ENEEDAUTH 保留为可审计历史。除此之外无发布动作遗留。
+## F 章完成定义：发布包装、双形态安装与远程发布 — 2026-09-05 12:14
+- commit: 本段所在提交，以 `chapter-F^{commit}` 为权威；tag: `chapter-F`
+- 范围：TF1–TF12 共 `12` 项均已有独立提交；A→B→D→C→E→F 顺序完成，前五章标签保留，F 章在本段提交后补 `chapter-F`。
+- 最终测试与构建：`npm test` → `tests 327; pass 326; fail 0; skipped 1`；`npm run build` → derive/client/host=`29.34/205.87/200.42 kB`；`npm run verify:dist` → `verify-dist: OK 377 checks`；三份 lib 最终 mtime=`2026-09-05 12:45:19`，全部 PASS
+- F-DoD 21 门脚本 `C:/tmp/tf12-final-gates.sh` 最终 exit=`0`、末行 `F_CHAPTER_21_GATES=PASS`：
+  1. git worktree=`true`，tracked lib/node_modules/tgz/jpg/zip=`0`，repo screenshot PNG=`4` 且全部位于 `docs/screenshots/`，npm tarball media=`0`，`.npmrc+package-lock=2` PASS（用户截图修正覆盖原零截图门）
+  2. gitattributes/node-version/AUDIT 存在且 pack 临时文件不存在；gitignore 三模式=`3` PASS
+  3. mark 旧 path/head/credit=`0/1/1` PASS
+  4. package 版本／alpha／registry／repository／bugs／homepage、dependencies=`yaml,zod`、overrides≥6 → `pkg-ok` PASS
+  5. lock rc/npmmirror=`0/0`，legacy-peer-deps=`1` PASS
+  6. build exit=`0`，verify grep=`1` PASS
+  7. 全量 pass/fail=`326/0` PASS
+  8. platform focused pass=`1`，`platform.d.ts` 引用=`1` PASS
+  9. CI Windows 行=`1`，main 最新 CI=`success` PASS
+  10. README headings/保留标题/素材/allowBuilds/synapse/suite/非官方/席位/未来词=`14/4/1/2/2/6/3/13/0`，`keys-ok` PASS；任务书原「截图=0」在用户发布后指出断图后由四张实机 PNG 取代，npm tarball 仍因 `docs/` 不进 files 而保持图片=`0`
+  11. DeepSeek 非白名单行=`0` PASS
+  12. assets=`required 58/58, optional 32/32, large 5` PASS
+  13. credit/link/artwork/index=`2/1/1/1` PASS
+  14. E2E X/未勾/旧 API=`14/0/0` PASS
+  15. path-b script/trap/HANDOFF=`1/1/1` PASS
+  16. HANDOFF line3/§7/A–F/§9/未失效旧现状/DELIVERY=`1/1/6/1/0/1` PASS
+  17. tag/alpha/unpacked=`v0.2.0/0.2.0/1569891` PASS
+  18. dsh-plugin topic/Release 文档 WB 编号=`1/0` PASS
+  19. reparse/skillRoots 总命中/suite 写 API/内嵌技能文件=`1/4/0/0` PASS
+  20. npm state/wrapper/GitHub lib 记录=`2/1/1`，amphdemo/amphgit=`clean/clean`，3090=`0` PASS
+  21. AGENTS SHA256=`228694bffdd090c63a9390be46c2d69b2bb0c9380b5f9885ef5e423e5c39c439`，TA11 后用户记忆新改文件=`0` PASS
+- 远程终态：public repo、三 topics、`v0.2.0`、npm `alpha=0.2.0`、GitHub Release 全部可查询；发布提交／`v0.2.0` 固定为 `fc754a6ca02f96d4bbd47fe655196c04d611431e`，截图与后续发布流程由 main 维护提交 `15af35baa7fad82a494c45d153b92802fcec7ab1` 引入；CI run `33942052490` 与维护 run `33945149159` 均为 Ubuntu／Windows success。旧 release run `33942640293` 的空 token ENEEDAUTH 与已成功本机发布并存，未删除证据、未重复发布。
+- 恢复终态：amphdemo 与 amphgit 均只保留 base/web-app 且无插件依赖；两 profile workspace 恢复；主 web manifest/patch SHA=`e8e30fc…/db10860…`；3080 running，3090 clear；sessions、AGENTS、用户记忆未改；临时 token/cookie/output 均未入库。
+- 用户截图修正：README 原先引用四个不存在的 PNG，GitHub 与 npm 页面均显示断图。Stop/Start 后主服务=`PID 47328 / HTTP 200 / stderr 0`；独立 headless Playwright 以 1600px 视口生成 `portal.png(1600×1400)`、`seat-anaxa.png(1600×1200)`、`workbench.png(1600×1200)`、`settings.png(1600×1200)`。四图均逐张视觉复核；设置页在截图 DOM 中把三处本机路径替换为占位值，未捕获令牌。为截图新建的唯一 Anaxa 空会话 `session-e012eaf8-b915-4dd9-b43a-32ff97b0975c` 已经官方 `workspace/archiveSession` 返回 `ok=true`，binding DELETE=`200`，日志目录保留。npm 页面修复前实测四个 img 均指 `raw.githubusercontent.com/.../HEAD/docs/screenshots/*.png` 且 `naturalWidth=0`；维护提交 `15af35baa7fad82a494c45d153b92802fcec7ab1` 推入 main 后复核 GitHub README 四图均 `complete=true`，源为 `github.com/.../raw/main/...`，npm 页面四图均 `complete=true`，源为 `raw.githubusercontent.com/.../HEAD/...`，两处 natural size 都是 `1600×1400 / 1600×1200 / 1600×1200 / 1600×1200`。npm `0.2.0` tarball 不重发且仍无图片；npm 页面正文仍保留该 tarball 冻结的旧「截图待补」句，但四个图片元素均已恢复。维护 CI run `33945149159` 双 OS success PASS
+- 截图文件 SHA256：`portal=c2c8d7baa334cc8d28d3866d8132934b28de7bb76cfedd1a5c488d4d5929adaf`、`seat-anaxa=df0b8f33deec21496a15413731695b31a6fb8c2cf9304bba7e5976580eb84f1d`、`workbench=57c26424f355d64d446809cba88fabb6578791f1ee800e13da805400ad3d8779`、`settings=ed63a404bf1b801ebd95f906223f8c5a64ca4e396d91020baaae689401de6fde`；`docs/screenshots/README.md` 已写尺寸、内容、脱敏与不入包边界。原 F-DoD 的零截图占位门由用户明确纠正为 repo 图片=`4`、tarball 图片=`0`。
+- 偏离与理由：任务书对 npm 11.11 的 publishConfig tag、pnpm 11.7 的 Git build allow key、无 secret 时 tag workflow 三处假设与实测不符，均以不双发、不移动 tag、不增删 dist-tag、保留失败证据的方式收口；首次远程 CI 的三个跨平台问题已修复并由双 OS 复跑证明。
+- 遗留：产品级后续仅为 TD12 已裁决的 CSS fallback 与稳定派生 URL cache-bust；发布历史边界见 TF12 遗留。F 章所要求的任务、远程、安装、恢复与验收全部闭合。

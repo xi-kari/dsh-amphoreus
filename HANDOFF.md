@@ -11,11 +11,11 @@
 
 ### 0.1 发布态现状（0.2.0，2026-09-05）
 
-`dsh-amphoreus@0.2.0` 的 A–E 功能建设、TF1–TF10 发布前验证与 TF11 交接同步已经完成；本机 profile `web` 仍以 `link:D:/DeepSeek Harness/deepseek插件开发/dsh-amphoreus` 运行。面向用户的 npm 安装形态为发布后的 `dsh-amphoreus@alpha` 或 `dsh-amphoreus@0.2.0`，TF12 完成前不得把它写成已可下载。
+`dsh-amphoreus@0.2.0` 的 A–F 建设与发布验收已经完成；npm 官方 registry 的 `alpha` 与首发自动生成的 `latest` 均指向 `0.2.0`，GitHub 公共仓库、`v0.2.0` 与 Release 均已上线；发布／tag SHA 固定为 `fc754a6ca02f96d4bbd47fe655196c04d611431e`，后续截图与发布流程维护提交为 `15af35baa7fad82a494c45d153b92802fcec7ab1`。本机 profile `web` 仍以 `link:D:/DeepSeek Harness/deepseek插件开发/dsh-amphoreus` 运行，用户可显式安装 `dsh-amphoreus@alpha` 或 `dsh-amphoreus@0.2.0`。
 
-当前已实现运行时技能套件解析与无损更新、13 席工作区与自动注入、全局／逐席视觉、外置素材派生、iframe 工作台、全体会议派发、移交坞／移交边／接通尾页、站位轨与台账。最终本机构建时间：`lib/index.js`、`lib/client.js`、`lib/derive.js` 均为 2026-09-05 10:50:04。
+当前已实现运行时技能套件解析与无损更新、13 席工作区与自动注入、全局／逐席视觉、外置素材派生、iframe 工作台、全体会议派发、移交坞／移交边／接通尾页、站位轨与台账；`docs/screenshots/` 已有四张本地实机截图供 GitHub 与 npm README 共用；维护提交 `15af35baa7fad82a494c45d153b92802fcec7ab1` 推送后，两处页面四图均实测完整加载。最终本机构建时间：`lib/index.js`、`lib/client.js`、`lib/derive.js` 均为 2026-09-05 12:45:19。
 
-遗留：B 章的 30+ 轮字面场景以同 route/schema 的 70-position 事务作容量验收；CSS 原色 fallback 按 TD12 的条件裁决保留；稳定 URL 在强制重派生时的 cache-bust 仍待后续版本化；TF12 的远程仓库、真实双系统 CI、npm 发布、npm 安装复测、GitHub SHA 安装抽测与 GitHub Release 尚未执行。其余 A–E 代码遗留为无。
+遗留：B 章的 30+ 轮字面场景以同 route/schema 的 70-position 事务作容量验收；CSS 原色 fallback 按 TD12 的条件裁决保留；稳定 URL 在强制重派生时的 cache-bust 仍待后续版本化。首发 npm tarball 内的 README 已冻结任务书原 `allowBuilds` 短 key，安装 GitHub SHA 时应以当前 GitHub README 的完整 codeload key 为准；`v0.2.0` 的旧 release workflow 在本机发布路径下因无 `NPM_TOKEN` 留有一次 ENEEDAUTH 历史失败，main 已由维护提交 `15af35baa7fad82a494c45d153b92802fcec7ab1` 改为本机预发布／CI token 互斥且幂等的后续流程。其余代码与发布动作遗留为无。
 
 [已失效 2026-09-05] 包 `dsh-amphoreus` 已有可装可启的双半侧骨架：已 `link:` 装进 profile `web`，`dsh web` 启动后宿主行挂载、浏览器 bundle 进入启动图并被 `/plugins` 路由 200 下发、stderr 为空 **[实测]**。业务模块（技能桥接、席位、注入、观察、Web 通道、首帧、主题壁纸、工作台、设置区）**一个都还没写**，只有类型契约 `src/host/suite/types.ts`。服务当前仍在运行（PID 见 `.runtime/deepseek-harness.pid`），改完 host 代码需 Stop/Start，改完 client 需重建 `lib/client.js` 并刷新页面（无 `pnpm run dev:web` 时 HMR 不会自动生效）。
 
@@ -132,7 +132,7 @@
 [已失效 2026-09-05] **D 章消息更新（2026-09-05 实测）**：`amphoreus:theme-tokens` 已接通 87 个 token 与 light/dark；`amphoreus:seat-changed` 已接通逐席主题；`amphoreus:magazine-mode` 已接通持久档位与原位版式切换。派生素材由宿主安全路由服务，设置区可后台重建并接收 `derive-progress`。
 [已失效 2026-09-05] [已失效] **M3** 移交坞（`conversation.input.dock` order 20，点击才 fork）、站位轨、台账、评估 native 工作台。
 
-**发布后下一步（2026-09-05）**：以 §8 各章「遗留」汇总为准。当前产品级后续项为按 TD12 条件裁决保留 CSS 原色 fallback，以及稳定 URL 强制重派生的 cache-bust 版本化；发布流程后续项为 TF12 的远程 CI、npm 发布、npm／GitHub 安装复测与 GitHub Release。
+**发布后下一步（2026-09-05）**：以 §8 各章「遗留」汇总为准。当前产品级后续项为按 TD12 条件裁决保留 CSS 原色 fallback，以及稳定 URL 强制重派生的 cache-bust 版本化；维护发布文档时同步保留 npm `0.2.0` 冻结 README 与当前 GitHub README 的 GitHub 安装 key 差异。TF12 的远程 CI、npm 发布、npm／GitHub 安装复测与 GitHub Release 已完成。
 
 ## 6. 注意事项汇总
 
@@ -151,6 +151,11 @@
 - 2026-09-05 从官方 npm registry 实测 `@deepseek-ai/dsh` dist-tags：`latest=0.1.2-rc.1`、`alpha=0.1.2-alpha.5`、`next=0.1.2-rc.1`；本包兼容基线仍钉 `dsh-v0.1.2-alpha.4`。
 - 本机 npm 默认 registry 为 `https://registry.npmmirror.com`；所有发布、发布后查询与新包重装必须显式使用 `--registry https://registry.npmjs.org`。
 - `dsh plugin add/remove/update` 改变 bundle membership 后必须重启对应 `dsh web`／profile；profile/home `cordis.patch.yml` 的 live 修改不替代 bundle 重启。
+- `dsh-amphoreus@0.2.0` 已发布到官方 npm registry；2026-09-05 实测 dist-tags 为 `alpha=0.2.0`、`latest=0.2.0`，后者是首发自动生成，未执行 `dist-tag add/rm`。
+- npm `11.11.0` 实测会让裸 `npm publish` 选择 `latest`，没有按 `publishConfig.tag=alpha` 执行；真实发布用显式 `--tag alpha --access public --registry https://registry.npmjs.org`，以后也必须如此。
+- pnpm `11.7.0` 的 GitHub SHA 安装要求 `allowBuilds` key 为 `dsh-amphoreus@https://codeload.github.com/xi-kari/dsh-amphoreus/tar.gz/<40位SHA>`；任务书与首发 npm README 的 `dsh-amphoreus: true` 实测不生效，当前 GitHub README 已纠正。
+- 仓库没有 `NPM_TOKEN`，故 `0.2.0` 走本机发布。推 tag 后旧 release workflow 的质量门与版本门均通过，但无条件 publish 因空 token 得 ENEEDAUTH；main 的新流程先查 version、`gitHead` 与 `alpha`，当前 registry 三项均与发布提交匹配，因此同一发布输入会选择 skip；只有 E404 且存在 token 时才发布，其他异常 fail closed，避免双发。
+- npm 页面会把 README 的相对截图地址解析为 `raw.githubusercontent.com/xi-kari/dsh-amphoreus/HEAD/docs/screenshots/*.png`；四张 PNG 已随 main 的 `15af35b` 入库，不进 `package.json.files`。2026-09-05 推送后复核 GitHub README 与 npm package 页面四图均 `complete=true`，natural size 为门户 `1600×1400`、其余三图各 `1600×1200`；维护 CI run `33945149159` 的 Ubuntu／Windows 均 success。npm `0.2.0` 页面正文仍显示 tarball 冻结的旧「截图待补」句，但四个图片元素均已恢复；设置截图公开前把三处本机路径替换为占位值，全部截图不含启动令牌。
 
 ### 6.1 E 章运行与人工验收（2026-09-05）
 
@@ -268,12 +273,17 @@ Vendoring 版 `/amphoreus/workbench/` 返回 200；iframe 在 `conversation.view
 - 遗留：无。
 
 ### F · 发布与验收（2026-09-05）
-- 完成任务：TF1–TF11 已完成并验收；TF12 尚未完成，原因是远程仓库、真实 GitHub CI、npm 发布、npm 安装复测、GitHub SHA 安装抽测与 GitHub Release 必须在本文件事实落盘之后依次执行。
-- 新事实 [实测]：TF1 清理仓库并加入 LF／Node 24 基线与原创 mark；TF2 将生产 dependencies 收到 `yaml,zod`、peers=6、overrides=6，官方 npm 锁无 rc/npmmirror；TF3 `verify-dist: OK 377 checks`、tarball 70 files、unpacked <2 MB，真实媒体反向门 exit 1；TF4 优先读发布态 `platform.d.ts`；TF5 的 Ubuntu/Windows CI 与 v* provenance release YAML／结构在本地通过，远程尚未运行；TF6 README 有 14 个二级标题、23 个顶层配置键、三种安装方式与 13 席表；TF7 外置素材 required/optional=`58/58,32/32`、large=`5`；TF8 NOTICE 四事实唯一、设置署名与上游归属完整。
+- 完成任务：TF1–TF12 全部完成并验收；章末收尾与 `chapter-F` 在本次发布总验后闭合。
+- 新事实 [实测]：TF1 清理仓库并加入 LF／Node 24 基线与原创 mark；TF2 将生产 dependencies 收到 `yaml,zod`、peers=6、overrides=6，官方 npm 锁无 rc/npmmirror；TF3 `verify-dist: OK 377 checks`、tarball 70 files、unpacked <2 MB，真实媒体反向门 exit 1；TF4 优先读发布态 `platform.d.ts`；TF5 的 Ubuntu/Windows CI 与 v* provenance release YAML／结构在任务提交时先由本地验证，随后发布 run `33942052490` 与维护 run `33945149159` 均由远程双系统验证；TF6 README 有 14 个二级标题、23 个顶层配置键、三种安装方式与 13 席表；TF7 外置素材 required/optional=`58/58,32/32`、large=`5`；TF8 NOTICE 四事实唯一、设置署名与上游归属完整。
 - 新事实 [实测]：TF9 `path-b: OK`；tarball 70 files、393.7 kB；reconcile 为 base → web-app → dsh-amphoreus，profile-local 未重复安装六项 peer，启动后六项全由 fallback 解析；dump 命中 526/527/533，3090 stderr 0，auth 303，boot=2，state=`L0 13 true`，bundle wrapper 与 mark 200；独立 npm-ci 的 dsh-client-web 为 d.ts=true/src=false，`tests 326/pass 325/fail 0/skip 1`，build=`28.90/205.60/199.69 kB`，verify=377；真实首轮 `TF9-PATH-B-OK`，3090 清零、主 web hash 不变且 3080 running/200，敏感 OUT/JAR 已清理。
 - 新事实 [实测]：TF10 汇总 A–E 110 行、X-1…X-14 与 12 步浏览器走查；X-1…X-13 已实测，X-14 由本节 C 段裁决闭合。真实完成建席、陪聊／工作回执、fork-inherit、白厄派发、显式移交、暗色、三席换装、live 开关、技能别名更新与缺卡恢复；6 个测试会话官方归档、binding 回基线，profile／技能 hash 与 mtime 全恢复。E2E 又发现 dock 被官方 40px resize handle 截获，已将 dock 对齐 composer card 上限；修复后几何不重叠且普通指针一次接受成功。最终 `tests 326 / pass 325 / fail 0 / skipped 1`，derive／client／host 为 `28.87/205.87/199.59 kB`，verify=377。
-- 偏离设计：TF2 将宿主包归入 peerDependencies；TF9 的独立 npm-ci 又发现三个仅开发期 runtime peer 缺失，只将 `dsh-invariants/dsh-scope/dsh-storage` 补入 devDependencies。项目级 `.npmrc` 使用 `legacy-peer-deps=true`，六项 overrides 防止 rc 漂移。TF9 用完整 no-hardlinks clone 代替不完整复制回退；默认复用主 DSH_HOME，只验证 profile 依赖、bundle、端口与进程隔离，storage/session 仍属同一 home，脚本保留 `PATH_B_DSH_HOME` 供完整数据隔离；实测会话已归档、bindings 回基线且主 web manifest/patch hash 不变。TF10 按当前外部 common.md 保留陪聊免逐轮回执，并以工作场另证 receipt；稳定工作台 HTML 壳返回 200/boot disabled，权威 index 在关闭时返回 503。
-- 遗留：TF12 的远程仓创建、双系统 CI、`v0.2.0` tag、npm `alpha` 发布、npm 安装复测、GitHub SHA 安装抽测与 GitHub Release。
+- 新事实 [实测]：GitHub 仓库 `xi-kari/dsh-amphoreus` 为 public，topics=`deepseek-harness,dsh-plugin,star-rail`；发布提交／tag SHA=`fc754a6ca02f96d4bbd47fe655196c04d611431e`。首次双系统 CI 暴露 Ubuntu 非本机路径夹具与 Windows realpath/junction containment 三个问题；生产边界修复并补回归后 run `33942052490` 的 Ubuntu／Windows 均 success。
+- 新事实 [实测]：仓库 secret `NPM_TOKEN` 计数=`0`，故经用户完成网页登录／WebAuthn 后走本机发布；显式 `npm publish --tag alpha` 得 `+ dsh-amphoreus@0.2.0`。registry 实况为 `alpha=0.2.0, latest=0.2.0`，unpackedSize=`1569891`，远程 dry-run=`70 files / 394.4 kB / 1.6 MB`，`.png|.jpg|SKILL.md=0`，首发 `latest` 未人工增删。
+- 新事实 [实测]：amphdemo 以 npm `0.2.0` 安装后 bundles=`base→web-app→dsh-amphoreus`，六项 peer 全走 fallback；dump=`526/527/533`，3090 auth=`303`、boot=`2`、state=`L0 13 true`、bundle=`window.__ModuleLoader__.load({`、mark=`200`、stderr=`0`。结束后 profile 依赖、workspace 文件、3090 与主 web 两份 hash 全恢复，3080 保持运行。
+- 新事实 [实测]：amphgit 用 `github:xi-kari/dsh-amphoreus#fc754a6…` 首次按预期失败；name-only allow key 复试仍失败，复制 pnpm 输出的完整 `dsh-amphoreus@https://codeload.github.com/.../<SHA>` 后 prepare 成功生成 `lib/client.js`，dump 命中 `id: amphoreus`，pnpm=`11.7.0`。结束后插件与 allow key 均移除、主 web hash 不变；GitHub Release `dsh-amphoreus 0.2.0` 已发布。
+- 新事实 [实测]：用户指出 README 四图均为缺失占位后，主服务按 Stop/Start 重跑为 PID `47328`、HTTP `200`、stderr=`0`；Playwright 实机生成 `portal/seat-anaxa/workbench/settings.png` 四图。修复前 npm DOM 四图均指 GitHub `HEAD` raw 且 naturalWidth=`0`；维护提交 `15af35b` 推入 main 后，四个 GitHub raw URL 均 HTTP `200`，GitHub README 与 npm package 页面四图都 `complete=true`，natural size=`1600×1400,1600×1200,1600×1200,1600×1200`，维护 CI run `33945149159` 双系统 success；无需重发不可变 npm tarball。
+- 偏离设计：TF2 将宿主包归入 peerDependencies；TF9 的独立 npm-ci 又发现三个仅开发期 runtime peer 缺失，只将 `dsh-invariants/dsh-scope/dsh-storage` 补入 devDependencies。项目级 `.npmrc` 使用 `legacy-peer-deps=true`，六项 overrides 防止 rc 漂移。TF9 用完整 no-hardlinks clone 代替不完整复制回退；默认复用主 DSH_HOME，只验证 profile 依赖、bundle、端口与进程隔离，storage/session 仍属同一 home。TF10 保留陪聊免逐轮回执并以工作场另证 receipt；稳定工作台 HTML 壳返回 200/boot disabled，权威 index 关闭时返回 503。TF12 因 npm `11.11.0` 不执行 `publishConfig.tag` 而显式传 `--tag alpha`；GitHub 安装按 pnpm 实际完整 codeload key 取代任务书短 key。无 secret 的本机发布后 tag 仍触发旧 workflow，唯一 publish 步 ENEEDAUTH；包与 dist-tag 已由 registry 独立证明，main 流程已修为两路径互斥。
+- 遗留：首发 npm tarball 内 README 的 GitHub `allowBuilds` 短 key 已随不可变 `0.2.0` 冻结，当前 GitHub README 已改为实测完整 key；`v0.2.0` 的旧 release run `33942640293` 保留 ENEEDAUTH 历史结果，后续 tag 使用 main 的幂等路径选择。除此之外，TF12 发布动作无遗留。
 - `amphoreus:*` 消息清单以 `grep -o "'amphoreus:[a-z-]*'" workbench/app.js src/client/workbench.tsx | sort -u` 实测为准，M1 核对与数字见 §7。
 
 ## 9. 文件清单（发布态）
@@ -281,13 +291,13 @@ Vendoring 版 `/amphoreus/workbench/` 返回 200；iframe 在 `conversation.view
 | 路径 | 入库 | npm 包 | 说明 |
 |---|---:|---:|---|
 | `.gitattributes` | 是 | 否 | 全仓 LF 基线 |
-| `.github/` | 是 | 否 | Ubuntu/Windows CI 与 tag release workflow |
+| `.github/` | 是 | 否 | Ubuntu/Windows CI；tag release 对本机预发布／CI token 两路径互斥并验证 alpha |
 | `.gitignore` | 是 | 否 | 忽略依赖、产物、tarball 与本地运行文件 |
 | `.node-version` | 是 | 否 | Node 24 |
 | `.npmrc` | 是 | 否 | `legacy-peer-deps=true`，无 registry 或 token |
-| `BUILD-LOG.md` | 是 | 否 | 最终将承载 66 个任务与六章验收日志；TF11 提交时为 65 个任务段／五个章末段，TF12 与 F 章收尾后达到最终计数 |
+| `BUILD-LOG.md` | 是 | 否 | 承载 66 个任务与六章验收日志 |
 | `cordis.patch.yml` | 是 | 是 | DSH bundle patch |
-| `docs/` | 是 | 否 | 历史审计、E2E 清单、截图占位；TF12 后含 release note |
+| `docs/` | 是 | 否 | 历史审计、E2E 清单、四张脱敏实机截图与 `RELEASE-0.2.0.md` |
 | `HANDOFF.md` | 是 | 否 | 唯一交接入口 |
 | `LICENSE` | 是 | 是 | 本包 MIT |
 | `NOTICE` | 是 | 是 | vendoring、非官方声明与变更归属 |
