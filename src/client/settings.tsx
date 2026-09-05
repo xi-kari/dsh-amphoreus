@@ -2,6 +2,7 @@ import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots
 import { useRef, useState, useSyncExternalStore, type CSSProperties } from 'react'
 import { GrammarPanel } from './grammar-panel.tsx'
 import { WallpaperPanel } from './wallpaper-panel.tsx'
+import { SchemePanel } from './scheme-panel.tsx'
 import { seatColorOf } from './seat-model.ts'
 import type { AmphoreusClientModel } from './state.ts'
 import css from './settings.module.css'
@@ -13,7 +14,7 @@ export interface AmphoreusSettingsInjected {
 
 export type AmphoreusSettingsProps = PropsRuntime<'settings.section'> & PropsLocale<'amphoreus'> & AmphoreusSettingsInjected
 
-type SettingsAction = 'reparse' | 'magazine-light' | 'magazine-full' | 'magazine-reset' | 'derive' | 'derive-force' | 'grammar' | 'wallpaper'
+type SettingsAction = 'reparse' | 'magazine-light' | 'magazine-full' | 'magazine-reset' | 'derive' | 'derive-force' | 'grammar' | 'wallpaper' | 'scheme-export' | 'scheme-import'
 // @anchor settings-actions
 
 export function AmphoreusSettings({ model, t }: AmphoreusSettingsProps) {
@@ -198,6 +199,15 @@ export function AmphoreusSettings({ model, t }: AmphoreusSettingsProps) {
             onPlacement={(heroId, patch) => { void run('wallpaper', () => model.setCustomWallpaperPlacement(heroId, patch)) }}
           />
           {/* @anchor settings-panels */}
+          <SchemePanel
+            busy={busy}
+            acting={activeAction !== undefined}
+            active={activeAction === 'scheme-export' ? 'export' : activeAction === 'scheme-import' ? 'import' : undefined}
+            errored={actionError !== undefined}
+            t={t}
+            onExport={() => { void run('scheme-export', () => model.exportVisualScheme()) }}
+            onImport={file => { void run('scheme-import', () => model.importVisualScheme(file)) }}
+          />
 
           <section className={css.panel} aria-labelledby="amphoreus-workbench">
             <div className={css.sectionHeading}><h2 id="amphoreus-workbench">{t('settings.workbenchHeading')}</h2></div>

@@ -51,6 +51,20 @@ const GrammarInput = z.object({
   ambient: z.boolean().optional(),
 }).strict()
 
+const HERO_ID = z.string().regex(/^[a-z0-9][a-z0-9-]{0,31}$/u)
+
+/** Placement / playback knobs of one seat's custom wallpaper (shared by prefs patch and visual-scheme import). */
+const PlacementInput = z.object({
+  fit: z.enum(['cover', 'contain', 'fill']).optional(),
+  x: z.number().min(0).max(100).optional(),
+  y: z.number().min(0).max(100).optional(),
+  scale: z.number().min(1).max(3).optional(),
+  playbackRate: z.number().min(0.25).max(2).optional(),
+  muted: z.boolean().optional(),
+  loop: z.boolean().optional(),
+  paused: z.boolean().optional(),
+}).strict()
+
 const PrefsInput = z.object({
   quickPhrases: z.array(z.string().max(16)).max(12).optional(),
   lastSeat: z.string().nullable().optional(),
@@ -58,21 +72,25 @@ const PrefsInput = z.object({
   /** Partial grammar patch; `null` resets every knob to the defaults. */
   grammar: GrammarInput.nullable().optional(),
   /** Per-seat wallpaper placement patch: { heroId: partial | null }. */
-  customWallpapers: z.record(z.string().regex(/^[a-z0-9][a-z0-9-]{0,31}$/u), z.object({
-    fit: z.enum(['cover', 'contain', 'fill']).optional(),
-    x: z.number().min(0).max(100).optional(),
-    y: z.number().min(0).max(100).optional(),
-    scale: z.number().min(1).max(3).optional(),
-    playbackRate: z.number().min(0.25).max(2).optional(),
-    muted: z.boolean().optional(),
-    loop: z.boolean().optional(),
-    paused: z.boolean().optional(),
-  }).strict().nullable()).optional(),
+  customWallpapers: z.record(HERO_ID, PlacementInput.nullable()).optional(),
   // @anchor prefs-input-fields
 })
 
 const DeriveInput = z.object({ force: z.boolean().optional() }).strict()
 // @anchor webapi-inputs
+const MAX_SCHEME_BODY_BYTES = 64 * 1024
+const VISUAL_SCHEME_FILENAME = 'amphoreus-visual-scheme.json'
+/**
+ * Visual scheme file (schema v1): the three visual prefs only, sparse, no wallpaper binaries.
+ * Import is REPLACE semantics for exactly these keys; every other pref is left untouched.
+ */
+const VisualSchemeInput = z.object({
+  version: z.literal(1),
+  exportedAt: z.number().optional(),
+  magazineMode: z.enum(['light', 'full']).optional(),
+  grammar: GrammarInput.optional(),
+  customWallpapers: z.record(HERO_ID, PlacementInput).optional(),
+}).strict()
 
 const ObservationCreateInput = z.object({
   sessionId: z.string().regex(SESSION_ID),
@@ -356,6 +374,42 @@ export class AmphoreusWebApi {
         return
       }
       // @anchor webapi-routes
+      if (path === '/amphoreus/api/prefs/visual-scheme') {
+        if (request.method === 'GET') {
+          const prefs = this.#stores.main.global.get().prefs
+          json(response, 200, {
+            version: 1,
+            exportedAt: Date.now(),
+            ...(prefs.magazineMode === undefined ? {} : { magazineMode: prefs.magazineMode }),
+            ...(prefs.grammar === undefined ? {} : { grammar: prefs.grammar }),
+            ...(prefs.customWallpapers === undefined ? {} : { customWallpapers: prefs.customWallpapers }),
+          }, { 'content-disposition': `attachment; filename="${VISUAL_SCHEME_FILENAME}"` })
+          return
+        }
+        if (request.method !== 'PUT') {
+          response.writeHead(405, { allow: 'GET, PUT' })
+          response.end()
+          return
+        }
+        const parsedScheme = VisualSchemeInput.safeParse(await readJson(request, MAX_SCHEME_BODY_BYTES))
+        if (!parsedScheme.success) {
+          json(response, 400, { error: zodError(parsedScheme.error) })
+          return
+        }
+        const scheme = parsedScheme.data
+        const updated = await updateAmphoreusGlobal(this.#stores.main, current => {
+          const prefs = { ...current.prefs }
+          delete prefs.magazineMode
+          delete prefs.grammar
+          delete prefs.customWallpapers
+          if (scheme.magazineMode !== undefined) prefs.magazineMode = scheme.magazineMode
+          if (scheme.grammar !== undefined) prefs.grammar = scheme.grammar
+          if (scheme.customWallpapers !== undefined) prefs.customWallpapers = scheme.customWallpapers
+          return { ...current, prefs }
+        })
+        json(response, 200, { prefs: updated.prefs })
+        return
+      }
       if (path === '/amphoreus/api/prefs') {
         if (request.method === 'GET') {
           json(response, 200, { prefs: this.#stores.main.global.get().prefs })
