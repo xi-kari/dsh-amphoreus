@@ -971,7 +971,7 @@
 - 偏离与理由：任务书示例假设 TE3 已打开 child 后再设置 mapCardSessionSwitches，但平台 `sessions.open()` 可同步推送 current-session，实测时序有竞态；因此给 `acceptHandoff` 增加默认兼容的 open option，bridge 只做 durable fork/binding/observation 并先回执，iframe 完成索引/相机准备后再激活。另把任务书未覆盖的 Dock/iframe 跨入口重复操作收口为共享同步锁。
 - 遗留：无。
 ## TE9：侧栏台账、席位记忆与插入草稿 — 2026-09-05 08:38
-- commit: PENDING-TASK
+- commit: cef988f
 - 动手前核对：实际执行任务书 `sed -n '4349,4433p'`、指定 `grep -n "draft" .../contract/input.ts | head`，并继续 `sed -n '315,330p'` 定位当前 `InputState.draft`；确认 conversation.view owner 自动提供 useInput/inputActions，`InputActions.setDraft` 是正确的未发送草稿写入口 PASS
 - 验收：
   - 聚焦 `node --test tests/workbench-ledger.test.ts tests/workbench-bridge.test.ts tests/webapi-body-limits.test.ts` → `tests 12; pass 12; fail 0; skipped 0; duration_ms 354.7493` PASS（exit: `0`）
@@ -991,4 +991,25 @@
   - 服务 PID `67432`、HTTP=`200`、stderr=`0` bytes；独立只读审查未发现 actionable finding PASS
 - 人工断言：✓ 台账不写 localStorage；✓ 便签不自动 prompt/发送；✓ runtime rawLine 是回执行唯一来源；✓ state.amph=null、无 skill、空记录均可降级；✓ memory 最终恢复为开工前空状态。
 - 偏离与理由：任务书最小 putMemory 每次从可能滞后的 SSE snapshot 做 RMW，连续八笔会覆盖前笔；实现增加单一串行 Promise 队列，并使用已由服务端 schema 校验的 PUT response 推进下一笔基线。任务书列 index.ts 但同时裁决其不注入 activateChat，当前 owner props 已足够，故核对而不制造无意义改动。
+- 遗留：无。
+## TE10：20 词防火墙与 E 章文档收尾 — 2026-09-05 08:55
+- commit: PENDING-TASK
+- 动手前核对：实际执行任务书 `sed -n '4434,4487p'`；`grep -c canvas-controls workbench/styles.css` 基线=`4`；读取真实 common.md 防火墙行并直接调用旧 parseSuite，确认旧 `lastIndexOf('：')` 因词项「读取：」误取最后冒号，只得到 `17/20` 词 PASS
+- 验收：
+  - fixture `node --test tests/suite-parse.test.ts tests/firewall-words.test.ts` → `tests 9; pass 9; fail 0; skipped 0; duration_ms 336.8094` PASS（exit: `0`）
+  - 真实套件 `AMPHOREUS_REAL_SUITE=C:\Users\cangm\.claude\skills node --test tests/firewall-words.test.ts tests/suite-real.test.ts` → `tests 2; pass 2; fail 0; skipped 0; duration_ms 382.2269` PASS（exit: `0`）；真实词表逐项严格等于预期 `20` 词 PASS
+  - 文档断言 → README observation key=`1`、`amphoreus:enter-seat=1`；HANDOFF `conversation.input.dock=3`、`QueueDock=1` PASS
+  - `node --check workbench/app.js`、`npm run typecheck` → 无诊断 PASS（各 exit: `0`）；Lightning CSS → `LIGHTNINGCSS_OK=76223` PASS
+  - `npm run build` → derive/client/host=`28.87/205.78/199.59 kB` PASS（exit: `0`）
+  - 最终全量 `node --test tests/*.test.ts` → `tests 326; pass 325; fail 0; skipped 1; duration_ms 2793.9244` PASS（exit: `0`）；`git diff --check` → 无空白错误 PASS（exit: `0`）
+  - scanner → 用 TypeScript JS AST 精确遮蔽 renderLedger body；scanner token 遮蔽 app comments；title 属性与所有遮蔽区均保留换行，失败位置稳定输出 `文件:行:词` PASS
+  - client 覆盖 → `readdirSync` 扫全部 `.ts/.tsx`；settings.tsx 全文允许，locales 只允许两个实际设置键 `settings.visualHint/settings.magazineMode` 与 `*Tip`，handoff 只允许 observationKey 行及注释；其余无盲区 PASS
+  - 词表门 → 无环境变量时固定夹具也严格 `20`；真实模式从 suite parser 读取且必须逐项全等，不会在真实解析缺词时退回硬编码 PASS
+  - parser 回归 → 数量声明格式优先定位「角色台词与旁白：」后的列表，保留词项内部全角冒号；简短 `防火墙：词…` 仍支持；最小夹具精确解析 `词甲/词乙/读取：` PASS
+  - 文案修正 → app 一般错误「画布分支锚点无效」改为「画布分支位置无效」；state 一般错误「杂志档位保存失败」改为「杂志模式保存失败」；合法设置区档位文案保持 PASS
+  - README → M3 当前状态改为已完成并只保留 F 章发布/独立终验；新增工作台、数据、消息段，覆盖派发面板/泳道、全体会议、移交坞、站位轨、接通中、台账、跨席角标、observation key/dispatch seq0 与 E 消息集 PASS
+  - HANDOFF §2.3 → 追加 strict session inject、InputZone 与 todo/goal/queue/plugin 顺序、t 插值、无 Popover、4KiB/64KiB/413 五组源码事实；原段落与 §7 均保留 PASS
+  - 独立审查首轮发现 README 仍把 M3 写成未完成、locales 误放行整个 settings namespace；两项均收紧。随 README 状态修正，首次全量暴露旧 client-assembly 断言（`pass 324; fail 1`），同步更新为 M3 已完成/F 待办后最终全绿 PASS
+- 人工断言：✓ 防火墙只豁免可证明的台账、tooltip 与设置表面；✓ 不扫描技能正文或生成产物；✓ 文档只陈述 A–E 已实现事实；✓ 未把运行态 common.md 词表复制进生产 UI。
+- 偏离与理由：任务书假定 parse.ts 已正确提供 20 词，真实验收证明只有 17 词；若不修解析器，静态门会系统性漏扫回执/档位/读取：三词，故本任务连带修复 parser 并补最小回归。任务书只列 locales `*Tip` 豁免，但现有 TD11 的两个档位文案确属设置区；采用两个精确键白名单而非放行整个 settings namespace。
 - 遗留：无。

@@ -13,9 +13,25 @@
 - 提供工作台 Tab；其中 iframe 承载由 dsh-synapse 改造的 vendored 画布。会话结构由冷重放与实时事件共同维护，卡片正文只由当前浏览器会话控制器喂入。
 - 提供 13 席 light/dark token、共享 SVG 纹样、`light`/`full` 杂志版式，以及可重建的本地 WebP 派生缓存；视觉层设置可即时切档并显示后台派生进度。
 
-仍待后续章节兑现：`M3` 总空间派发能力。历史审计基线见 [AUDIT-2026-09-04.md](AUDIT-2026-09-04.md)。
+`M3` 总空间派发、移交与台账现已完成；尚待 F 章的发布包装与独立路径终验。历史审计基线见 [AUDIT-2026-09-04.md](AUDIT-2026-09-04.md)。
 
 - 正文与会话列表不经宿主路由，宿主只保留 seq 索引（B 章）。
+
+## 工作台
+
+- 全体会议 chip 进入总空间；派发面板按技能套件的词面匹配给出建议承办席，派发泳道展示已经创建的下游会话。
+- 移交坞只在存在待处理移交时出现；用户明确点击接受后才切换到下游，未点击时不接受、不切换，也不自动发送移交内容。
+- 会话头的站位轨来自运行时流水线，可从已部署站位继续派发；详情末尾的接通中卡展示当前待处理移交。
+- 侧栏台账跟随画布当前选中的线程，集中展示运行时解析出的记录，并提供席位记忆便签与“插入到输入框”操作。
+- 同一画布内的移交关系以虚线连接；多数移交边跨席，主要看角标。
+
+### 数据
+
+`observations` 的键为 `${sessionId}:${seq}:${kind}`，使同一条助手消息产生的不同记录不会互相覆盖；其中 `dispatch` 表示显式派发记录，其 `seq` 固定为 `0`。记录通过 `/amphoreus/api/observations` 读取或创建，并通过 `/amphoreus/api/observations/:key` 更新；席位便签通过 `/amphoreus/api/memory/:skill` 读写。席位绑定、派发、移交和记忆均写入插件的 storage domain，不写自定义会话事件。
+
+### 消息
+
+iframe 发给宿主页的新消息包括 `amphoreus:dispatch`、`amphoreus:accept-handoff`、`amphoreus:dismiss-handoff`、`amphoreus:insert-input`；既有 `amphoreus:open-seat` 增加了可选的 `dispatchText`。宿主页回推 `amphoreus:state`、`amphoreus:enter-seat`、`amphoreus:dispatched`、`amphoreus:handoff-accepted`、`amphoreus:handoff-dismissed`，失败继续使用 `amphoreus:bridge-error`。
 
 ## 席位与目录
 

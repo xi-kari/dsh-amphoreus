@@ -52,6 +52,11 @@
 - 壁纸透出必须改半透明的面：`ui-layout AppFrame.module.css .frame`（bg-base）与 `.sidebarCol`（sidebar-fill）、`ui-conversation ConversationRoot.module.css .root`（bg-base）、`ui-chat DetailsPanel.module.css .root`（bg-base）、web 壳 `body`（bg-base）。这些是内部实现，透出功能要可关（`wallpaper.enabled`）。首帧图层走宿主 `webserver/index-inject` 的 `{kind:'style'}` + `{kind:'html', placement:'body'}` 行（body 行落在壳脚本之前、`#root` 之前）。
 - 词典：`ctx.locale.register(NS, {zh, en})`，同命名空间同语言重复注册抛错；组件经 `locale: NS` 拿 `t`。
 - 会话行 UI 参考：`ui-workspace/src/client/rows/{WorkspaceBrowser,Rows}.tsx` 与 `tree.ts`（`deriveGroups/deriveFlat` 形状）；侧栏壳 `ui-sidebar/src/client/SidebarRoot.tsx`；设置行范例 `ui-theme/src/client/AppearanceRow.tsx`；图标名见 `ui-primitives/src/icons/index.tsx`（`IconNewChatOutline16`、`IconBranchOutline16`、`IconSkillOutline16` 等）。
+- session 槽的 inject 首参是框架解析出的 `sessionId`；只有声明 store 时才在其后追加 actions（`ui-slots/src/index.ts:483-498`）。
+- `conversation.input.dock` 的 owner 是 `InputZone`（`ui-conversation/src/client/contract/slots.ts:127,196-200`）；现任依次为 todo `order:0`（`TodoPanel.tsx:137-138`）、goal `order:10`（`ui-goal/src/client/index.ts:81-84`）、queue `order:20`（`QueueDock.tsx:298-301`），本插件使用 `order:30`（`src/client/index.ts:268-272`）。
+- `t()` 支持 `{name}` 形式的参数插值，未提供的参数保留原占位符（`locale/src/client/index.ts:447-455`）。
+- `ui-primitives/src/index.ts:1-49` 的公开组件含 `HoverCard`、`Modal`、`Tooltip` 等，但没有 Popover；对 `ui-primitives/src/**` 的 `Popover` 全树搜索同样为零命中。
+- `readJson` 默认上限为 4 KiB（`src/host/webapi.ts:20,1007-1017`）；memory PUT 与 observations POST/PUT 均显式放宽到 64 KiB（`:492,508,556`），超过各自上限统一返回 413（`:375-377`）。
 - 客户端规则：组件永不见 `ctx`；跨插件只 `import type`；样式只 `--dsw-alias-*` + CSS Modules + clsx；不写 `document.body.appendChild`（synapse 旧做法）。
 
 ### 2.4 宿主契约（供写注入/桥接时直接用）[源码]

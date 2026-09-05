@@ -926,9 +926,11 @@ function parseStyle(
   let firewallWords: string[] = []
   for (const line of section.lines) {
     if (!line.includes('防火墙')) continue
-    const colon = line.lastIndexOf('：')
-    if (colon < 0) continue
-    const list = line.slice(colon + 1).replace(/[。.]\s*$/u, '')
+    const counted = /防火墙[：:][^\n]*?\d+\s*词[^：:\n]*[：:](.+)$/u.exec(line)
+    const direct = /防火墙[：:](.+)$/u.exec(line)
+    const raw = counted?.[1] ?? direct?.[1]
+    if (raw === undefined) continue
+    const list = raw.replace(/[。.]\s*$/u, '')
     firewallWords = unique(list.split('、').map(value => value.trim()).filter(Boolean))
     if (firewallWords.length > 0) break
   }

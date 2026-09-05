@@ -123,7 +123,7 @@ export class AmphoreusClientModel {
       headers: { 'content-type': 'application/json', 'x-amphoreus-nonce': nonce },
       body: JSON.stringify({ magazineMode: mode }),
     })
-    if (!response.ok) throw new Error(`杂志档位保存失败（HTTP ${response.status}）`)
+    if (!response.ok) throw new Error(`杂志模式保存失败（HTTP ${response.status}）`)
     await this.refresh()
   }
 

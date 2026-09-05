@@ -334,7 +334,7 @@ async function hydrateBootState(bootState) {
       state.collapsedCardIds.add(cardId)
     }
     for (const [parentSessionId, userSeq] of Object.entries(item.value.branchAnchors ?? {})) {
-      if (!Number.isInteger(userSeq) || userSeq < 0) throw new Error('画布分支锚点无效')
+      if (!Number.isInteger(userSeq) || userSeq < 0) throw new Error('画布分支位置无效')
       state.branchAnchors.set(item.sessionId, `${parentSessionId}:turn:${userSeq}`)
     }
   }

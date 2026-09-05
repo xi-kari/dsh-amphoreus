@@ -104,7 +104,7 @@ test('garnish records the shadowed folder branch and keeps the appendChild excep
   }
 })
 
-test('README distinguishes seat bindings from official directories and closes completed C gaps', () => {
+test('README distinguishes seat bindings from official directories and reports completed M3', () => {
   assert.equal(readme.match(/^## 席位与目录$/gmu)?.length, 1)
   const start = readme.indexOf('## 席位与目录')
   const end = readme.indexOf('\n## ', start + 1)
@@ -115,7 +115,8 @@ test('README distinguishes seat bindings from official directories and closes co
   assert.match(section, /fork 出的子会话继承父席/u)
   assert.match(section, /昔涟席代表全体会议与全局视觉层/u)
 
-  const pending = readme.split(/\r?\n/u).find(line => line.startsWith('仍待后续章节兑现：')) ?? ''
-  assert.match(pending, /`M3` 总空间派发能力/u)
-  assert.doesNotMatch(pending, /G5|G7|G13|G15/u)
+  const status = readme.split(/\r?\n/u).find(line => line.includes('`M3` 总空间派发')) ?? ''
+  assert.match(status, /现已完成/u)
+  assert.match(status, /尚待 F 章/u)
+  assert.doesNotMatch(readme, /仍待后续章节兑现：`M3`/u)
 })

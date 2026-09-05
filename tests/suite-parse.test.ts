@@ -57,7 +57,7 @@ const COMMON = source('X:/fixture/skills/amphoreus/references/common.md', `
 | 标准 | 中 | 默认 |
 | 静音 | 无 | 严肃 |
 
-- 工艺词防火墙：词甲、词乙、词丙。
+- 工艺词防火墙：下列 3 词只许出现在台账与合同，不得进入角色台词与旁白：词甲、词乙、读取：。
 
 ## 移交与流水线
 - 固定格式：\`此事移交◯◯：<可直接使用的移交物>\`。
@@ -200,7 +200,7 @@ test('parseSuite: complete fictional suite produces L0 contracts, cards, faces, 
   assert.equal(second?.handoffs.length, 0)
 
   assert.deepEqual(snapshot.contracts?.tiers, ['浓', '标准', '静音'])
-  assert.deepEqual(snapshot.contracts?.firewallWords, ['词甲', '词乙', '词丙'])
+  assert.deepEqual(snapshot.contracts?.firewallWords, ['词甲', '词乙', '读取：'])
   assert.equal(snapshot.contracts?.receipt?.regex.test('晨星卡｜读取：common.md、persona.md｜档位：标准'), true)
   assert.equal(snapshot.contracts?.absence.regex?.test('角色未部署｜原因：module_unavailable｜未完成职责：规划'), true)
   assert.equal(snapshot.contracts?.handoff.regex?.test('此事移交夜星:<计划>'), true)
