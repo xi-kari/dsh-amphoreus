@@ -1191,7 +1191,7 @@
 - 偏离与理由：任务书示例用简略文件列表作为 `git clone` 失败回退，会遗漏 verify-dist 所需发布文件；脚本固定采用完整 `git clone --no-hardlinks`，并仅把当前尚待同一 TF9 commit 的三份变更覆盖到 clone，确保验收的是当前工作树且不碰开发 junction。当前 dumper 以 `# == dsh-amphoreus` 标来源而非完整文件路径，按实际 alpha.4 输出锁定该来源行。
 - 遗留：TF9 自动脚本的摘要将在 TF11 按任务书写入 HANDOFF §8 F；npm 远程发布形态留 TF12。其余无。
 ## TF10：A–E 发布门与端到端走查 — 2026-09-05 10:50
-- commit: PENDING-TASK
+- commit: b68d9bc
 - 动手前核对：实际执行任务书 `sed -n '4956,5010p'`；读取 A–E 最终完成定义区间 A=`864–918`、B=`1648–1668`、C=`2463–2494`、D=`3426–3450`、E=`4451–4487`，并先 `head -40 "$DSH_HOME/storages/amphoreus.json"` 核对 binding 真值位于 `tables.bindings` PASS
 - 文档：新增 `docs/E2E-CHECKLIST.md`，A/B/C/D/E 表行=`40/16/20/16/18`，跨章 X 行=`14`，手工步骤=`12`；每步均有操作/预期/记录字段，结果记录含日期、三份 lib 构建时间、DSH 版本与浏览器 PASS
 - 机器发布门：
@@ -1218,3 +1218,27 @@
 - 任务书文档验收：file=`ok`、X=`14`、A/B/C/D/E=`40/16/20/16/18`、steps=`12`、`api/workspaces=0`、手工段「可选」=`0`、表格未勾=`1`（仅时序依赖 TF11 的 X-14） PASS
 - 偏离与理由：① B 章历史 404 探针若逐字写已删除 URL，会与本任务 `api/workspaces=0` 自验互相冲突；只把该历史命令的 route 字符串拆成 shell 等价拼接，语义与预期未改。② 当前技能 common.md 将纯自我介绍明确归陪聊场并免逐轮回执；不篡改外部技能，额外用同一会话的工作场评审验证真实 receipt。③ 稳定 HTML 壳按当前 webapi.ts 永远返回 200 并用 boot.disabled 自诊断；J-13 权威数据入口 `/api/index` 正确返回 503，按实际合同验收。④ 派发探针因模型把无语义标记当长任务，5 分钟仍运行；操作者经官方 cancel 结束，派发链本身此前已完整提交。⑤ TF10 原定只改文档，但真机发现移交按钮被宿主 resize hit area 截获；为使步骤 7 真正可由用户点击，连同回归测试在本任务修复并实测，未把程序化 DOM click 当最终通过。
 - 遗留：X-14 的 HANDOFF 明文裁决由紧随的 TF11 写入并把唯一 `☐` 改为 `✓`；远程发布留 TF12。其余无。
+## TF11：HANDOFF 发布态同步与文档闭合 — 2026-09-05 11:08
+- commit: PENDING-TASK
+- 动手前核对：实际执行任务书 `sed -n '5011,5048p'`；先冻结完整 `HANDOFF.md` 到独立二进制备份，并核对第 1–4 行、§0–§7、旧 §4／§5、`WB-25|第四梯队` 基线、AGENTS 与任务书 SHA256，随后才编辑 PASS
+- 发布态同步：
+  - 第 1–4 行保持不动；§0 标题下追加 `0.1 发布态现状`，旧现状整段仅加 `[已失效 2026-09-05]` 前缀；遗留汇总包含 B 章等价容量验收、TD12 条件裁决保留的 CSS 原色 fallback、派生稳定 URL cache-bust 与 TF12 发布动作 PASS
+  - §3 保留早期设计输入并标注过时的 `02–07 未生成`；新增发布态代码权威行，明确冲突时以当前代码、测试与复现命令为准 PASS
+  - §4、§5 原非空行全部保留，仅加失效前缀；§5 另加发布后下一步，不新增 `WB-25` 或「第四梯队」编号 PASS
+  - §6 追加 `DELIVERY.md` 作废、`.pack-dry-run.json` 已删、历史 AUDIT 不更新、官方 DSH dist-tags、npmjs registry 显式参数与 bundle 变更后重启六组事实 PASS
+  - §8 A–F 六章均按固定四字段写入；C 段精确保留 `garnish.ts` 的 `document.body.appendChild` 裁决，E 段 matcher 事实为三个唯一命中词按长度累计 `11→13` 分，F 段追加 `amphoreus:*` 消息清单复现命令 PASS
+  - §9 覆盖 `git ls-files` 实际 21 个顶层项；任务书文字称 scripts 五个，但仓库实有六个，逐项写明入库／入包状态，只有 `derive-assets.mjs` 进入 npm 包；`BUILD-LOG.md` 明确入库不入包 PASS
+- 受保护字节验证：
+  - 第 1–4 行原始字节：before/after SHA256 均为 `de2309a63db4da22b68eb0c565c965ec209b65af213b9f1eb749d5ab96800f23`，`RAW_FIRST4_EQUAL=true` PASS
+  - 原 §7 原始字节（只剥离为分隔新增 §8 的末尾空行）：before/after 长度均为 `4233` bytes，SHA256 均为 `5e963f09112243404ea71c7c45ae37e22b54605c21678a8b4a2de1d36a8a93ee`，`RAW_SECTION7_EQUAL=true` PASS
+  - 原 §4／§5 逐非空行去新增前缀比对 → `SECTION4_ORIGINAL_PRESERVED=true`、`SECTION5_ORIGINAL_PRESERVED=true` PASS
+- 任务书验收：
+  - `sed -n '3p' HANDOFF.md | grep -c '2026-09-04 更新'` → `1`；`grep -c '^## 7'` → `1`；`grep -c '^## 8\. 已完成'` → `1`；`grep -c '^## 9\. 文件清单'` → `1` PASS
+  - `awk '/^## 8\./,/^## 9\./' HANDOFF.md | grep -c '^### [A-F] · '` → `6`；未标失效的「一个都还没写」→ `0`；`DELIVERY.md` → `1`；`WB-25|第四梯队` → 基线／当前均 `0` PASS
+  - `docs/E2E-CHECKLIST.md` 的 X-14 因本文件 C 段裁决闭合，`grep -c '| ☐'` → `0`；garnish 指定句命中=`1` PASS
+  - 官方 registry `npm view @deepseek-ai/dsh dist-tags --json` → `latest=0.1.2-rc.1, alpha=0.1.2-alpha.5, next=0.1.2-rc.1`（exit: `0`）PASS
+  - AGENTS SHA256 仍为 `228694BFFDD090C63A9390BE46C2D69B2BB0C9380B5F9885EF5E423E5C39C439`；任务书 SHA256 仍为 `D49F6F85F020BF5F4D9EF41DFC71A1F3E8DD341D6A8B0DE2B9EB3C9317502E71` PASS
+  - `git diff --check` → 无空白错误 PASS（exit: `0`）
+- 人工断言：✓ 不删 HANDOFF 原文；✓ 不改第 1–4 行或 §7；✓ 不生成第二个 `## 7`；✓ 不回改设计文档、AGENTS 或用户记忆；✓ 不把设计文档整段复制进 HANDOFF。
+- 偏离与理由：任务书 §9 写「scripts/ 五个脚本」，实际 `git ls-files scripts` 为六个；按发布态真值全部列出。原 §3 的 `02–07 未生成` 已被本任务书自身推翻，保留原字面并加失效前缀。
+- 遗留：TF12 的远程创建、双系统 CI、npm alpha 发布、两类安装抽测与 GitHub Release。

@@ -143,7 +143,7 @@
 | X-11 | 跨章 · 组件不见 ctx | `grep -n "\bctx\b" src/client/*.tsx \| grep -v ":[0-9]*:\s*\(\*\|//\|/\*\)" \| wc -l`（注释行除外；`workbench.tsx:4` 头注释含 `ctx.sessions`，F-29） | `0` | ✓ |
 | X-12 | 跨章 · 样式纪律 | `grep -n "#[0-9a-fA-F]\{3,8\}\b" src/client/*.module.css \| wc -l` | `0`（字面色值只允许在 `src/shared/heroes.ts` 色板与 workbench/styles.css 的 `var(..., #fallback)` 回退位） | ✓ |
 | X-13 | 跨章 · 发布纯净（⑥） | `npm run verify:dist \| tail -1 \| grep -c "^verify-dist: OK"` | `1` | ✓ |
-| X-14 | 跨章 · garnish.ts 例外处置 | HANDOFF 中有一行明确「garnish.ts 的 `document.body.appendChild` 保留/移除」的裁决与理由 | 存在 | ☐ |
+| X-14 | 跨章 · garnish.ts 例外处置 | HANDOFF 中有一行明确「garnish.ts 的 `document.body.appendChild` 保留/移除」的裁决与理由 | 存在 | ✓ |
 
 ## 手工走查脚本
 

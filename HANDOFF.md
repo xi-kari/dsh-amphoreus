@@ -9,7 +9,15 @@
 
 ## 0. 一句话现状
 
-包 `dsh-amphoreus` 已有可装可启的双半侧骨架：已 `link:` 装进 profile `web`，`dsh web` 启动后宿主行挂载、浏览器 bundle 进入启动图并被 `/plugins` 路由 200 下发、stderr 为空 **[实测]**。业务模块（技能桥接、席位、注入、观察、Web 通道、首帧、主题壁纸、工作台、设置区）**一个都还没写**，只有类型契约 `src/host/suite/types.ts`。服务当前仍在运行（PID 见 `.runtime/deepseek-harness.pid`），改完 host 代码需 Stop/Start，改完 client 需重建 `lib/client.js` 并刷新页面（无 `pnpm run dev:web` 时 HMR 不会自动生效）。
+### 0.1 发布态现状（0.2.0，2026-09-05）
+
+`dsh-amphoreus@0.2.0` 的 A–E 功能建设、TF1–TF10 发布前验证与 TF11 交接同步已经完成；本机 profile `web` 仍以 `link:D:/DeepSeek Harness/deepseek插件开发/dsh-amphoreus` 运行。面向用户的 npm 安装形态为发布后的 `dsh-amphoreus@alpha` 或 `dsh-amphoreus@0.2.0`，TF12 完成前不得把它写成已可下载。
+
+当前已实现运行时技能套件解析与无损更新、13 席工作区与自动注入、全局／逐席视觉、外置素材派生、iframe 工作台、全体会议派发、移交坞／移交边／接通尾页、站位轨与台账。最终本机构建时间：`lib/index.js`、`lib/client.js`、`lib/derive.js` 均为 2026-09-05 10:50:04。
+
+遗留：B 章的 30+ 轮字面场景以同 route/schema 的 70-position 事务作容量验收；CSS 原色 fallback 按 TD12 的条件裁决保留；稳定 URL 在强制重派生时的 cache-bust 仍待后续版本化；TF12 的远程仓库、真实双系统 CI、npm 发布、npm 安装复测、GitHub SHA 安装抽测与 GitHub Release 尚未执行。其余 A–E 代码遗留为无。
+
+[已失效 2026-09-05] 包 `dsh-amphoreus` 已有可装可启的双半侧骨架：已 `link:` 装进 profile `web`，`dsh web` 启动后宿主行挂载、浏览器 bundle 进入启动图并被 `/plugins` 路由 200 下发、stderr 为空 **[实测]**。业务模块（技能桥接、席位、注入、观察、Web 通道、首帧、主题壁纸、工作台、设置区）**一个都还没写**，只有类型契约 `src/host/suite/types.ts`。服务当前仍在运行（PID 见 `.runtime/deepseek-harness.pid`），改完 host 代码需 Stop/Start，改完 client 需重建 `lib/client.js` 并刷新页面（无 `pnpm run dev:web` 时 HMR 不会自动生效）。
 
 ## 1. 用户裁决（不可违反）
 
@@ -75,53 +83,56 @@
 | `../设计底账/00–06` | 事实底账，完整，2026-09-02 |
 | `../设计文档/01_技能桥接与无损更新.md`（1208 行） | 综合成稿，**未经对抗核查**；结构合理，建设者按它实现解析器/降级矩阵/注入状态机即可，遇到与源码冲突以源码为准 |
 | `../设计文档/00_总体架构（草稿·未核查）.md`（737 行） | 2026-09-03 从 `%TEMP%` 抢救的六段装配稿，未复核；其模块编号 H1–H9/B1–B11、决策 D-A…D-W、INV 表、配置 schema、两域数据落点、synapse 分阶段吸收都可直接沿用，与本文 §2 冲突处以本文为准 |
-| 02–07 | 未生成；不必补文档，直接按 00 草稿 §5 的模块表写代码 |
+| [已失效 2026-09-05] 02–07 | 未生成；不必补文档，直接按 00 草稿 §5 的模块表写代码 |
+| 发布态实现依据 | 设计底账与早期草稿保留为历史输入；A–F 任务的完成状态以当前代码、测试、`BUILD-LOG.md`、`docs/E2E-CHECKLIST.md` 与本文件 §8 的实测记录为准，冲突处以代码及复现命令为准 |
 
 ## 4. 已落盘的代码与文件
 
 ```
-dsh-amphoreus/
-  package.json          name/exports/files/dsh.bundle/dsh.client；依赖钉 0.1.2-alpha.4（npm 已确认存在）
-  cordis.patch.yml      insert 单行 id: amphoreus（skillRoots / dataDir !!js / assetsRoot）
-  tsconfig.json         对齐官方 client 编译形状（es2024, bundler, react-jsx, exactOptionalPropertyTypes…）
-  tsdown.config.ts      host ESM + client CJS 闭包工厂 + CSS 三通道 + 纯度门；导出 PLATFORM_MODULES
-  scripts/dev-link.mjs  junction 链依赖；`npm run dev:link`
-  src/index.ts          宿主壳：name='amphoreus'，inject=[webServer, skills, storageDomain, sessions, agents]，apply 只打日志
-  src/host/config.ts    完整 schemastery Config（键义见 00 草稿 §3；全部嵌套对象带默认）
-  src/host/suite/types.ts  SuiteSnapshot/CardEntry/Pipeline/HandoffEdge/ContractFormats/Diagnostic… 契约类型
-  src/shared/heroes.ts  HERO_VISUALS 13 席（skill↔heroId↔月序↔册号↔纹样↔色板↔素材文件名）、GLOBAL_WALLPAPERS、fallbackHue
-  src/client/index.ts   浏览器壳：inject=[slots, locale]，只注册词典 NS 'amphoreus'
-  src/client/locales.ts zh/en 起始词典
-  src/css-modules.d.ts  *.module.css / *.css?inline 声明
-  tests/platform-modules.test.ts  平台模块表防漂移（通过）
-[已失效]   workbench/app.js|styles.css|mark.svg  dsh-synapse v0.4.1 vendoring：路由 → /amphoreus/workbench/api、消息 synapse:* → amphoreus:*、source → 'dsh-amphoreus'、localStorage 键 → dsh-amphoreus:*；styles.css 仍是硬编码 hex（待 token 化）
-  workbench/app.js|styles.css|mark.svg  dsh-synapse v0.4.1 vendoring；styles.css 第一步 token 化完成（var + 回退），暗色由宿主 DSW token 驱动；第二步删回退见 07 任务书 TD12
-  src/host/workbench.ts  内存 seq 索引（ProjectionIndex），启动自 sessions.list() + sessionPersistence.list()/inspect() 重建，无正文、无 workbench.json
-  reference/synapse-host-index.js  synapse 宿主半侧原件（H8 工作台投影的改造基底，不进包）
-  reference/SYNAPSE-LICENSE.txt, reference/magazine-palette.json（13 册逐页明暗与色板实测 JSON，来自 06 附录脚本）
-  LICENSE (MIT), NOTICE（synapse 署名、非官方声明、素材不随包）
+[已失效 2026-09-05] dsh-amphoreus/
+[已失效 2026-09-05]   package.json          name/exports/files/dsh.bundle/dsh.client；依赖钉 0.1.2-alpha.4（npm 已确认存在）
+[已失效 2026-09-05]   cordis.patch.yml      insert 单行 id: amphoreus（skillRoots / dataDir !!js / assetsRoot）
+[已失效 2026-09-05]   tsconfig.json         对齐官方 client 编译形状（es2024, bundler, react-jsx, exactOptionalPropertyTypes…）
+[已失效 2026-09-05]   tsdown.config.ts      host ESM + client CJS 闭包工厂 + CSS 三通道 + 纯度门；导出 PLATFORM_MODULES
+[已失效 2026-09-05]   scripts/dev-link.mjs  junction 链依赖；`npm run dev:link`
+[已失效 2026-09-05]   src/index.ts          宿主壳：name='amphoreus'，inject=[webServer, skills, storageDomain, sessions, agents]，apply 只打日志
+[已失效 2026-09-05]   src/host/config.ts    完整 schemastery Config（键义见 00 草稿 §3；全部嵌套对象带默认）
+[已失效 2026-09-05]   src/host/suite/types.ts  SuiteSnapshot/CardEntry/Pipeline/HandoffEdge/ContractFormats/Diagnostic… 契约类型
+[已失效 2026-09-05]   src/shared/heroes.ts  HERO_VISUALS 13 席（skill↔heroId↔月序↔册号↔纹样↔色板↔素材文件名）、GLOBAL_WALLPAPERS、fallbackHue
+[已失效 2026-09-05]   src/client/index.ts   浏览器壳：inject=[slots, locale]，只注册词典 NS 'amphoreus'
+[已失效 2026-09-05]   src/client/locales.ts zh/en 起始词典
+[已失效 2026-09-05]   src/css-modules.d.ts  *.module.css / *.css?inline 声明
+[已失效 2026-09-05]   tests/platform-modules.test.ts  平台模块表防漂移（通过）
+[已失效 2026-09-05] [已失效]   workbench/app.js|styles.css|mark.svg  dsh-synapse v0.4.1 vendoring：路由 → /amphoreus/workbench/api、消息 synapse:* → amphoreus:*、source → 'dsh-amphoreus'、localStorage 键 → dsh-amphoreus:*；styles.css 仍是硬编码 hex（待 token 化）
+[已失效 2026-09-05]   workbench/app.js|styles.css|mark.svg  dsh-synapse v0.4.1 vendoring；styles.css 第一步 token 化完成（var + 回退），暗色由宿主 DSW token 驱动；第二步删回退见 07 任务书 TD12
+[已失效 2026-09-05]   src/host/workbench.ts  内存 seq 索引（ProjectionIndex），启动自 sessions.list() + sessionPersistence.list()/inspect() 重建，无正文、无 workbench.json
+[已失效 2026-09-05]   reference/synapse-host-index.js  synapse 宿主半侧原件（H8 工作台投影的改造基底，不进包）
+[已失效 2026-09-05]   reference/SYNAPSE-LICENSE.txt, reference/magazine-palette.json（13 册逐页明暗与色板实测 JSON，来自 06 附录脚本）
+[已失效 2026-09-05]   LICENSE (MIT), NOTICE（synapse 署名、非官方声明、素材不随包）
 ```
-`.gitignore` 排除 `node_modules/`、`lib/`。`lib/` 当前是骨架构建产物，每次改源码后 `npm run build`（typecheck → d.ts → tsdown）。
+[已失效 2026-09-05] `.gitignore` 排除 `node_modules/`、`lib/`。`lib/` 当前是骨架构建产物，每次改源码后 `npm run build`（typecheck → d.ts → tsdown）。
 
 ## 5. 下一步（按顺序，每步给验收）
 
-**M1 技能桥接 + 全局视觉 + 设置区**
-1. `src/host/suite/markdown.ts`：`splitFrontmatter`（照抄 skill-filesystem 算法：首行 `---`，`yaml.parse`，非对象视为无 frontmatter，旧键 `disableModelInvocation/modelInvocable/userInvocable` 整卡无效）、`sectionize`（`##`/`###`，围栏内忽略）、`parseTable`、`inlineCodes`。
-2. `src/host/suite/roots.ts`：`expandRootPath`（`~`、`$DSH_HOME`、`%VAR%`、相对 → `resolveDshHome()`，realpath 去重）、主根选择（第一个含 `amphoreus/SKILL.md` 且 name 恰为 `amphoreus` 的根）。
-3. `src/host/suite/parse.ts`：纯函数 `parseSuite(files, config) → SuiteSnapshot`，按设计文档 01 §2（分派表两列、`common.md`「移交与流水线」`◯◯线：A → B` 行、「汇报与回执」模板编译成正则、各卡「## 输出模板」回执名与 face、「## 协作与移交」行内代码移交边、description 里 `amphoreus-x／别名` 段）；降级矩阵 §3（L0–L3、FeatureSwitches）。**夹具用虚构卡名**，另加 `AMPHOREUS_REAL_SUITE` 环境变量指向 `~/.claude/skills` 的集成测试（期望 13 卡、逐火线 10 站、守夜线第 3 站 face 长夜月）。
-4. `src/host/suite/fingerprint.ts` + `watch.ts`：清单 sha256（含 persona.md，不含 evals），`fs.watch` 递归失败降轮询，去抖后重解析并 `control.invalidate()`。
-5. `src/host/bridge.ts`：`registerProvider`（provider 名 `dsh-amphoreus`，source `amphoreus`，rank 300，`resourceBase` = 卡目录，`get()` 现读磁盘）。验收：新会话敲 `/amph` 出 14 项且标「仅用户可调用」；`/amphoreus-cyrene 自我介绍` 首答末行匹配回执正则；轨迹视图里 `<available_skills>` 不含 amphoreus-*。
-6. `src/host/store.ts`：两域 `amphoreus`（single：seats/bindings/memory/observations/suite_events + global）与 `amphoreus_canvas`（per-record）；`src/host/seats.ts` 幂等对齐（新卡 deployed、消失 undeployed 保留、改名 renamedFrom/To、`missing` 且空表不建席）。
-7. `src/host/webapi.ts`：`/amphoreus/api/state|events(SSE)|bindings|seats|memory|canvas`、`/amphoreus/assets/*`、`/amphoreus/wallpaper/*`、`/amphoreus/workbench/*`；写路由校 `X-Amphoreus-Nonce`（首帧下发）+ Host 白名单；**不承载会话正文**。`src/host/firstframe.ts`：`index-inject` 的 global/style/html/script 行。
-8. 客户端 `theme.ts`：全局层 `overrideTokens('dsh-amphoreus/global', …)`（昔涟色板 + bg-base/sidebar-fill 带 alpha）；壁纸元素属性切换；`settings.tsx`：`settings.section` id `amphoreus` order 30；品牌三槽 priority −10。
-9. `/amphoreus-sync` 两步命令（可选，`ctx.inject(['commands'])`）。
+[已失效 2026-09-05] **M1 技能桥接 + 全局视觉 + 设置区**
+[已失效 2026-09-05] 1. `src/host/suite/markdown.ts`：`splitFrontmatter`（照抄 skill-filesystem 算法：首行 `---`，`yaml.parse`，非对象视为无 frontmatter，旧键 `disableModelInvocation/modelInvocable/userInvocable` 整卡无效）、`sectionize`（`##`/`###`，围栏内忽略）、`parseTable`、`inlineCodes`。
+[已失效 2026-09-05] 2. `src/host/suite/roots.ts`：`expandRootPath`（`~`、`$DSH_HOME`、`%VAR%`、相对 → `resolveDshHome()`，realpath 去重）、主根选择（第一个含 `amphoreus/SKILL.md` 且 name 恰为 `amphoreus` 的根）。
+[已失效 2026-09-05] 3. `src/host/suite/parse.ts`：纯函数 `parseSuite(files, config) → SuiteSnapshot`，按设计文档 01 §2（分派表两列、`common.md`「移交与流水线」`◯◯线：A → B` 行、「汇报与回执」模板编译成正则、各卡「## 输出模板」回执名与 face、「## 协作与移交」行内代码移交边、description 里 `amphoreus-x／别名` 段）；降级矩阵 §3（L0–L3、FeatureSwitches）。**夹具用虚构卡名**，另加 `AMPHOREUS_REAL_SUITE` 环境变量指向 `~/.claude/skills` 的集成测试（期望 13 卡、逐火线 10 站、守夜线第 3 站 face 长夜月）。
+[已失效 2026-09-05] 4. `src/host/suite/fingerprint.ts` + `watch.ts`：清单 sha256（含 persona.md，不含 evals），`fs.watch` 递归失败降轮询，去抖后重解析并 `control.invalidate()`。
+[已失效 2026-09-05] 5. `src/host/bridge.ts`：`registerProvider`（provider 名 `dsh-amphoreus`，source `amphoreus`，rank 300，`resourceBase` = 卡目录，`get()` 现读磁盘）。验收：新会话敲 `/amph` 出 14 项且标「仅用户可调用」；`/amphoreus-cyrene 自我介绍` 首答末行匹配回执正则；轨迹视图里 `<available_skills>` 不含 amphoreus-*。
+[已失效 2026-09-05] 6. `src/host/store.ts`：两域 `amphoreus`（single：seats/bindings/memory/observations/suite_events + global）与 `amphoreus_canvas`（per-record）；`src/host/seats.ts` 幂等对齐（新卡 deployed、消失 undeployed 保留、改名 renamedFrom/To、`missing` 且空表不建席）。
+[已失效 2026-09-05] 7. `src/host/webapi.ts`：`/amphoreus/api/state|events(SSE)|bindings|seats|memory|canvas`、`/amphoreus/assets/*`、`/amphoreus/wallpaper/*`、`/amphoreus/workbench/*`；写路由校 `X-Amphoreus-Nonce`（首帧下发）+ Host 白名单；**不承载会话正文**。`src/host/firstframe.ts`：`index-inject` 的 global/style/html/script 行。
+[已失效 2026-09-05] 8. 客户端 `theme.ts`：全局层 `overrideTokens('dsh-amphoreus/global', …)`（昔涟色板 + bg-base/sidebar-fill 带 alpha）；壁纸元素属性切换；`settings.tsx`：`settings.section` id `amphoreus` order 30；品牌三槽 priority −10。
+[已失效 2026-09-05] 9. `/amphoreus-sync` 两步命令（可选，`ctx.inject(['commands'])`）。
 
-[已失效] **M2** 席位侧栏（`sidebar.workspaces` priority −10，两组：黄金裔席位 / 我的目录，D-E 预绑定建会话）、逐席 token 层与封面切换（切换协议：预加载 → 240ms 淡入 → 再换 token；失败退全局）、`src/host/injector.ts` 一次性注入状态机（session-start 置 pending、首个 pre-step 追加、手敲同名则 skipped）、`observer.ts` 回执/移交行解析、名牌（`conversation.session.header.actions` order −20）、工作台 Tab（iframe 承载 `workbench/`，桥接 `amphoreus:*` + 新增 `amphoreus:theme-tokens`，正文由宿主页 `useConversation` 喂入）。
+[已失效 2026-09-05] [已失效] **M2** 席位侧栏（`sidebar.workspaces` priority −10，两组：黄金裔席位 / 我的目录，D-E 预绑定建会话）、逐席 token 层与封面切换（切换协议：预加载 → 240ms 淡入 → 再换 token；失败退全局）、`src/host/injector.ts` 一次性注入状态机（session-start 置 pending、首个 pre-step 追加、手敲同名则 skipped）、`observer.ts` 回执/移交行解析、名牌（`conversation.session.header.actions` order −20）、工作台 Tab（iframe 承载 `workbench/`，桥接 `amphoreus:*` + 新增 `amphoreus:theme-tokens`，正文由宿主页 `useConversation` 喂入）。
 
-[已失效] **M2 当前状态** 工作台以 iframe 承载 `workbench/`，宿主只维护无正文的内存 seq 索引；当前会话正文经 `uiConversation.binding(sessionId).target('chat')` 从浏览器控制器喂入。席位侧栏、逐席 token、技能卡身份与回执观察仍按 D、C、E 章继续建设。
+[已失效 2026-09-05] [已失效] **M2 当前状态** 工作台以 iframe 承载 `workbench/`，宿主只维护无正文的内存 seq 索引；当前会话正文经 `uiConversation.binding(sessionId).target('chat')` 从浏览器控制器喂入。席位侧栏、逐席 token、技能卡身份与回执观察仍按 D、C、E 章继续建设。
 
-**D 章消息更新（2026-09-05 实测）**：`amphoreus:theme-tokens` 已接通 87 个 token 与 light/dark；`amphoreus:seat-changed` 已接通逐席主题；`amphoreus:magazine-mode` 已接通持久档位与原位版式切换。派生素材由宿主安全路由服务，设置区可后台重建并接收 `derive-progress`。
-[已失效] **M3** 移交坞（`conversation.input.dock` order 20，点击才 fork）、站位轨、台账、评估 native 工作台。
+[已失效 2026-09-05] **D 章消息更新（2026-09-05 实测）**：`amphoreus:theme-tokens` 已接通 87 个 token 与 light/dark；`amphoreus:seat-changed` 已接通逐席主题；`amphoreus:magazine-mode` 已接通持久档位与原位版式切换。派生素材由宿主安全路由服务，设置区可后台重建并接收 `derive-progress`。
+[已失效 2026-09-05] [已失效] **M3** 移交坞（`conversation.input.dock` order 20，点击才 fork）、站位轨、台账、评估 native 工作台。
+
+**发布后下一步（2026-09-05）**：以 §8 各章「遗留」汇总为准。当前产品级后续项为按 TD12 条件裁决保留 CSS 原色 fallback，以及稳定 URL 强制重派生的 cache-bust 版本化；发布流程后续项为 TF12 的远程 CI、npm 发布、npm／GitHub 安装复测与 GitHub Release。
 
 ## 6. 注意事项汇总
 
@@ -133,6 +144,13 @@ dsh-amphoreus/
 - 素材：用户原图在 `../` 七个子目录（清单 `../设计底账/04`）；套件自带 webp 素材在 `D:\研究\amphoreus-skill-suite\assets\`（cards/layers/symbols/stickers/mag/meeting，英文 id 命名，可直接作 assetsRoot 的一部分）。杂志 zip 解包目录 `%TEMP%\amphoreus-mag\` 可能已丢，需要时按 06 附录重建。
 - `/tmp/refs/dsh-synapse` 克隆可能已丢；所需内容已在 `workbench/` 与 `reference/`。
 - 记忆文件 `C:\Users\cangm\.claude\projects\D--DeepSeek-Harness-deepseek----\memory\` 有工作区布局、构建坑、目标、硬约束、本次构建状态五条。
+
+- `D:/DeepSeek Harness/deepseek插件开发/DELIVERY.md` 与当前代码不符，已作废且不属于本仓库发布内容。
+- `.pack-dry-run.json` 是早期误存的构建临时文件，已物理删除且由 `.gitignore` 防回归。
+- `docs/AUDIT-2026-09-04.md` 是建设前历史审计，保留取证但不再更新；当前实现事实以代码、`BUILD-LOG.md`、E2E 清单和 §8 为准。
+- 2026-09-05 从官方 npm registry 实测 `@deepseek-ai/dsh` dist-tags：`latest=0.1.2-rc.1`、`alpha=0.1.2-alpha.5`、`next=0.1.2-rc.1`；本包兼容基线仍钉 `dsh-v0.1.2-alpha.4`。
+- 本机 npm 默认 registry 为 `https://registry.npmmirror.com`；所有发布、发布后查询与新包重装必须显式使用 `--registry https://registry.npmjs.org`。
+- `dsh plugin add/remove/update` 改变 bundle membership 后必须重启对应 `dsh web`／profile；profile/home `cordis.patch.yml` 的 live 修改不替代 bundle 重启。
 
 ### 6.1 E 章运行与人工验收（2026-09-05）
 
@@ -216,3 +234,83 @@ Vendoring 版 `/amphoreus/workbench/` 返回 200；iframe 在 `conversation.view
 - 杂志档位：light→full 正式卡 DOM 数量 `16→16`；Q 字号 `22px`、字重 `800`，folio `01 / 06`；折叠后分母仍为 `06`；草稿切档时 value 不变且 active 仍为 true；恢复 light 后装饰消失。
 - 派生素材：84 个 WebP；门户 13 张 cover 均走 `/amphoreus/derived/` 且 aspect-ratio 为 3/4；阿格莱雅侧栏 cover、card、sticker 均为派生 URL；后台 force 派生 SSE 顺序完整，最终 `84/0`。
 - 第二步未做：首个 `map-ready` 前收到 `amphoreus:theme-tokens` 尚无确定的 happens-before；当前握手可能先在 1 rAF 发 ready、再在 2 rAF 发 token。全套测试虽通过，三席双主题同一验收矩阵也未同时闭合，因此继续保留原色回退。
+
+## 8. 已完成（按章）
+
+### A · 整备与卫生（2026-09-04）
+- 完成任务：TA1–TA11；章末收尾与 `chapter-A` 已完成。
+- 新事实 [实测]：仓库、构建基线、唯一 nonce 写头、iframe 双 Tab 清理、`openView('chat')`、Tab 记忆、工作台开关／不可投影状态、设置区署名与门户均已落地；章末 `tests 69 / pass 68 / fail 0 / skipped 1`，client／host 为 `70.22/158.32 kB`。
+- 偏离设计：A-DoD-16 的原字面计数与两处必要调用冲突，改以等价局部变量约束；ready 只在 resolver 完成后宣告。
+- 遗留：无。
+
+### B · 投影与桥接（2026-09-04）
+- 完成任务：TB1–TB10；章末提交 `7dd17f0` 与 `chapter-B` 已完成。
+- 新事实 [实测]：`ProjectionIndex` 只存 seq 结构，正文由浏览器 `uiConversation` 喂入；live reply、server canvas／prefs、隐藏会话与迁移均已接通。运行态 `revision=1, sessions=14, sessionsWithCards=11, cards=25, textCount=0`，旧 workspaces 数据路由为 404，`workbench.json` 不再生成；章末 `tests 119 / pass 118 / fail 0 / skipped 1`，client／host 为 `86.41/152.02 kB`。
+- 偏离设计：未制造 30+ 轮不可逆模型会话；改用同 schema／route 的 70-position PUT/GET 与完整回滚证明容量。`source.kind` 字面门按等价行为修正。
+- 遗留：无代码遗留；30+ 轮字面场景的等价容量验收理由保留在 `BUILD-LOG.md`。
+
+### C · 席位语义与专属空间（2026-09-05）
+- 完成任务：TC1–TC11；章末提交 `205004a` 与 `chapter-C` 已完成。
+- 新事实 [实测]：13 个 deployed seats 与 13 个 seatDirs、侧栏双组、先 PUT binding 再 create、fork-inherit、会话名牌、Portal overlay、逐席壁纸／theme，以及 current／unknown／global／Cyrene 行为均通过；章末 `tests 242 / pass 241 / fail 0 / skipped 1`，derive／client／host 为 `28.87/170.83/188.25 kB`。
+- 偏离设计：`garnish.ts` 的 `document.body.appendChild` 保留，理由：问候语装饰层不进槽位。（裁决 J-15；TF10 X-14）
+- 遗留：C 章当时交给 E 章的派发、移交、站位轨、接通尾页与台账已由 TE1–TE10 完成；当前无。
+
+### D · 十三套视觉与杂志语法（2026-09-05）
+- 完成任务：TD1–TD12；章末提交 `630df08` 与 `chapter-D` 已完成。
+- 新事实 [实测]：77 alias + 10 specific 共 87 个桥接 token、104 条对比度记录且 0 失败、13 个 motif、系统字体、full magazine、84 个派生 WebP、derived 路由与设置区派生均通过；light/dark 双 rAF 桥约 180ms。章末 `tests 185 / pass 184 / fail 0 / skipped 1`，derive／client／host 为 `28.87/121.16/184.52 kB`。
+- 偏离设计：`canReplaceView` 分支由原位 class/token 更新替代；“同帧”按真实双 rAF 记为约 180ms；D 按裁决先于 C；HANDOFF 的早期行只加失效前缀。
+- 遗留：CSS 原色 fallback 按 TD12 条件裁决保留；固定蓝已由后续 C/TC9 清零；稳定 URL 在强制重派生时的 cache-bust 仍是后续版本化设计项。
+
+### E · 总空间派发与流水线（2026-09-05）
+- 完成任务：TE1–TE10；章末提交 `0486490` 与 `chapter-E` 已完成。
+- 新事实 [实测]：全体会议、派发面板／泳道、station rail、observer／observations、handoff dock／edge／connecting tail、ledger／memory／insert draft 与 20 词防火墙均完成；派发文本只在明确提交后发送，移交物不自动发送。章末 `tests 326 / pass 325 / fail 0 / skipped 1`，derive／client／host 为 `28.87/205.78/199.59 kB`；5 个 bindings 删除、5 个会话经官方 Gateway 归档，日志目录保留，notes／drafts 清空，stderr 为 0。
+- 偏离设计：matcher 的任务书示例分数为 11，按三个唯一命中词的长度累计后实算为 13；blank session 不挂 conversation.view，Portal 保持 all canvas；TE8 修复同步 current-session 竞态；fork child 零新增消息按最后 `session/end-seed` 后缀判定。
+- 遗留：无。
+
+### F · 发布与验收（2026-09-05）
+- 完成任务：TF1–TF11 已完成并验收；TF12 尚未完成，原因是远程仓库、真实 GitHub CI、npm 发布、npm 安装复测、GitHub SHA 安装抽测与 GitHub Release 必须在本文件事实落盘之后依次执行。
+- 新事实 [实测]：TF1 清理仓库并加入 LF／Node 24 基线与原创 mark；TF2 将生产 dependencies 收到 `yaml,zod`、peers=6、overrides=6，官方 npm 锁无 rc/npmmirror；TF3 `verify-dist: OK 377 checks`、tarball 70 files、unpacked <2 MB，真实媒体反向门 exit 1；TF4 优先读发布态 `platform.d.ts`；TF5 的 Ubuntu/Windows CI 与 v* provenance release YAML／结构在本地通过，远程尚未运行；TF6 README 有 14 个二级标题、23 个顶层配置键、三种安装方式与 13 席表；TF7 外置素材 required/optional=`58/58,32/32`、large=`5`；TF8 NOTICE 四事实唯一、设置署名与上游归属完整。
+- 新事实 [实测]：TF9 `path-b: OK`；tarball 70 files、393.7 kB；reconcile 为 base → web-app → dsh-amphoreus，profile-local 未重复安装六项 peer，启动后六项全由 fallback 解析；dump 命中 526/527/533，3090 stderr 0，auth 303，boot=2，state=`L0 13 true`，bundle wrapper 与 mark 200；独立 npm-ci 的 dsh-client-web 为 d.ts=true/src=false，`tests 326/pass 325/fail 0/skip 1`，build=`28.90/205.60/199.69 kB`，verify=377；真实首轮 `TF9-PATH-B-OK`，3090 清零、主 web hash 不变且 3080 running/200，敏感 OUT/JAR 已清理。
+- 新事实 [实测]：TF10 汇总 A–E 110 行、X-1…X-14 与 12 步浏览器走查；X-1…X-13 已实测，X-14 由本节 C 段裁决闭合。真实完成建席、陪聊／工作回执、fork-inherit、白厄派发、显式移交、暗色、三席换装、live 开关、技能别名更新与缺卡恢复；6 个测试会话官方归档、binding 回基线，profile／技能 hash 与 mtime 全恢复。E2E 又发现 dock 被官方 40px resize handle 截获，已将 dock 对齐 composer card 上限；修复后几何不重叠且普通指针一次接受成功。最终 `tests 326 / pass 325 / fail 0 / skipped 1`，derive／client／host 为 `28.87/205.87/199.59 kB`，verify=377。
+- 偏离设计：TF2 将宿主包归入 peerDependencies；TF9 的独立 npm-ci 又发现三个仅开发期 runtime peer 缺失，只将 `dsh-invariants/dsh-scope/dsh-storage` 补入 devDependencies。项目级 `.npmrc` 使用 `legacy-peer-deps=true`，六项 overrides 防止 rc 漂移。TF9 用完整 no-hardlinks clone 代替不完整复制回退；默认复用主 DSH_HOME，只验证 profile 依赖、bundle、端口与进程隔离，storage/session 仍属同一 home，脚本保留 `PATH_B_DSH_HOME` 供完整数据隔离；实测会话已归档、bindings 回基线且主 web manifest/patch hash 不变。TF10 按当前外部 common.md 保留陪聊免逐轮回执，并以工作场另证 receipt；稳定工作台 HTML 壳返回 200/boot disabled，权威 index 在关闭时返回 503。
+- 遗留：TF12 的远程仓创建、双系统 CI、`v0.2.0` tag、npm `alpha` 发布、npm 安装复测、GitHub SHA 安装抽测与 GitHub Release。
+- `amphoreus:*` 消息清单以 `grep -o "'amphoreus:[a-z-]*'" workbench/app.js src/client/workbench.tsx | sort -u` 实测为准，M1 核对与数字见 §7。
+
+## 9. 文件清单（发布态）
+
+| 路径 | 入库 | npm 包 | 说明 |
+|---|---:|---:|---|
+| `.gitattributes` | 是 | 否 | 全仓 LF 基线 |
+| `.github/` | 是 | 否 | Ubuntu/Windows CI 与 tag release workflow |
+| `.gitignore` | 是 | 否 | 忽略依赖、产物、tarball 与本地运行文件 |
+| `.node-version` | 是 | 否 | Node 24 |
+| `.npmrc` | 是 | 否 | `legacy-peer-deps=true`，无 registry 或 token |
+| `BUILD-LOG.md` | 是 | 否 | 最终将承载 66 个任务与六章验收日志；TF11 提交时为 65 个任务段／五个章末段，TF12 与 F 章收尾后达到最终计数 |
+| `cordis.patch.yml` | 是 | 是 | DSH bundle patch |
+| `docs/` | 是 | 否 | 历史审计、E2E 清单、截图占位；TF12 后含 release note |
+| `HANDOFF.md` | 是 | 否 | 唯一交接入口 |
+| `LICENSE` | 是 | 是 | 本包 MIT |
+| `NOTICE` | 是 | 是 | vendoring、非官方声明与变更归属 |
+| `package-lock.json` | 是 | 否 | 官方 npm registry 的 npm-ci lock |
+| `package.json` | 是 | 自动 | 发布 manifest 与 files 白名单 |
+| `README.md` | 是 | 是 | 用户安装、配置、素材、技能与限制 |
+| `reference/` | 是 | 否 | 上游许可、宿主基底与杂志色板证据 |
+| `scripts/` | 是 | 部分 | 六个开发／验收脚本逐项展开如下，只有派生器进包 |
+| `scripts/check-assets.mjs` | 是 | 否 | 外置素材只读检查 |
+| `scripts/check-contrast.ts` | 是 | 否 | 视觉对比度开发门 |
+| `scripts/derive-assets.mjs` | 是 | 是 | 用户侧素材派生器 |
+| `scripts/dev-link.mjs` | 是 | 否 | 本地 junction 开发辅助 |
+| `scripts/path-b.sh` | 是 | 否 | tarball/profile/npm-ci 路径 B 复验 |
+| `scripts/verify-dist.mjs` | 是 | 否 | 发布产物纯度验证；不自带进包 |
+| `src/` | 是 | 否 | TypeScript 源码 |
+| `tests/` | 是 | 否 | 单元、合同与回归测试 |
+| `tsconfig.json` | 是 | 否 | TypeScript 构建配置 |
+| `tsdown.config.ts` | 是 | 否 | 树外三入口构建配置 |
+| `workbench/` | 是 | 是 | vendored 画布运行文件，逐项展开如下 |
+| `workbench/app.js` | 是 | 是 | vendored 画布逻辑 |
+| `workbench/styles.css` | 是 | 是 | 画布样式与 token fallback |
+| `workbench/mark.svg` | 是 | 是 | 本包原创 mark |
+| `lib/` | 否 | 构建后是 | 三个 JS/map 与声明文件；不入 Git |
+| `node_modules/` | 否 | 否 | 本地依赖／junction，不入 Git 或包 |
+
+顶层入库项以 `git ls-files | sed 's,/.*,,' | sort -u` 为准；`package.json.files` 共 13 项，`scripts/` 六个脚本中只有 `derive-assets.mjs` 进 npm 包。
