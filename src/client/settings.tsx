@@ -3,6 +3,8 @@ import { useRef, useState, useSyncExternalStore, type CSSProperties } from 'reac
 import { GrammarPanel } from './grammar-panel.tsx'
 import { WallpaperPanel } from './wallpaper-panel.tsx'
 import { SchemePanel } from './scheme-panel.tsx'
+import { SoundPanel } from './sound-panel.tsx'
+import { SEAT_SOUND_MASTER_DEFAULT } from '../shared/api.ts'
 import { seatColorOf } from './seat-model.ts'
 import type { AmphoreusClientModel } from './state.ts'
 import css from './settings.module.css'
@@ -10,16 +12,17 @@ import css from './settings.module.css'
 export interface AmphoreusSettingsInjected {
   readonly model: AmphoreusClientModel
   // @anchor settings-injected
+  readonly previewSound: (url: string, volume: number) => void
 }
 
 export type AmphoreusSettingsProps = PropsRuntime<'settings.section'> & PropsLocale<'amphoreus'> & AmphoreusSettingsInjected
 
-type SettingsAction = 'reparse' | 'magazine-light' | 'magazine-full' | 'magazine-reset' | 'derive' | 'derive-force' | 'grammar' | 'wallpaper' | 'scheme-export' | 'scheme-import'
+type SettingsAction = 'reparse' | 'magazine-light' | 'magazine-full' | 'magazine-reset' | 'derive' | 'derive-force' | 'grammar' | 'wallpaper' | 'scheme-export' | 'scheme-import' | 'sound'
 // @anchor settings-actions
 // Seat preset panel (import kept beside its action so the pinned header above stays untouched; ESM hoists it).
 import { SeatPresetPanel } from './seat-preset-panel.tsx'
 
-export function AmphoreusSettings({ model, t }: AmphoreusSettingsProps) {
+export function AmphoreusSettings({ model, previewSound, t }: AmphoreusSettingsProps) {
   const snapshot = useSyncExternalStore(model.subscribe, model.getSnapshot)
   const [actionError, setActionError] = useState<string>()
   const [activeAction, setActiveAction] = useState<SettingsAction>()
@@ -217,6 +220,18 @@ export function AmphoreusSettings({ model, t }: AmphoreusSettingsProps) {
             busy={busy}
             t={t}
             onSave={(skillName, preset) => model.setSeatPreset(skillName, preset)}
+          />
+
+          <SoundPanel
+            seatSounds={state.seatSounds ?? []}
+            master={state.prefs.seatSounds?.master ?? SEAT_SOUND_MASTER_DEFAULT}
+            seatNames={new Map(state.seats.map(seat => [seat.skillName, seat.userDisplayName ?? suite?.cards.find(card => card.name === seat.skillName)?.displayName ?? seat.displayName]))}
+            busy={busy}
+            t={t}
+            onUpload={(heroId, slot, file) => { void run('sound', () => model.uploadSeatSound(heroId, slot, file)) }}
+            onRemove={(heroId, slot) => { void run('sound', () => model.removeSeatSound(heroId, slot)) }}
+            onPrefs={patch => { void run('sound', () => model.setSeatSoundPrefs(patch)) }}
+            onPreview={previewSound}
           />
 
           <section className={css.panel} aria-labelledby="amphoreus-workbench">

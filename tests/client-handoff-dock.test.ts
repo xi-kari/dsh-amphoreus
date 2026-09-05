@@ -126,7 +126,8 @@ test('dock registration follows the Workbench view and reuses the singleton hand
   assert.match(registration, /order: 30/u)
   assert.match(registration, /inject: \(\) => \(\{ model, seatDeps \}\)/u)
   assert.equal(client.match(/const seatDeps: HandoffDeps = \{/gu)?.length, 1)
-  assert.equal(client.match(/name: 'conversation\.input\.dock'/gu)?.length, 1)
+  // Two dock entries share the single inject callback: the handoff dock (30) and the seat-sound sentinel (31).
+  assert.equal(client.match(/name: 'conversation\.input\.dock'/gu)?.length, 2)
 })
 
 test('new component styles use alias colors without hardcoded color or dark-theme branches', () => {

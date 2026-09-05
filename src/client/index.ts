@@ -49,6 +49,8 @@ import type { SeatView } from './seat-model.ts'
 import { createSeatStartGuard } from './seat-start-guard.ts'
 import { orderedHotkeySeats } from './seat-switch.ts'
 import { createSeatPresetApplier, parseDefaultModelUser } from './seat-preset-apply.ts'
+import { createSeatSoundPlayer, installSeatSounds } from './seat-sounds.ts'
+import { SendSound } from './send-sound.tsx'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -393,6 +395,7 @@ export function apply(ctx: ClientContext): void {
     inject: () => ({
       model,
       // @anchor settings-inject
+      previewSound: (url: string, volume: number) => soundPlayer.play(url, volume),
     }),
   }, AmphoreusSettings))
   ctx.slots.inject('sidebar.workspaces', () => ctx.slots.register({
@@ -525,12 +528,23 @@ export function apply(ctx: ClientContext): void {
     }, WorkbenchView))
   }
   // @anchor client-slots
-  ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({
+  // Seat sounds: user uploads only; greeting on seat enter (deferred until the first gesture), send click via the input dock sentinel below.
+  // (Lives here, not at client-services: tests/client-portal.test.ts vm-evaluates the openSeat…bootWorkbench slice.)
+  const soundPlayer = createSeatSoundPlayer()
+  ctx.effect(() => () => soundPlayer.dispose(), 'amphoreus: seat sound player')
+  ctx.effect(() => installSeatSounds({ seat: seatWatch, model, player: soundPlayer }), 'amphoreus: seat sounds')
+  // conversation.input.dock is declared once; every dock entry registers inside this single callback (assembly test pins the call list).
+  ctx.slots.inject('conversation.input.dock', () => [ctx.slots.register({
     name: 'conversation.input.dock',
     id: 'amphoreus-handoff',
     order: 30,
     locale: NS,
     inject: () => ({ model, seatDeps }),
-  }, HandoffDock))
+  }, HandoffDock), ctx.slots.register({
+    name: 'conversation.input.dock',
+    id: 'amphoreus-send-sound',
+    order: 31,
+    inject: () => ({ player: soundPlayer, model, seat: seatWatch }),
+  }, SendSound)])
   // @anchor client-tail
 }

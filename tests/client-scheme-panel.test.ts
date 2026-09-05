@@ -47,7 +47,8 @@ test('scheme panel is a self-contained section with a hidden JSON file input and
 })
 
 test('settings mounts the scheme panel after the anchor and extends the action union at its tail', () => {
-  assert.match(settings, /type SettingsAction = 'reparse'[\s\S]*'derive-force'[^\n]*\| 'scheme-export' \| 'scheme-import'\n/u)
+  // The union line is shared by several panels; pin membership + relative order, not the line tail.
+  assert.match(settings, /type SettingsAction = 'reparse'[\s\S]*'derive-force'[^\n]*\| 'scheme-export' \| 'scheme-import'(?: \|[^\n]*)?\n/u)
   const anchor = settings.indexOf('{/* @anchor settings-panels */}')
   const workbench = settings.indexOf('aria-labelledby="amphoreus-workbench"')
   const mount = settings.indexOf('<SchemePanel')
