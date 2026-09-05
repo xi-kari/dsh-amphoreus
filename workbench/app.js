@@ -2190,6 +2190,7 @@ function renderPortal() {
         <strong class="portal-name">${escapeHtml(name)}</strong>
         <span class="portal-duty">${escapeHtml((seat.duties ?? []).slice(0, 3).join(' · ') || (seat.deployed ? '' : '角色未部署'))}</span>
         <span class="portal-count">${count > 0 ? `${count} 段会话` : '尚无会话'}</span>
+        ${seat.grammar ? `<span class="portal-swatch" title="${escapeHtml(seat.grammar.signature)}" style="--swatch-radius:${Number(seat.grammar.radiusPx) || 0}px;--swatch-rim:${escapeHtml(seat.grammar.rimStyle === 'none' ? 'solid' : seat.grammar.rimStyle)};--swatch-rim-w:${seat.grammar.rimStyle === 'none' ? 0 : 1}px;--swatch-tint:${escapeHtml(document.documentElement.dataset.theme === 'dark' ? seat.grammar.tintDark : seat.grammar.tintLight)}"><i aria-hidden="true"></i>${escapeHtml(seat.grammar.styleName)}</span>` : ''}
       </span>
     </button>`
   }).join('')

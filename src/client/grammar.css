@@ -138,6 +138,17 @@
   mask-image: linear-gradient(90deg, black 78%, transparent 100%);
   -webkit-mask-image: linear-gradient(90deg, black 78%, transparent 100%);
 }
+/* 白厄 · 白石拱廊: the only non-rectangular sidebar — the glass sheet rises into a marble arch and
+   the brand row steps down under it. Rectangular again when the rail collapses. */
+[data-amph-grammar][data-amph-seat='phainon'] [data-amph-frame]:not([data-sidebar-collapsed]) [data-amph-sidebar] {
+  border-top-color: transparent;
+  padding-top: 26px;
+}
+[data-amph-grammar][data-amph-seat='phainon'] [data-amph-frame]:not([data-sidebar-collapsed]) [data-amph-sidebar]::before,
+[data-amph-grammar][data-amph-seat='phainon'] [data-amph-frame]:not([data-sidebar-collapsed]) [data-amph-sidebar]::after {
+  border-radius: 999px 999px 0 0 / 140px 140px 0 0;
+  box-shadow: inset 0 0 0 1px var(--amph-glass-rim);
+}
 [data-amph-grammar] [data-amph-frame][data-sidebar-collapsed] [data-amph-sidebar] {
   margin: 12px -12px 12px 12px;
   padding: 0;
@@ -440,6 +451,32 @@
 }
 @media (prefers-reduced-motion: reduce) {
   [data-amph-grammar] [data-amph-inputbar]::after { transition: none; }
+}
+
+/* ---------- Folio: turn number (NN) shows on hover at each turn's top-right, magazine style.
+   `content: … / ""` keeps it silent for screen readers; hidden under reduced motion? No — it is static. ---------- */
+[data-amph-grammar] [data-conversation-scroll] [data-chat-turn] {
+  position: relative;
+  counter-increment: amph-turn;
+}
+[data-amph-grammar] [data-conversation-scroll] {
+  counter-reset: amph-turn;
+}
+[data-amph-grammar] [data-conversation-scroll] [data-chat-turn]::before {
+  content: counter(amph-turn, decimal-leading-zero) / "";
+  position: absolute;
+  top: 2px;
+  right: -6px;
+  padding: 0 6px;
+  color: color-mix(in srgb, var(--amph-accent) 70%, var(--dsw-alias-label-caption));
+  font: var(--amph-font-weight, 500) 10px/16px var(--amph-font-display);
+  letter-spacing: .22em;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 160ms var(--amph-ease);
+}
+[data-amph-grammar] [data-conversation-scroll] [data-chat-turn]:hover::before {
+  opacity: .85;
 }
 
 /* ---------- Page-edge fades: content melts into the viewport edges ---------- */

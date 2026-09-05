@@ -382,6 +382,9 @@ button.primary:hover { border-color: var(--dsw-alias-button-primary-hover, #000)
 .portal-name { font-family: var(--amphoreus-font-display); font-weight: 900; font-size: 19px; letter-spacing: .08em; text-shadow: 0 1px 6px rgba(20,14,50,.6); }
 .portal-duty { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: rgba(253,251,255,.82); font-size: 11px; }
 .portal-count { font-size: 10px; color: rgba(253,251,255,.66); }
+/* Material swatch: a tiny pane rendered with the seat's own radius / rim / tint, plus its style name. */
+.portal-swatch { display: inline-flex; align-items: center; gap: 6px; margin-top: 4px; color: rgba(253,251,255,.8); font-size: 10px; letter-spacing: .08em; font-family: var(--amphoreus-font-display); }
+.portal-swatch i { display: inline-block; width: 22px; height: 14px; flex: none; border-radius: var(--swatch-radius, 4px); border: var(--swatch-rim-w, 1px) var(--swatch-rim, solid) rgba(253,251,255,.7); background: var(--swatch-tint, rgba(255,255,255,.4)); box-shadow: inset 0 1px 0 rgba(255,255,255,.5); }
 .portal-all .portal-count { color: var(--dsw-alias-label-tertiary, #8b86a6); }
 .portal-card .portal-count { color: rgba(253,251,255,.66); }
 @media (max-width: 620px) { .portal { padding: 26px 14px 48px; } .portal-grid { grid-template-columns: repeat(auto-fill, minmax(136px, 1fr)); gap: 12px; } }

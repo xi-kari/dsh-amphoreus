@@ -3,6 +3,7 @@ import type { BindingRecord } from '../host/store.ts'
 import type { AmphoreusState } from '../shared/api.ts'
 import { fallbackHue, heroVisualOf } from '../shared/heroes.ts'
 import { motifDataUri } from '../shared/motifs.ts'
+import { seatGrammarOf } from '../shared/grammar.ts'
 
 export interface WorkspaceSeat {
   heroId: string | null
@@ -20,6 +21,15 @@ export interface WorkspaceSeat {
   darkBase: string | null
   volume: number | null
   motif: { name: string; light: string; dark: string } | null
+  /** Seat visual grammar swatch for the portal material card (null for seats without a visual record). */
+  grammar: {
+    styleName: string
+    radiusPx: number
+    rimStyle: 'solid' | 'dashed' | 'double' | 'none'
+    tintLight: string
+    tintDark: string
+    signature: string
+  } | null
   coverUrl: string | null
   coverWideUrl: string | null
   chronicleUrl: string | null
@@ -103,6 +113,10 @@ function composeWorkspaces(
           light: motifDataUri(visual.motif, { color: visual.palette.accent, opacity: 0.12 }),
           dark: motifDataUri(visual.motif, { color: visual.palette.accent2, opacity: 0.16 }),
         },
+        grammar: visual === undefined ? null : (() => {
+          const g = seatGrammarOf(visual.heroId)
+          return { styleName: g.styleName, radiusPx: g.radiusPx, rimStyle: g.glass.rimStyle, tintLight: g.glass.tintLight, tintDark: g.glass.tintDark, signature: g.signature }
+        })(),
         coverUrl: visual === undefined ? null : derivedUrl(derived, visual.heroId, 'cover-34.webp'),
         coverWideUrl: visual === undefined ? null : derivedUrl(derived, visual.heroId, 'cover-169.webp'),
         chronicleUrl: visual === undefined ? null : derivedUrl(derived, visual.heroId, 'chronicle.webp')
