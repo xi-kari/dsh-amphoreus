@@ -6,20 +6,13 @@
  * variable, attribute and observer, leaving the stock UI untouched.
  */
 import { GRAMMAR_DEFAULTS, type GrammarPrefs } from '../shared/api.ts'
-import { GRAMMAR_VARIABLE_NAMES, grammarVariables, seatGrammarOf, type SeatGrammar } from '../shared/grammar.ts'
-import { heroVisualById } from '../shared/heroes.ts'
-import { motifDataUri } from '../shared/motifs.ts'
+import { seatGrammarOf } from '../shared/grammar.ts'
 import { startGrammarSeamStamper } from './grammar-seams.ts'
+import { GRAMMAR_WRITTEN_VARIABLES, grammarVariablesFor, type GrammarSnapshot } from './grammar-vars.ts'
 import './grammar.css'
+import './grammar-ambient.css'
 
 export const GRAMMAR_ATTRIBUTE = 'data-amph-grammar'
-
-export interface GrammarSnapshot {
-  readonly heroId: string | null
-  readonly dark: boolean
-  readonly prefs: GrammarPrefs
-  readonly grammar: SeatGrammar
-}
 
 export interface GrammarLayerInputs {
   /** Current seat mirror (body data attribute). */
@@ -30,35 +23,8 @@ export interface GrammarLayerInputs {
   readonly subscribePrefs: (listener: () => void) => () => void
 }
 
-/** Pure: the variable map the layer writes for a snapshot (exported for tests / iframe bridge). */
-export function grammarVariablesFor(snapshot: GrammarSnapshot): Record<string, string> {
-  const visual = snapshot.heroId === null ? undefined : heroVisualById(snapshot.heroId)
-  const accent = visual?.palette.accent ?? '#8a681c'
-  const accent2 = visual?.palette.accent2 ?? '#37305e'
-  const vars = grammarVariables(snapshot.grammar, snapshot.dark, accent, accent2)
-  const prefs = snapshot.prefs
-  const blur = Number(snapshot.grammar.glass.blurPx) * prefs.blurScale
-  const frost = Math.min(1, Math.max(0.42, snapshot.grammar.glass.frost * prefs.frostScale))
-  vars['--amph-glass-blur'] = `${Math.round(blur * 10) / 10}px`
-  vars['--amph-glass-frost'] = String(Math.round(frost * 100) / 100)
-  const motifOpacity = Math.round(snapshot.grammar.motif.opacity * prefs.motifScale * 1000) / 1000
-  vars['--amph-motif-opacity'] = String(motifOpacity)
-  vars['--amph-scrim-boost'] = String(prefs.scrimBoost)
-  const motif = visual?.motif ?? 'ripples'
-  // The SVG carries its own opacity: backgrounds cannot be faded independently of the pane fill.
-  vars['--amph-motif-url'] = motifOpacity <= 0 ? 'none' : motifDataUri(motif, {
-    color: snapshot.dark ? accent2 : accent,
-    opacity: Math.min(1, motifOpacity),
-    size: snapshot.grammar.motif.sizePx,
-  })
-  return vars
-}
-
-export const GRAMMAR_WRITTEN_VARIABLES: readonly string[] = [
-  ...GRAMMAR_VARIABLE_NAMES,
-  '--amph-scrim-boost',
-  '--amph-motif-url',
-]
+export type { GrammarSnapshot } from './grammar-vars.ts'
+export { grammarVariablesFor, GRAMMAR_WRITTEN_VARIABLES } from './grammar-vars.ts'
 
 export interface GrammarLayer {
   getSnapshot(): GrammarSnapshot
@@ -92,6 +58,7 @@ export function createGrammarLayer(inputs: GrammarLayerInputs): GrammarLayer {
     html.removeAttribute('data-amph-mascot')
     html.removeAttribute('data-amph-display')
     html.removeAttribute('data-amph-motif-stage')
+    html.removeAttribute('data-amph-feather')
     disposeSeams?.()
     disposeSeams = undefined
   }
@@ -113,6 +80,8 @@ export function createGrammarLayer(inputs: GrammarLayerInputs): GrammarLayer {
     html.setAttribute('data-amph-display', snapshot.grammar.typography.display)
     if (snapshot.grammar.motif.placement === 'stage' || snapshot.grammar.motif.placement === 'both') html.setAttribute('data-amph-motif-stage', '')
     else html.removeAttribute('data-amph-motif-stage')
+    if (snapshot.grammar.feather) html.setAttribute('data-amph-feather', '')
+    else html.removeAttribute('data-amph-feather')
     disposeSeams ??= startGrammarSeamStamper()
     publish()
   }

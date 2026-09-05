@@ -52,12 +52,18 @@
 
 /* ---------- Ground: frame and columns go transparent; the wallpaper layer is the page ground ---------- */
 [data-amph-grammar] [data-amph-frame],
-[data-amph-grammar] [data-phase],
 [data-amph-grammar] [data-amph-details] {
   background: transparent;
 }
 
-/* ---------- Corner language driven by the seat ---------- */
+/* ---------- Corner language driven by the seat (clip-path seats replace rounding on their sheets) ---------- */
+[data-amph-grammar] [data-amph-sidebar],
+[data-amph-grammar] [data-phase='active'] [data-amph-header],
+[data-amph-grammar] [data-amph-inputbar]:has([data-amph-stats]),
+[data-amph-grammar] [data-amph-composer] {
+  clip-path: var(--amph-clip, none);
+}
+
 [data-amph-grammar] [role='menu'],
 [data-amph-grammar] [role='dialog'],
 [data-amph-grammar] [role='alert'],
@@ -88,7 +94,7 @@
   z-index: 9;
   margin: 12px;
   padding: 10px 12px 14px;
-  border: 1px solid var(--amph-glass-rim);
+  border: var(--amph-rim-width, 1px) var(--amph-rim-style, solid) var(--amph-glass-rim);
   border-right-color: color-mix(in srgb, var(--amph-accent) 42%, transparent);
   border-radius: calc(var(--amph-radius) + 4px);
   box-shadow: var(--amph-edge);
@@ -118,6 +124,14 @@
   background: linear-gradient(180deg, color-mix(in srgb, var(--amph-glass-tint) 45%, transparent) 0%, transparent 40%, color-mix(in srgb, var(--amph-glass-tint) 60%, transparent) 100%);
   pointer-events: none;
 }
+[data-amph-grammar][data-amph-feather] [data-amph-sidebar] {
+  border-color: transparent;
+  box-shadow: none;
+}
+[data-amph-grammar][data-amph-feather] [data-amph-sidebar]::before {
+  mask-image: linear-gradient(90deg, black 78%, transparent 100%);
+  -webkit-mask-image: linear-gradient(90deg, black 78%, transparent 100%);
+}
 [data-amph-grammar] [data-amph-frame][data-sidebar-collapsed] [data-amph-sidebar] {
   margin: 12px -12px 12px 12px;
   padding: 0;
@@ -142,7 +156,7 @@
   z-index: 8;
   margin: 12px 16px 0;
   padding: 10px 16px 8px;
-  border: 1px solid var(--amph-glass-rim);
+  border: var(--amph-rim-width, 1px) var(--amph-rim-style, solid) var(--amph-glass-rim);
   border-radius: var(--amph-radius);
   background: var(--amph-glass-card);
   box-shadow: var(--amph-edge);
@@ -150,6 +164,26 @@
 }
 [data-amph-grammar] [data-phase='active'] [data-amph-header]::after {
   display: none;
+}
+/* Masthead badge: `CHRYSOS · No.NN` in the header's top-right corner, 10px, aria-silent
+   (speak: never; it is decoration — the real seat identity is the nameplate slot). */
+[data-amph-grammar] [data-phase='active'] [data-amph-header]::before {
+  content: var(--amph-masthead, "");
+  position: absolute;
+  top: -1px;
+  right: 18px;
+  transform: translateY(-50%);
+  padding: 1px 8px;
+  border: 1px solid var(--amph-glass-rim);
+  border-radius: var(--amph-radius-sm);
+  background: var(--amph-glass-raised);
+  color: color-mix(in srgb, var(--amph-accent) 75%, var(--dsw-alias-label-primary));
+  font: var(--amph-font-weight, 500) 10px/16px var(--amph-font-display);
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  pointer-events: none;
+  speak: never;
+  z-index: 1;
 }
 [data-amph-grammar] [data-amph-frame][data-sidebar-collapsed] [data-phase='active'] [data-amph-header] {
   margin-left: 28px;
@@ -171,7 +205,7 @@
   position: relative;
   z-index: 8;
   background: var(--amph-glass-card);
-  border: 1px solid var(--amph-glass-rim);
+  border: var(--amph-rim-width, 1px) var(--amph-rim-style, solid) var(--amph-glass-rim);
   border-radius: var(--amph-radius);
   box-shadow: var(--amph-edge);
   backdrop-filter: var(--amph-glass-filter);
@@ -184,7 +218,7 @@
   max-width: var(--dsh-composer-card-max-width) !important;
   margin: 0 auto 12px;
   padding: 0;
-  border: 1px solid var(--amph-glass-rim);
+  border: var(--amph-rim-width, 1px) var(--amph-rim-style, solid) var(--amph-glass-rim);
   border-radius: var(--amph-radius);
   background: var(--amph-glass-card);
   box-shadow: var(--amph-edge);
@@ -223,10 +257,10 @@
 
 /* ---------- Bubbles, menus, trajectory, details ---------- */
 [data-amph-grammar] [data-amph-bubble] {
-  border: 1px solid color-mix(in srgb, var(--amph-glass-rim) 70%, transparent);
+  border: var(--amph-rim-width, 1px) var(--amph-rim-style, solid) color-mix(in srgb, var(--amph-glass-rim) 70%, transparent);
   border-radius: var(--amph-radius);
-  background: color-mix(in srgb, color-mix(in srgb, var(--dsw-specific-bubble) 72%, var(--amph-glass-tint)) calc(var(--amph-glass-frost, .78) * 100%), transparent);
-  backdrop-filter: var(--amph-glass-filter);
+  /* No per-bubble backdrop-filter (cost grows with transcript length); +.10 fill keeps ink ≥4.5:1. */
+  background: color-mix(in srgb, color-mix(in srgb, var(--dsw-specific-bubble) 72%, var(--amph-glass-tint)) calc(min(1, var(--amph-glass-frost, .78) + .10) * 100%), transparent);
 }
 [data-amph-grammar] [role='menu'] {
   background: var(--amph-glass-raised);
@@ -281,8 +315,25 @@
 [data-amph-grammar] [data-amph-settings] h1,
 [data-amph-grammar] [data-amph-settings] h2 {
   font-family: var(--amph-font-display);
+  font-weight: var(--amph-font-weight, 500);
+  font-style: var(--amph-font-style, normal);
   letter-spacing: var(--amph-letter-spacing);
   text-transform: var(--amph-title-transform);
+}
+
+/* ---------- Conversation column veil: the transcript always gets one more layer than the margins ---------- */
+[data-amph-grammar] [data-phase='active'] [data-conversation-scroll]::before {
+  content: '';
+  position: sticky;
+  top: 0;
+  display: block;
+  height: 0;
+}
+[data-amph-grammar] [data-phase] {
+  background: linear-gradient(90deg, transparent 0, color-mix(in srgb, var(--amph-glass-tint) 26%, transparent) 18%, color-mix(in srgb, var(--amph-glass-tint) 26%, transparent) 82%, transparent 100%);
+}
+[data-amph-grammar='dark'] [data-phase] {
+  background: linear-gradient(90deg, transparent 0, color-mix(in srgb, var(--amph-glass-tint) 40%, transparent) 18%, color-mix(in srgb, var(--amph-glass-tint) 40%, transparent) 82%, transparent 100%);
 }
 
 /* ---------- Motif on the conversation stage (only when the seat asks for it) ---------- */
@@ -349,4 +400,4 @@
   }
 }
 
-/* Seat ambient recipes are appended below by the design synthesis (one @keyframes + one rule set each). */
+/* Seat ambient recipes live in grammar-ambient.css (one @keyframes + one rule set each). */

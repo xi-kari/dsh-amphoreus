@@ -1,4 +1,4 @@
-import { homeWallpaperIndex, seatWallpaperUrl, type HeroVisual, type VolumeMode } from '../shared/heroes.ts'
+import { HOME_WALLPAPER_PARKED, homeWallpaperIndex, seatWallpaperUrl, type HeroVisual, type VolumeMode } from '../shared/heroes.ts'
 
 export interface SeatWallpaperAssets {
   readonly derived: readonly string[]
@@ -47,7 +47,7 @@ export function seatWallpaperCandidates(
   hero: HeroVisual,
   assets: SeatWallpaperAssets,
 ): readonly string[] {
-  const homes = homeWallpaperKeys(assets.derived, hero.heroId)
+  const homes = HOME_WALLPAPER_PARKED.includes(hero.heroId) ? [] : homeWallpaperKeys(assets.derived, hero.heroId)
   const home = homes.length === 0
     ? undefined
     : derivedUrlOf(homes[homeWallpaperIndex(assets.homeSeed, homes.length)]!, assets.derivedVersion)

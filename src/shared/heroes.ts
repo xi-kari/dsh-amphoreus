@@ -155,6 +155,13 @@ export const HOME_WALLPAPER_ROOT = '13黄金裔壁纸'
 /** Folder (under HOME_WALLPAPER_ROOT) whose images serve the all-seat / portal spaces. */
 export const GLOBAL_HOME_DIR = '黄金裔全家福与合影'
 
+/**
+ * Seats whose home-wallpaper folder is parked: files stay on disk and are still derived,
+ * but the shell falls back to the magazine cover until the user is happy with the batch
+ * (user decision 2026-09-05: 赛飞儿 / 万敌 / 白厄).
+ */
+export const HOME_WALLPAPER_PARKED: readonly HeroId[] = ['cipher', 'mydei', 'phainon']
+
 /** Image extensions scanned inside home wallpaper folders (lower-case, with dot). */
 export const HOME_WALLPAPER_EXTENSIONS: readonly string[] = ['.png', '.jpg', '.jpeg', '.webp']
 
