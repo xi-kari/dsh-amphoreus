@@ -9,7 +9,10 @@
 
 ## 0. 一句话现状
 
-### 0.1 发布态现状（0.2.0，2026-09-05）
+当前发布版本为 **dsh-amphoreus 0.2.1**（2026-09-05）；npm `latest`、`alpha` 均为 `0.2.1`，发布提交与 `v0.2.1` 均指 `144ada7c737c19d48d3771521fb84c2232d76eed`。GitHub Release 已发布；双系统 CI `33955526162` 与 release workflow `33955698415` 均 success。396 项测试／395 通过／0 失败／1 条件跳过，397 项产物检查，registry tarball 与本地验收包哈希完全一致。本机仍使用 link 源码，最终构建时间 `2026-09-05 16:33:28`。下列 0.2.0 发布记录保留为历史，当前功能说明见 README 和 `docs/RELEASE-0.2.1.md`。
+
+
+### 0.1 首发历史（0.2.0，2026-09-05）
 
 `dsh-amphoreus@0.2.0` 的 A–F 建设与发布验收已经完成；npm 官方 registry 的 `alpha` 与首发自动生成的 `latest` 均指向 `0.2.0`，GitHub 公共仓库、`v0.2.0` 与 Release 均已上线；发布／tag SHA 固定为 `fc754a6ca02f96d4bbd47fe655196c04d611431e`，后续截图与发布流程维护提交为 `15af35baa7fad82a494c45d153b92802fcec7ab1`。本机 profile `web` 仍以 `link:D:/DeepSeek Harness/deepseek插件开发/dsh-amphoreus` 运行，用户可显式安装 `dsh-amphoreus@alpha` 或 `dsh-amphoreus@0.2.0`。
 
@@ -29,7 +32,7 @@
 - 修复后，席位新会话优先加入当前普通 DSH Workspace；历史同 cwd 的空席位会话在打开前幂等注册原目录并 adoption。实机从 Workspace `1` 新建赛飞儿席，主区保持 `1`、输入框可用，不再跳主页；内部席位 Workspace 不在“我的目录”重复展示。
 - 技能卡只在 awaited `agent/pre-step` 提交。修复前统一 13 席真调用为 `12/13` 通用首答、`12/13` 双可见回复、`0/13` typed 与 skill 同首 step；修复后为 `13/13` 同首 step、`13/13` skill 先于首个可见回复、generic=`0/13`、双回复=`0/13`、唯一角色回复=`13/13`。
 - 新“全席征询”从可信运行态取得 13 个唯一已部署 skill，以最多 3 席并行建立独立会话，并用官方 `remote.session.follow` 读取非当前会话的完整回复与真实 `turn/end` 状态。最终实机同一句话得到 `13/13 已回复 · 本轮结束`；13 席同文、角色身份、唯一 skill、无通用首答与无双答均为 `13/13`。严格单行只有 `4/13`，这是外部 persona／输出格式服从问题，不是调度或重复回复。
-- 会议汇总是页面内存态；离开页面会取消未派出的席位，已被 DSH 接受的独立 turn 继续按宿主语义收口。已发布 npm `0.2.0` 保持原 tarball；这些修复随后续包版本发布。
+- 会议汇总是页面内存态；离开页面会取消未派出的席位，已被 DSH 接受的独立 turn 继续按宿主语义收口。已发布 npm `0.2.0` 保持原 tarball；这些修复已随 `0.2.1` 发布。
 
 [已失效 2026-09-05] 包 `dsh-amphoreus` 已有可装可启的双半侧骨架：已 `link:` 装进 profile `web`，`dsh web` 启动后宿主行挂载、浏览器 bundle 进入启动图并被 `/plugins` 路由 200 下发、stderr 为空 **[实测]**。业务模块（技能桥接、席位、注入、观察、Web 通道、首帧、主题壁纸、工作台、设置区）**一个都还没写**，只有类型契约 `src/host/suite/types.ts`。服务当前仍在运行（PID 见 `.runtime/deepseek-harness.pid`），改完 host 代码需 Stop/Start，改完 client 需重建 `lib/client.js` 并刷新页面（无 `pnpm run dev:web` 时 HMR 不会自动生效）。
 

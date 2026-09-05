@@ -1360,3 +1360,6 @@
 - 全量验收：tests396/pass395/fail0/skipped1，duration_ms3140.2614；build derive/client/host=29.34/238.61/206.50 kB；verify-dist: OK397 checks，exit0。唯一skip为AMPHOREUS_REAL_SUITE未设置的条件合同。
 - 清理事务路径：D:/DeepSeek Harness/.codex-transactions/2026-09-05-chat-cleanup。BASELINE scoped171/archived136/visible35，MODIFIED scoped171/archived171/visible0，副本ROLLBACK恢复scoped171/archived136/visible35；archive和canvas-hidden之外字段不变。回滚脚本在显式live storage目标时按Stop/Start运行，默认需给出目标路径。
 - 发布版本定为0.2.1；同步GitHub main、v0.2.1与Release，npm默认latest与既有alpha均指向本补丁，具体结果在发布后补记。
+- 0.2.1 发布完成：commit/tag=`144ada7c737c19d48d3771521fb84c2232d76eed`；GitHub main push、v0.2.1 与 Release 全部成功。CI run `33955526162` 的 Ubuntu／Windows 全步骤成功；release run `33955698415` 幂等检查成功，确认本机已发布后跳过重复 publish。
+- npm：非TTY初次publish遇EOTP、未发布；TTY重试经用户官方安全密钥验证，CLI字面`+ dsh-amphoreus@0.2.1`。npm dist-tag latest单独验证后字面`+latest: dsh-amphoreus@0.2.1`；registry查询latest=alpha=0.2.1、gitHead=144ada7c…、unpackedSize=1700941。74文件、426064bytes；远端tarball与本地验收包SHA512完全一致，integrity=`sha512-G8KotAJcvQHi+Sv2U2PbjvvIDeRzrewviwRYbD8tdC2ZbFPpkiNhtnk5pxwpee9zjLnhAHWU35hTxuARfrqpqA==`。原v0.2.0/tag/tarball保留。
+- 最终功能测试：父会话归档后子分支仍显示并能打开；6条展开全部并逐条归档；未绑定内部草稿与普通目录blank可打开/归档。清理基线之后新建的9个blank是新操作，保留未纳入旧171条清理集合。原生启动可能准备新blank且可管理，未虚报为永久零会话。
