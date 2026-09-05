@@ -59,6 +59,11 @@ body[data-ds-dark-theme] #amphoreus-wallpaper { background-color: #1a1631; }
   transition: opacity 240ms ease;
 }
 #amphoreus-wallpaper > .amphoreus-seat-layer[data-active] { opacity: 1; z-index: 2; }
+body[style*="--amph-wp-x"] #amphoreus-wallpaper > .amphoreus-seat-layer {
+  background-size: var(--amph-wp-fit, cover);
+  background-position: var(--amph-wp-x, 50%) var(--amph-wp-y, 40%);
+  transform: scale(var(--amph-wp-scale, 1));
+}
 #amphoreus-wallpaper > .amphoreus-seat-layer[data-incoming] { z-index: 3; }
 body[data-amphoreus-seat] #amphoreus-wallpaper { --amphoreus-wallpaper-url: none; }
 ${SEAT_BASE_STYLES}

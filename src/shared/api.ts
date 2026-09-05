@@ -160,6 +160,35 @@ export interface AmphoreusBoot {
   }
 }
 
+/** How a user-supplied seat wallpaper is placed and played (persisted in prefs). */
+export interface CustomWallpaperPlacement {
+  readonly fit: 'cover' | 'contain' | 'fill'
+  /** CSS background-position / object-position percentages. */
+  readonly x: number
+  readonly y: number
+  /** Extra zoom multiplier (1 = none). */
+  readonly scale: number
+  /** Video only. */
+  readonly playbackRate: number
+  readonly muted: boolean
+  readonly loop: boolean
+  readonly paused: boolean
+}
+
+export const CUSTOM_WALLPAPER_PLACEMENT_DEFAULTS: CustomWallpaperPlacement = Object.freeze({
+  fit: 'cover', x: 50, y: 40, scale: 1, playbackRate: 1, muted: true, loop: true, paused: false,
+})
+
+/** One stored custom wallpaper as the client sees it. */
+export interface CustomWallpaperInfo {
+  readonly heroId: string
+  readonly url: string
+  readonly kind: 'image' | 'video'
+  readonly mime: string
+  readonly bytes: number
+  readonly placement: CustomWallpaperPlacement
+}
+
 export interface AmphoreusAssetsStatus {
   readonly root: string
   readonly cacheDir: string
@@ -188,6 +217,8 @@ export interface AmphoreusState {
   readonly suiteEvents: readonly SuiteEventRecord[]
   readonly canvas: readonly { readonly sessionId: string; readonly value: CanvasRecord }[]
   readonly assets: AmphoreusAssetsStatus
+  /** User-uploaded per-seat wallpapers (override derived home wallpapers). */
+  readonly customWallpapers: readonly CustomWallpaperInfo[]
   readonly workbench: {
     readonly status: WorkbenchStatus
     readonly unprojectable: readonly UnprojectableRecord[]

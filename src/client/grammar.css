@@ -70,20 +70,22 @@
   clip-path: var(--amph-clip, none);
 }
 
-[data-amph-grammar] [role='menu'],
-[data-amph-grammar] [role='dialog'],
-[data-amph-grammar] [role='alert'],
-[data-amph-grammar] [class*='card'] {
+/* Third-party plugin roots (e.g. dsh-better-sidebar's [data-dsh-better-sidebar]) keep their own
+   geometry: the corner language only applies outside them. */
+[data-amph-grammar] [role='menu']:not([data-dsh-better-sidebar] *),
+[data-amph-grammar] [role='dialog']:not([data-dsh-better-sidebar] *),
+[data-amph-grammar] [role='alert']:not([data-dsh-better-sidebar] *),
+[data-amph-grammar] [class*='card']:not([data-dsh-better-sidebar] *) {
   border-radius: var(--amph-radius);
 }
-[data-amph-grammar] button[class*='button'],
-[data-amph-grammar] [role='menuitem'],
-[data-amph-grammar] [role='tooltip'],
-[data-amph-grammar] [class*='pill'],
-[data-amph-grammar] [class*='iconButton'] {
+[data-amph-grammar] button[class*='button']:not([data-dsh-better-sidebar] *),
+[data-amph-grammar] [role='menuitem']:not([data-dsh-better-sidebar] *),
+[data-amph-grammar] [role='tooltip']:not([data-dsh-better-sidebar] *),
+[data-amph-grammar] [class*='pill']:not([data-dsh-better-sidebar] *),
+[data-amph-grammar] [class*='iconButton']:not([data-dsh-better-sidebar] *) {
   border-radius: var(--amph-radius-sm);
 }
-[data-amph-grammar] [class*='block'] {
+[data-amph-grammar] [class*='block']:not([data-dsh-better-sidebar] *) {
   border-radius: var(--amph-radius);
   --dsl-code-block-border-radius: var(--amph-radius);
   --dsl-diff-radius: var(--amph-radius);

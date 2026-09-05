@@ -1,6 +1,7 @@
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { useRef, useState, useSyncExternalStore, type CSSProperties } from 'react'
 import { GrammarPanel } from './grammar-panel.tsx'
+import { WallpaperPanel } from './wallpaper-panel.tsx'
 import { seatColorOf } from './seat-model.ts'
 import type { AmphoreusClientModel } from './state.ts'
 import css from './settings.module.css'
@@ -11,7 +12,7 @@ export interface AmphoreusSettingsInjected {
 
 export type AmphoreusSettingsProps = PropsRuntime<'settings.section'> & PropsLocale<'amphoreus'> & AmphoreusSettingsInjected
 
-type SettingsAction = 'reparse' | 'magazine-light' | 'magazine-full' | 'magazine-reset' | 'derive' | 'derive-force' | 'grammar'
+type SettingsAction = 'reparse' | 'magazine-light' | 'magazine-full' | 'magazine-reset' | 'derive' | 'derive-force' | 'grammar' | 'wallpaper'
 
 export function AmphoreusSettings({ model, t }: AmphoreusSettingsProps) {
   const snapshot = useSyncExternalStore(model.subscribe, model.getSnapshot)
@@ -183,6 +184,16 @@ export function AmphoreusSettings({ model, t }: AmphoreusSettingsProps) {
             busy={busy}
             t={t}
             onPatch={patch => { void run('grammar', () => model.setGrammar(patch)) }}
+          />
+
+          <WallpaperPanel
+            customWallpapers={state.customWallpapers ?? []}
+            seatNames={new Map(state.seats.map(seat => [seat.skillName, seat.userDisplayName ?? suite?.cards.find(card => card.name === seat.skillName)?.displayName ?? seat.displayName]))}
+            busy={busy}
+            t={t}
+            onUpload={(heroId, file) => { void run('wallpaper', () => model.uploadCustomWallpaper(heroId, file)) }}
+            onRemove={heroId => { void run('wallpaper', () => model.removeCustomWallpaper(heroId)) }}
+            onPlacement={(heroId, patch) => { void run('wallpaper', () => model.setCustomWallpaperPlacement(heroId, patch)) }}
           />
 
           <section className={css.panel} aria-labelledby="amphoreus-workbench">

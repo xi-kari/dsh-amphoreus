@@ -190,6 +190,7 @@ export function apply(ctx: Context, config: AmphoreusConfig): void {
           resolver: bridge.resolver,
           nonce,
           assetsCacheDir: join(dataDir, 'assets-cache'),
+          dataDir,
           workbenchStatus: () => workbenchStatus,
           ...(workbench === undefined ? {} : { workbench }),
           ...(seatDirs === undefined ? {} : { seatDirs: seatDirs.dirs }),

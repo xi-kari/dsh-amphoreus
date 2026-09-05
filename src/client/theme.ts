@@ -2,11 +2,11 @@ import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type { ThemeTokenOverrides } from '@deepseek-ai/dsh-client-ui-theme/client'
-import type { AmphoreusState } from '../shared/api.ts'
+import { CUSTOM_WALLPAPER_PLACEMENT_DEFAULTS, type AmphoreusState, type CustomWallpaperInfo } from '../shared/api.ts'
 import { heroVisualById, heroVisualOf, type HeroVisual } from '../shared/heroes.ts'
 import { DSW_BRIDGED_TOKENS } from '../shared/tokens.ts'
 import { bindingIndex, currentSeatOf, GLOBAL_SEAT_HERO } from './seat-model.ts'
-import { seatThemeTokens, shouldApplySeatLayer } from './seat-theme.ts'
+import { seatCodeTokens, seatThemeTokens, shouldApplySeatLayer } from './seat-theme.ts'
 import { clampMask, cssUrl, seatMaskFactor, seatWallpaperCandidates } from './seat-wallpaper.ts'
 import type { AmphoreusClientModel } from './state.ts'
 
@@ -139,10 +139,15 @@ export function createSeatLayer(ctx: ClientContext, model: AmphoreusClientModel)
       document.body.dataset.amphoreusSeat = heroId
       return
     }
-    const nextDispose = ctx.theme.overrideTokens(
+    const disposeTokens = ctx.theme.overrideTokens(
       'dsh-amphoreus/seat',
       seatThemeTokens(visual, { light, dark }),
     )
+    const disposeCode = ctx.theme.overrideTokens('dsh-amphoreus/seat-code', seatCodeTokens(visual))
+    const nextDispose = (): void => {
+      disposeCode()
+      disposeTokens()
+    }
     const previousDispose = disposeLayer
     disposeLayer = nextDispose
     appliedKey = key
@@ -197,6 +202,60 @@ interface SeatVisualPlan {
   readonly candidates: readonly string[]
   readonly darkMask: number
   readonly lightMask: number
+  /** User-supplied wallpaper for this seat, if any (drives video + placement). */
+  readonly custom?: CustomWallpaperInfo
+}
+
+const PLACEMENT_VARS = ['--amph-wp-fit', '--amph-wp-x', '--amph-wp-y', '--amph-wp-scale'] as const
+
+function applyPlacement(custom: CustomWallpaperInfo | undefined): void {
+  const style = document.body.style
+  if (custom === undefined) {
+    for (const name of PLACEMENT_VARS) style.removeProperty(name)
+    return
+  }
+  const p = { ...CUSTOM_WALLPAPER_PLACEMENT_DEFAULTS, ...custom.placement }
+  style.setProperty('--amph-wp-fit', p.fit === 'fill' ? '100% 100%' : p.fit)
+  style.setProperty('--amph-wp-x', `${p.x}%`)
+  style.setProperty('--amph-wp-y', `${p.y}%`)
+  style.setProperty('--amph-wp-scale', String(p.scale))
+}
+
+/** Mount or update the seat video element inside the wallpaper layer; returns whether one is showing. */
+function syncVideo(layer: HTMLElement | null, custom: CustomWallpaperInfo | undefined): boolean {
+  if (layer === null) return false
+  let video = layer.querySelector<HTMLVideoElement>('video.amph-seat-video')
+  if (custom === undefined || custom.kind !== 'video') {
+    if (video !== null) {
+      video.pause()
+      video.removeAttribute('src')
+      video.load()
+      video.remove()
+    }
+    return false
+  }
+  if (video === null) {
+    video = document.createElement('video')
+    video.className = 'amph-seat-video'
+    video.setAttribute('aria-hidden', 'true')
+    video.playsInline = true
+    video.disablePictureInPicture = true
+    // Sits between the seat layers (z 2) and the ambient/scrim (z 3/4).
+    video.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;z-index:2;pointer-events:none;object-fit:var(--amph-wp-fit-video, cover);object-position:var(--amph-wp-x, 50%) var(--amph-wp-y, 40%);transform:scale(var(--amph-wp-scale, 1));transition:opacity 240ms ease;'
+    layer.appendChild(video)
+  }
+  const p = { ...CUSTOM_WALLPAPER_PLACEMENT_DEFAULTS, ...custom.placement }
+  if (video.getAttribute('src') !== custom.url) {
+    video.setAttribute('src', custom.url)
+    video.load()
+  }
+  video.muted = p.muted
+  video.loop = p.loop
+  video.playbackRate = p.playbackRate
+  video.style.setProperty('--amph-wp-fit-video', p.fit)
+  if (p.paused) video.pause()
+  else void video.play().catch(() => { /* autoplay policy: stays on first frame */ })
+  return true
 }
 
 interface TransitionResult {
@@ -246,6 +305,8 @@ export function registerSeatTheme(
 
   const resetWallpaperSurface = (plan: SeatVisualPlan): void => {
     const layer = wallpaperLayer()
+    syncVideo(layer, undefined)
+    applyPlacement(undefined)
     if (layer !== null) {
       for (const slot of [0, 1] as const) {
         const seat = layer.querySelector<HTMLElement>(`.amphoreus-seat-layer[data-slot="${slot}"]`)
@@ -284,12 +345,15 @@ export function registerSeatTheme(
   const planFor = (state: AmphoreusState, hero: HeroVisual | null, homeSeed: string | undefined): SeatVisualPlan => {
     const wallpaper = state.effectiveConfig.wallpaper
     const derivedVersion = state.assets.lastDerive?.at
+    const custom = hero === null ? undefined : (state.customWallpapers ?? []).find(item => item.heroId === hero.heroId)
     const candidates = hero !== null && wallpaper.enabled && wallpaper.perSeat
       ? seatWallpaperCandidates(hero, {
         derived: state.assets.derived,
         assetsConfigured: state.effectiveConfig.assetsConfigured,
         ...(derivedVersion === undefined ? {} : { derivedVersion }),
         ...(homeSeed === undefined ? {} : { homeSeed }),
+        // A custom IMAGE joins the decode chain first; a custom VIDEO is mounted separately.
+        ...(custom !== undefined && custom.kind === 'image' ? { customUrl: custom.url } : {}),
       })
       : []
     return {
@@ -300,11 +364,13 @@ export function registerSeatTheme(
         wallpaper.darkMask,
         wallpaper.lightMask,
         candidates,
+        custom === undefined ? null : [custom.url, custom.kind, custom.placement],
       ]),
       hero,
       candidates,
       darkMask: wallpaper.darkMask,
       lightMask: wallpaper.lightMask,
+      ...(custom === undefined ? {} : { custom }),
     }
   }
 
@@ -410,6 +476,9 @@ export function registerSeatTheme(
       delete transition.incoming.dataset.incoming
       activeSlot = transition.nextSlot
       layer.style.removeProperty('--amphoreus-wallpaper-url')
+      // Custom wallpaper: placement variables for images; a <video> for clips (poster stays the still below).
+      applyPlacement(plan.custom)
+      syncVideo(layer, plan.custom)
       const factor = seatMaskFactor(hero.palette.mode)
       document.body.style.setProperty('--amphoreus-dark-mask', String(clampMask(plan.darkMask * factor)))
       document.body.style.setProperty('--amphoreus-light-mask', String(clampMask(plan.lightMask * factor)))

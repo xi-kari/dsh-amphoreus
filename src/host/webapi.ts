@@ -6,7 +6,8 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { z } from 'zod'
-import { GRAMMAR_DEFAULTS, type AmphoreusAssetsStatus, type AmphoreusState, type DeriveProgress, type GrammarPrefs, type PublicSuite, type WorkbenchBoot, type WorkbenchStatus } from '../shared/api.ts'
+import { CUSTOM_WALLPAPER_PLACEMENT_DEFAULTS, GRAMMAR_DEFAULTS, type AmphoreusAssetsStatus, type AmphoreusState, type CustomWallpaperInfo, type CustomWallpaperPlacement, type DeriveProgress, type GrammarPrefs, type PublicSuite, type WorkbenchBoot, type WorkbenchStatus } from '../shared/api.ts'
+import { CustomWallpaperStore } from './custom-wallpapers.ts'
 import { GLOBAL_WALLPAPERS } from '../shared/heroes.ts'
 import type { AmphoreusConfig } from './config.ts'
 import { deriveAssets, probeMagick, resolveGlobalWallpaperDir, type DeriveOptions, type DeriveResult } from './derive.ts'
@@ -55,6 +56,17 @@ const PrefsInput = z.object({
   magazineMode: z.enum(['light', 'full']).nullable().optional(),
   /** Partial grammar patch; `null` resets every knob to the defaults. */
   grammar: GrammarInput.nullable().optional(),
+  /** Per-seat wallpaper placement patch: { heroId: partial | null }. */
+  customWallpapers: z.record(z.string().regex(/^[a-z0-9][a-z0-9-]{0,31}$/u), z.object({
+    fit: z.enum(['cover', 'contain', 'fill']).optional(),
+    x: z.number().min(0).max(100).optional(),
+    y: z.number().min(0).max(100).optional(),
+    scale: z.number().min(1).max(3).optional(),
+    playbackRate: z.number().min(0.25).max(2).optional(),
+    muted: z.boolean().optional(),
+    loop: z.boolean().optional(),
+    paused: z.boolean().optional(),
+  }).strict().nullable()).optional(),
 })
 
 const DeriveInput = z.object({ force: z.boolean().optional() }).strict()
@@ -94,6 +106,8 @@ export interface WebApiOptions {
   readonly workbenchStatus?: () => WorkbenchStatus
   readonly seatDirs?: readonly SeatDirRecord[]
   readonly assetsCacheDir?: string
+  /** Plugin data dir; enables user-uploaded seat wallpapers under <dataDir>/custom-wallpapers. */
+  readonly dataDir?: string
   readonly deriveAssets?: (options: DeriveOptions) => Promise<DeriveResult>
   readonly probeMagick?: () => Promise<string | undefined>
 }
@@ -163,6 +177,7 @@ export class AmphoreusWebApi {
   readonly #workbenchStatus: () => WorkbenchStatus
   readonly #seatDirs: readonly SeatDirRecord[]
   readonly #assetsCacheDir: string | undefined
+  readonly #customWallpapers: CustomWallpaperStore | undefined
   readonly #deriveAssets: (options: DeriveOptions) => Promise<DeriveResult>
   readonly #probeMagick: () => Promise<string | undefined>
   readonly #sse = new SseHub()
@@ -190,6 +205,7 @@ export class AmphoreusWebApi {
     ))
     this.#seatDirs = options.seatDirs ?? []
     this.#assetsCacheDir = options.assetsCacheDir === undefined ? undefined : resolve(options.assetsCacheDir)
+    this.#customWallpapers = options.dataDir === undefined ? undefined : new CustomWallpaperStore(options.dataDir)
     this.#deriveAssets = options.deriveAssets ?? deriveAssets
     this.#probeMagick = options.probeMagick ?? probeMagick
     this.nonce = options.nonce ?? randomBytes(24).toString('base64url')
@@ -205,6 +221,11 @@ export class AmphoreusWebApi {
         this.#assetsCacheRealDir = undefined
         this.#derived = new Set()
         this.#warn(`amphoreus derived cache scan failed; using original assets: ${String(error)}`)
+      }
+      try {
+        await this.#customWallpapers?.scan()
+      } catch (error) {
+        this.#warn(`amphoreus custom wallpaper scan failed: ${String(error)}`)
       }
       try {
         this.#magick = await this.#probeMagick() ?? null
@@ -260,9 +281,10 @@ export class AmphoreusWebApi {
     try {
       const url = new URL(request.url ?? '/', 'http://localhost')
       const path = url.pathname
-      const derivedAssetRequest = path.startsWith('/amphoreus/derived/')
+      const derivedAssetRequest = path.startsWith('/amphoreus/derived/') || path.startsWith('/amphoreus/custom-wallpaper/')
       const write = request.method !== 'GET' && request.method !== 'HEAD' && !derivedAssetRequest
-      if (!this.#authorize(request, response, write)) return
+      const binaryUpload = path.startsWith('/amphoreus/api/custom-wallpaper/') && request.method === 'PUT'
+      if (!this.#authorize(request, response, write, binaryUpload)) return
       if (path === '/amphoreus/api/state' || path.startsWith('/amphoreus/derived/')) await this.prepareAssets()
 
       if (path === '/amphoreus' || path === '/amphoreus/workbench') {
@@ -347,6 +369,14 @@ export class AmphoreusWebApi {
           else if (input.magazineMode !== undefined) prefs.magazineMode = input.magazineMode
           if (input.grammar === null) delete prefs.grammar
           else if (input.grammar !== undefined) prefs.grammar = { ...current.prefs.grammar, ...input.grammar }
+          if (input.customWallpapers !== undefined) {
+            const next = { ...(current.prefs.customWallpapers ?? {}) }
+            for (const [heroId, patch] of Object.entries(input.customWallpapers)) {
+              if (patch === null) delete next[heroId]
+              else next[heroId] = { ...next[heroId], ...patch }
+            }
+            prefs.customWallpapers = next
+          }
           return { ...current, prefs }
         })
         json(response, 200, { prefs: updated.prefs })
@@ -389,6 +419,24 @@ export class AmphoreusWebApi {
         await this.#serveLocalAsset(response, decodeTail(path, '/amphoreus/assets/'))
         return
       }
+      if (path.startsWith('/amphoreus/api/custom-wallpaper/')) {
+        await this.#customWallpaperRoute(request, response, decodeTail(path, '/amphoreus/api/custom-wallpaper/'))
+        return
+      }
+      if (path.startsWith('/amphoreus/custom-wallpaper/')) {
+        if (request.method !== 'GET' && request.method !== 'HEAD') {
+          response.writeHead(405, { allow: 'GET, HEAD' })
+          response.end()
+          return
+        }
+        const tail = decodeTail(path, '/amphoreus/custom-wallpaper/') ?? ''
+        const [heroId, file] = tail.split('/')
+        const served = heroId !== undefined && file !== undefined && this.#customWallpapers !== undefined
+          ? await this.#customWallpapers.serve(request, response, heroId, file)
+          : false
+        if (!served) json(response, 404, { error: 'custom wallpaper not found' })
+        return
+      }
       json(response, 404, { error: 'not found' })
     } catch (error) {
       if (error instanceof BodyTooLargeError) {
@@ -426,6 +474,7 @@ export class AmphoreusWebApi {
       prefs: global.prefs,
       suiteEvents: values(this.#stores.main.table('suite_events').entries()).sort((a, b) => b.at - a.at),
       canvas: [...this.#stores.canvas.table('canvas').entries()].map(([sessionId, value]) => ({ sessionId, value })),
+      customWallpapers: (this.#customWallpapers?.list() ?? []).map(record => this.#customWallpaperInfo(record)),
       assets: {
         root: this.#config.assetsRoot.trim(),
         cacheDir: this.#assetsCacheDir ?? '',
@@ -941,7 +990,60 @@ export class AmphoreusWebApi {
     send(response, 200, mediaType(candidate), await readFile(candidate))
   }
 
-  #authorize(request: IncomingMessage, response: ServerResponse, write: boolean): boolean {
+  async #customWallpaperRoute(request: IncomingMessage, response: ServerResponse, heroId: string | undefined): Promise<void> {
+    const store = this.#customWallpapers
+    if (store === undefined) {
+      json(response, 503, { error: 'custom wallpapers need a dataDir' })
+      return
+    }
+    if (heroId === undefined || !/^[a-z0-9][a-z0-9-]{0,31}$/u.test(heroId)) {
+      json(response, 400, { error: 'invalid hero id' })
+      return
+    }
+    if (request.method === 'PUT') {
+      const mime = (request.headers['content-type'] ?? '').split(';')[0]!.trim().toLowerCase()
+      try {
+        const record = await store.put(heroId, mime, request)
+        this.#publishSse('state-change', { domain: 'amphoreus', table: 'custom-wallpapers', key: heroId, operation: 'put' })
+        json(response, 200, { wallpaper: this.#customWallpaperInfo(record) })
+      } catch (error) {
+        if (error instanceof TypeError) json(response, 415, { error: error.message })
+        else throw error
+      }
+      return
+    }
+    if (request.method === 'DELETE') {
+      const deleted = await store.remove(heroId)
+      if (deleted) {
+        await updateAmphoreusGlobal(this.#stores.main, current => {
+          const next = { ...(current.prefs.customWallpapers ?? {}) }
+          delete next[heroId]
+          return { ...current, prefs: { ...current.prefs, customWallpapers: next } }
+        })
+        this.#publishSse('state-change', { domain: 'amphoreus', table: 'custom-wallpapers', key: heroId, operation: 'remove' })
+      }
+      json(response, deleted ? 200 : 404, deleted ? { deleted: true } : { error: 'custom wallpaper not found' })
+      return
+    }
+    response.writeHead(405, { allow: 'PUT, DELETE' })
+    response.end()
+  }
+
+  #customWallpaperInfo(record: { heroId: string; file: string; kind: 'image' | 'video'; mime: string; bytes: number; mtimeMs: number }): CustomWallpaperInfo {
+    const stored = this.#stores.main.global.get().prefs.customWallpapers?.[record.heroId] ?? {}
+    const placement: Record<string, unknown> = { ...CUSTOM_WALLPAPER_PLACEMENT_DEFAULTS }
+    for (const [key, value] of Object.entries(stored)) if (value !== undefined) placement[key] = value
+    return {
+      heroId: record.heroId,
+      url: this.#customWallpapers!.urlOf(record),
+      kind: record.kind,
+      mime: record.mime,
+      bytes: record.bytes,
+      placement: placement as unknown as CustomWallpaperPlacement,
+    }
+  }
+
+  #authorize(request: IncomingMessage, response: ServerResponse, write: boolean, binaryUpload = false): boolean {
     if (!trustedHost(request.headers.host, this.#config.trustedHosts)) {
       send(response, 403, 'text/plain; charset=utf-8', 'forbidden')
       return false
@@ -952,7 +1054,7 @@ export class AmphoreusWebApi {
       return false
     }
     if (!write) return true
-    if (request.method !== 'DELETE' && !(request.headers['content-type'] ?? '').toLowerCase().startsWith('application/json')) {
+    if (!binaryUpload && request.method !== 'DELETE' && !(request.headers['content-type'] ?? '').toLowerCase().startsWith('application/json')) {
       json(response, 415, { error: 'application/json required' })
       return false
     }

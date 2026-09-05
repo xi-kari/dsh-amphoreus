@@ -118,18 +118,21 @@ test('seat layer atomically replaces relevant changes and preserves selected int
     layer.apply('aglaea')
     assert.equal(layer.current(), 'aglaea')
     assert.equal(dataset.amphoreusSeat, 'aglaea')
-    assert.equal(calls.length, 1)
+    // Two layers per apply: the 38 audited --dsw tokens and the seat code/bubble palette.
+    assert.equal(calls.length, 2)
     assert.equal(calls[0]?.source, 'dsh-amphoreus/seat')
     assert.equal(calls[0]?.count, 38)
+    assert.equal(calls[1]?.source, 'dsh-amphoreus/seat-code')
+    assert.equal(calls[1]?.count, 11)
 
     publish()
     layer.apply('aglaea')
-    assert.equal(calls.length, 1, 'unchanged configuration must not replace the layer')
+    assert.equal(calls.length, 2, 'unchanged configuration must not replace the layer')
 
     effectiveConfig = { ...effectiveConfig, wallpaper: { surfaceAlpha: { light: 0.3, dark: 0.5 } } }
     publish()
-    assert.equal(calls.length, 2)
-    assert.equal(activeLayer, calls[1]?.record, 'old disposer must not tear down the same-source replacement')
+    assert.equal(calls.length, 4)
+    assert.equal(activeLayer, calls[3]?.record, 'old disposer must not tear down the same-source replacement')
 
     effectiveConfig = { ...effectiveConfig, seatStyle: false }
     publish()
@@ -139,7 +142,7 @@ test('seat layer atomically replaces relevant changes and preserves selected int
 
     effectiveConfig = { ...effectiveConfig, seatStyle: true }
     publish()
-    assert.equal(calls.length, 3)
+    assert.equal(calls.length, 6)
     assert.equal(dataset.amphoreusSeat, 'aglaea')
 
     layer.apply('cyrene')

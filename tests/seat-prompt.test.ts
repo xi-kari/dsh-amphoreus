@@ -32,6 +32,8 @@ test('seat prompt replaces only two default identity declarations and retains ru
   assert.match(changed.sections[0]!.text, /那刻夏.*amphoreus-anaxa/)
   assert.match(changed.sections[0]!.text, /从第一条回复/)
   assert.match(changed.sections[0]!.text, /模型或运行环境时如实说明/)
+  assert.match(changed.sections[0]!.text, /对话另一方是「开拓者」/)
+  assert.match(changed.sections[0]!.text, /不要在台词里出现「用户」/)
   assert.equal(changed.sections[3]!.text, 'Your working directory is {{cwd}}. Keep existing project contracts.')
   assert.deepEqual(changed.sections.filter(section => !['harness:identity', 'deployment:persona'].includes(section.name)), before.sections.filter(section => !['harness:identity', 'deployment:persona'].includes(section.name)))
   assert.strictEqual(changed.contexts, original.contexts)

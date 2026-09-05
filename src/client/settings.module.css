@@ -263,6 +263,19 @@
 .switchRow { display: inline-flex; align-items: center; gap: 8px; color: var(--dsw-alias-label-secondary); font-size: 11px; white-space: nowrap; cursor: pointer; }
 .switchRow input { margin: 0; accent-color: var(--dsw-alias-brand-primary); }
 
+.wpList { margin: 0; padding: 6px 0 8px; list-style: none; }
+.wpRow { border-bottom: 1px solid var(--dsw-alias-border-l1); padding: 8px 18px 8px 16px; border-left: 3px solid transparent; }
+.wpRow[data-has-custom] { border-left-color: var(--amph-seat-accent, var(--dsw-alias-brand-primary)); }
+.wpRow:last-child { border-bottom: 0; }
+.wpHead { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; }
+.wpName { min-width: 64px; font-family: ui-serif, "Songti SC", "STSong", serif; font-size: 13px; font-weight: 650; }
+.wpMeta { flex: 1; min-width: 80px; color: var(--dsw-alias-label-caption); font-size: 11px; }
+.wpFile { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.wpControls { margin-top: 6px; }
+.wpControls .segmented { margin: 4px 0 0; }
+.wpControls .sliderList { padding: 10px 0 0; }
+.wpControls .hintLine { margin: 8px 0 0; display: flex; flex-wrap: wrap; gap: 6px 14px; }
+
 .sliderList { display: grid; gap: 10px; padding: 14px 18px 4px; }
 .sliderList[aria-disabled="true"] { opacity: .55; }
 .sliderRow { display: grid; grid-template-columns: 72px minmax(0, 1fr) 52px; align-items: center; gap: 12px; font-size: 11px; color: var(--dsw-alias-label-secondary); }

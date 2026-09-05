@@ -105,6 +105,16 @@ export const GlobalSchema = z.object({
       mascot: z.enum(['reactive', 'static', 'off']).optional(),
       ambient: z.boolean().optional(),
     }).optional(),
+    customWallpapers: z.record(z.string(), z.object({
+      fit: z.enum(['cover', 'contain', 'fill']).optional(),
+      x: z.number().min(0).max(100).optional(),
+      y: z.number().min(0).max(100).optional(),
+      scale: z.number().min(1).max(3).optional(),
+      playbackRate: z.number().min(0.25).max(2).optional(),
+      muted: z.boolean().optional(),
+      loop: z.boolean().optional(),
+      paused: z.boolean().optional(),
+    })).optional(),
   }),
   workbench: z.object({
     hiddenSessionIds: z.array(z.string()).default([]),

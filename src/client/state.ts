@@ -1,4 +1,4 @@
-import type { AmphoreusState, DeriveKind, DeriveProgress, GrammarPrefs } from '../shared/api.ts'
+import type { AmphoreusState, CustomWallpaperPlacement, DeriveKind, DeriveProgress, GrammarPrefs } from '../shared/api.ts'
 
 export interface AmphoreusClientSnapshot {
   readonly phase: 'loading' | 'ready' | 'error'
@@ -138,6 +138,47 @@ export class AmphoreusClientModel {
       body: JSON.stringify({ grammar: patch }),
     })
     if (!response.ok) throw new Error(`视觉语法保存失败（HTTP ${response.status}）`)
+    await this.refresh()
+  }
+
+  /** Upload (replace) a seat's custom wallpaper: any image/video the browser can hand us, no size cap. */
+  async uploadCustomWallpaper(heroId: string, file: File): Promise<void> {
+    const nonce = this.#snapshot.state?.nonce ?? window.__AMPHOREUS_BOOT__?.nonce
+    if (nonce === undefined) throw new Error('首帧 nonce 尚未就绪')
+    const response = await fetch(`/amphoreus/api/custom-wallpaper/${encodeURIComponent(heroId)}`, {
+      method: 'PUT',
+      credentials: 'include',
+      headers: { 'content-type': file.type || 'application/octet-stream', 'x-amphoreus-nonce': nonce },
+      body: file,
+    })
+    if (response.status === 415) throw new Error('不支持的文件类型：请用 PNG / JPG / WebP / GIF / AVIF / MP4 / WebM')
+    if (!response.ok) throw new Error(`壁纸上传失败（HTTP ${response.status}）`)
+    await this.refresh()
+  }
+
+  async removeCustomWallpaper(heroId: string): Promise<void> {
+    const nonce = this.#snapshot.state?.nonce ?? window.__AMPHOREUS_BOOT__?.nonce
+    if (nonce === undefined) throw new Error('首帧 nonce 尚未就绪')
+    const response = await fetch(`/amphoreus/api/custom-wallpaper/${encodeURIComponent(heroId)}`, {
+      method: 'DELETE',
+      credentials: 'include',
+      headers: { 'x-amphoreus-nonce': nonce },
+    })
+    if (!response.ok && response.status !== 404) throw new Error(`壁纸移除失败（HTTP ${response.status}）`)
+    await this.refresh()
+  }
+
+  /** Patch placement/playback for one seat's custom wallpaper (null clears to defaults). */
+  async setCustomWallpaperPlacement(heroId: string, patch: Partial<CustomWallpaperPlacement> | null): Promise<void> {
+    const nonce = this.#snapshot.state?.nonce ?? window.__AMPHOREUS_BOOT__?.nonce
+    if (nonce === undefined) throw new Error('首帧 nonce 尚未就绪')
+    const response = await fetch('/amphoreus/api/prefs', {
+      method: 'PUT',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json', 'x-amphoreus-nonce': nonce },
+      body: JSON.stringify({ customWallpapers: { [heroId]: patch } }),
+    })
+    if (!response.ok) throw new Error(`壁纸位置保存失败（HTTP ${response.status}）`)
     await this.refresh()
   }
 

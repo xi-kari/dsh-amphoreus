@@ -6,6 +6,8 @@ export interface SeatWallpaperAssets {
   readonly derivedVersion?: number
   /** Seed (session id) selecting one of the seat's home wallpapers; undefined → the first. */
   readonly homeSeed?: string
+  /** User-uploaded wallpaper URL for this seat (image only here; videos are handled by the layer). */
+  readonly customUrl?: string
 }
 
 /** Derived home wallpapers (`<owner>/home-NN.webp`) present for an owner, in index order. */
@@ -56,6 +58,7 @@ export function seatWallpaperCandidates(
   const coverKey = `${hero.heroId}/cover-169.webp`
   const cover = assets.derived.includes(coverKey) ? derivedUrlOf(coverKey, assets.derivedVersion) : undefined
   return [
+    ...(assets.customUrl === undefined ? [] : [assets.customUrl]),
     ...(home === undefined ? [] : [home]),
     ...(cover === undefined ? [] : [cover]),
     ...(assets.assetsConfigured ? [seatWallpaperUrl(hero)] : []),

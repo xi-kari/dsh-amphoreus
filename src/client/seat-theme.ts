@@ -1,5 +1,6 @@
 import type { ThemeTokenOverrides } from '@deepseek-ai/dsh-client-ui-theme/client'
 import { heroVisualById, type HeroPalette, type HeroVisual } from '../shared/heroes.ts'
+import { seatCodePalette, seatUserBubble } from '../shared/seat-code.ts'
 import {
   BLACK,
   WHITE,
@@ -144,6 +145,24 @@ export function seatThemeTokens(
     if (lightValue === undefined || darkValue === undefined) throw new Error(`seat token scheme mismatch: ${name}`)
     tokens[name] = { light: lightValue, dark: darkValue }
   }
+  return tokens
+}
+
+/**
+ * Second seat layer: syntax-highlight palette (`--shiki-token-*`) and the 开拓者
+ * (user) bubble tint, both derived from the seat accents and audited for contrast.
+ * Kept separate from `seatThemeTokens` so the 38-token audit stays intact.
+ */
+export function seatCodeTokens(hero: HeroVisual): ThemeTokenOverrides {
+  const light = seatCodePalette(hero.palette, false)
+  const dark = seatCodePalette(hero.palette, true)
+  const bubbleLight = seatUserBubble(hero.palette, false)
+  const bubbleDark = seatUserBubble(hero.palette, true)
+  const tokens: ThemeTokenOverrides = {
+    '--dsw-specific-bubble': { light: bubbleLight.fill, dark: bubbleDark.fill },
+    '--dsw-specific-bubble-highlight': { light: bubbleLight.highlight, dark: bubbleDark.highlight },
+  }
+  for (const name of Object.keys(light) as (keyof typeof light)[]) tokens[name] = { light: light[name], dark: dark[name] }
   return tokens
 }
 
