@@ -41,6 +41,10 @@ import { createWorkspacesSource } from './workspaces-source.ts'
 import { currentOrdinaryWorkspace, orphanSeatWorkspacePath, syncWorkspaceSession, waitForReadySnapshot } from './workspace-routing.ts'
 import { heroVisualById } from '../shared/heroes.ts'
 // @anchor client-imports
+import { createSeatCommandSource } from './seat-command.ts'
+import { installSeatHotkeys } from './seat-hotkeys.ts'
+import type { SeatView } from './seat-model.ts'
+import { orderedHotkeySeats } from './seat-switch.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -240,6 +244,39 @@ export function apply(ctx: ClientContext): void {
     return true
   }
   // @anchor client-services
+  // Seat switching (Alt+digit hotkeys + `/seat <name>`): same landing as the sidebar — chat view of the latest bound session, or a fresh seat session.
+  const currentSeatViews = (): SeatView[] => seatViewsFrom(
+    model.getSnapshot(),
+    sessionsFace.list.getSnapshot() as unknown as Parameters<typeof seatViewsFrom>[1],
+    ctx.workspaces.list.getSnapshot(),
+  )
+  const enterSeatView = async (view: SeatView): Promise<void> => {
+    const latest = view.sessionIds[0]
+    if (latest !== undefined) {
+      await openBoundSeatSession(latest, view.skillName, false)
+      openDirectSession(latest)
+      return
+    }
+    const created = await startSeatSession(seatDeps, view.skillName, { open: false })
+    openDirectSession(created)
+  }
+  ctx.effect(() => installSeatHotkeys({
+    target: window,
+    seats: () => orderedHotkeySeats(currentSeatViews()),
+    enter: enterSeatView,
+    togglePortal: portal.toggle,
+    onError: error => { console.warn('[dsh-amphoreus] seat hotkey:', error) },
+  }), 'amphoreus: seat hotkeys')
+  // Degrade, don't gate: a profile without the slash pipeline still boots the plugin, only `/seat` is absent.
+  ctx.inject(['inputTriggers'], scope => {
+    scope.effect(() => scope.inputTriggers.registerSource(createSeatCommandSource({
+      seats: currentSeatViews,
+      cards: () => model.getSnapshot().state?.suite?.cards ?? [],
+      enter: enterSeatView,
+      openPortal: portal.open,
+      t,
+    })), 'amphoreus: /seat')
+  })
   const bootWorkbench = window.__AMPHOREUS_BOOT__?.workbench
   const workbenchEnabled = bootWorkbench?.enabled ?? true
   ctx.effect(async () => {

@@ -154,6 +154,10 @@ export const zh = {
   'settings.credit': '工作台源自 dsh-synapse v0.4.1（MIT，liangmianya），经改造；原始许可见包内 NOTICE。',
   'view.workbench': '工作台',
   // @anchor zh-keys
+  'seat.command.section': '切换席位',
+  'seat.command.hint': '席位名，或 all 打开总览',
+  'seat.notFound': '没有名为「{name}」的已部署席位',
+  'seat.hotkeyHint': '快捷键 {key}',
 } as const
 
 export type AmphoreusKey = keyof typeof zh
@@ -313,6 +317,10 @@ export const en: Record<AmphoreusKey, string> = {
   'settings.credit': 'The workbench derives from dsh-synapse v0.4.1 (MIT, liangmianya), adapted; original license in NOTICE.',
   'view.workbench': 'Workbench',
   // @anchor en-keys
+  'seat.command.section': 'Switch seat',
+  'seat.command.hint': 'seat name, or all for the overview',
+  'seat.notFound': 'No deployed seat named "{name}"',
+  'seat.hotkeyHint': 'Hotkey {key}',
 }
 
 export const NS = 'amphoreus'

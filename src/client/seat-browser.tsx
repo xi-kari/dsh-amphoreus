@@ -270,7 +270,7 @@ export function SeatBrowser({
                 <button
                   className={css.seatMain}
                   type="button"
-                  title={view.duty ?? view.displayName}
+                  title={deployed.indexOf(view) < 9 ? `${view.duty ?? view.displayName} · ${t('seat.hotkeyHint', { key: `Alt+${deployed.indexOf(view) + 1}` })}` : view.duty ?? view.displayName}
                   aria-expanded={seatOpen.has(view.skillName)}
                   disabled={creating.has(view.skillName)}
                   aria-busy={creating.has(view.skillName)}

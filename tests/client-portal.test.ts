@@ -95,7 +95,7 @@ test('index assembles one shared portal before both overlay and Workbench regist
 
 test('openSeat routes all through the mounted tab or keeps the portal frame, then preserves hero routing', () => {
   const start = clientSource.indexOf('const openSeat = async')
-  const end = clientSource.indexOf('\n  const bootWorkbench', start)
+  const end = clientSource.indexOf('\n  // @anchor client-services', start)
   assert.ok(start >= 0 && end > start)
   const action = clientSource.slice(start, end)
   const all = action.indexOf('if (heroId === null) {')
@@ -117,7 +117,7 @@ test('openSeat routes all through the mounted tab or keeps the portal frame, the
 
 test('openSeat reuses a mounted Workbench, leaves chat in the portal canvas, and preserves hero routing', async () => {
   const start = clientSource.indexOf('const openSeat = async')
-  const end = clientSource.indexOf('\n  const bootWorkbench', start)
+  const end = clientSource.indexOf('\n  // @anchor client-services', start)
   const source = clientSource.slice(start, end)
   const compiled = transpileModule(
     `${source}\nglobalThis.__openSeat = openSeat`,
