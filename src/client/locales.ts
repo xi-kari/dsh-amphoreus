@@ -170,6 +170,7 @@ export const zh = {
   'settings.memoryAdd': '记下',
   'settings.memoryPlaceholder': '写一条要让本席下次记得的话（Ctrl/⌘+Enter 提交）',
   'settings.memoryCommandHint': '在已绑定席位的会话里也可以输入 /{command} <内容> 直接留言。',
+  'settings.memoryInactive': '未上桌',
 } as const
 
 export type AmphoreusKey = keyof typeof zh
@@ -345,6 +346,7 @@ export const en: Record<AmphoreusKey, string> = {
   'settings.memoryAdd': 'Remember',
   'settings.memoryPlaceholder': 'Something this seat should remember next time (Ctrl/⌘+Enter to submit)',
   'settings.memoryCommandHint': 'In a session bound to a seat you can also type /{command} <text> to leave a note directly.',
+  'settings.memoryInactive': 'not seated',
 }
 
 export const NS = 'amphoreus'

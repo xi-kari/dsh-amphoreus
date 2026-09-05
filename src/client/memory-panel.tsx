@@ -12,10 +12,12 @@ type Translate = (key: AmphoreusKey, params?: Record<string, unknown>) => string
 export interface MemoryPanelSeat {
   readonly skillName: string
   readonly displayName: string
+  /** Hidden or undeployed seat listed only because it owns a memory record (notes or overrides). */
+  readonly inactive?: boolean
 }
 
 export interface MemoryPanelProps {
-  /** Deployed seats in display order; seats with notes but no seat record are appended. */
+  /** Active seats in display order plus inactive seats owning a record; records without any seat are appended. */
   readonly seats: readonly MemoryPanelSeat[]
   readonly memory: readonly MemoryRecord[]
   readonly config: MemoryPublicConfig
@@ -39,8 +41,8 @@ export function MemoryPanel({ seats, memory, config, busy, t, onAdd, onDelete, o
   const known = new Set(seats.map(seat => seat.skillName))
   const rows: MemoryPanelSeat[] = [
     ...seats,
-    ...memory.filter(record => !known.has(record.skillName) && record.notes.length > 0)
-      .map(record => ({ skillName: record.skillName, displayName: record.skillName })),
+    ...memory.filter(record => !known.has(record.skillName) && (record.notes.length > 0 || record.settings !== undefined))
+      .map(record => ({ skillName: record.skillName, displayName: record.skillName, inactive: true })),
   ]
   const total = memory.reduce((sum, record) => sum + record.notes.length, 0)
 
@@ -61,10 +63,11 @@ export function MemoryPanel({ seats, memory, config, busy, t, onAdd, onDelete, o
       setDrafts(current => ({ ...current, [seat.skillName]: '' }))
     }
     return (
-      <li key={seat.skillName} className={css.row} style={{ '--amph-seat-accent': color.accent } as CSSProperties} data-expanded={expanded || undefined} data-amph-memory-seat={seat.skillName}>
+      <li key={seat.skillName} className={css.row} style={{ '--amph-seat-accent': color.accent } as CSSProperties} data-expanded={expanded || undefined} data-inactive={seat.inactive || undefined} data-amph-memory-seat={seat.skillName}>
         <div className={css.head}>
           <button type="button" className={css.toggle} aria-expanded={expanded} onClick={() => { setOpen(expanded ? undefined : seat.skillName) }}>
             <span className={css.name}>{seat.displayName}</span>
+            {seat.inactive ? <span className={css.inactive}>{t('settings.memoryInactive')}</span> : null}
             <span className={css.count}>{t('settings.memoryCount', { n: String(notes.length) })}</span>
           </button>
           <label className={shell.switchRow} title={t('settings.memoryInjectTip')}>

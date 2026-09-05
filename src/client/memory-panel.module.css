@@ -28,6 +28,8 @@
 
 .name { font-family: ui-serif, "Songti SC", "STSong", serif; font-size: 13px; font-weight: 650; }
 .count { color: var(--dsw-alias-label-caption); font-size: 10px; letter-spacing: .04em; white-space: nowrap; }
+.inactive { color: var(--dsw-alias-label-tertiary); font-size: 10px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 3px; padding: 0 4px; }
+.row[data-inactive] .name { color: var(--dsw-alias-label-secondary); }
 
 .body { display: flex; flex-direction: column; gap: 10px; padding: 10px 0 4px; }
 

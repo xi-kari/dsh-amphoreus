@@ -200,9 +200,9 @@ export function AmphoreusSettings({ model, t }: AmphoreusSettingsProps) {
           />
           {/* @anchor settings-panels */}
           <MemoryPanel
-            seats={state.seats.filter(seat => seat.status === 'deployed' && seat.hidden !== true)
+            seats={state.seats.filter(seat => (seat.status === 'deployed' && seat.hidden !== true) || state.memory.some(record => record.skillName === seat.skillName))
               .sort((a, b) => (a.userOrder ?? a.order) - (b.userOrder ?? b.order))
-              .map(seat => ({ skillName: seat.skillName, displayName: seat.userDisplayName ?? suite?.cards.find(card => card.name === seat.skillName)?.displayName ?? seat.displayName }))}
+              .map(seat => ({ skillName: seat.skillName, displayName: seat.userDisplayName ?? suite?.cards.find(card => card.name === seat.skillName)?.displayName ?? seat.displayName, inactive: seat.status !== 'deployed' || seat.hidden === true }))}
             memory={state.memory}
             config={state.effectiveConfig.memory}
             busy={busy}

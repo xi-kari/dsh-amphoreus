@@ -62,6 +62,8 @@ export const MemorySchema = z.object({
     autoNote: z.boolean().optional(),
     injectLimit: z.number().int().min(0).max(50).optional(),
   }).optional(),
+  /** Ids of replayable (seat-authored) notes the user deleted; startup replay must not re-add them. */
+  deletedNoteIds: z.array(z.string()).optional(),
   updatedAt: z.number(),
 })
 

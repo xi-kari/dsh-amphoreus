@@ -139,7 +139,7 @@ test('normalizeNoteText flattens line breaks and clamps by code point to 200', (
   assert.equal([...normalizeNoteText(emoji)].length, 200)
 })
 
-test('appendSeatNote creates on first write, updates afterwards, dedupes by id and survives a lost put race', async () => {
+test('appendSeatNote creates on first write, updates afterwards, dedupes by id and echoes the stored note', async () => {
   const table = new FakeTable<MemoryRecord>()
   const first = await appendSeatNote(table, 'amphoreus-testcard-a', { text: ' 一 ', author: 'user' }, 10)
   assert.equal(first?.text, '一')
@@ -151,24 +151,45 @@ test('appendSeatNote creates on first write, updates afterwards, dedupes by id a
   assert.deepEqual(second, { id: 'fixed', text: '二', createdAt: 20, author: 'seat', sessionId: SESSION_A, seq: 7 })
   assert.equal(table.updateCalls, 1)
   const again = await appendSeatNote(table, 'amphoreus-testcard-a', { text: '二（改）', author: 'seat', id: 'fixed' }, 30)
-  assert.equal(again?.text, '二')
+  assert.deepEqual(again, second, 'duplicate id echoes the STORED note, not the caller-built one')
   assert.equal(table.get('amphoreus-testcard-a')?.notes.length, 2)
   assert.equal(table.updateCalls, 1, 'duplicate id must not write')
 
   assert.equal(await appendSeatNote(table, 'amphoreus-testcard-a', { text: '   ', author: 'user' }), undefined)
+})
 
-  // put fails because another writer created the record in between → fall through to update.
+test('concurrent first writes against a plain-overwrite put are serialized: both notes survive', async () => {
+  // The platform's KvTable.put never rejects on an existing key — it overwrites. Two writers that
+  // both observed "no record" must therefore be serialized by memory.ts itself.
   const racy = new FakeTable<MemoryRecord>()
-  racy.failNextPut = new Error('exists')
-  const original = racy.put.bind(racy)
-  racy.put = async (key, value) => {
-    racy.values.set(key, { skillName: key, notes: [], pinnedSessionIds: [], updatedAt: 0 })
-    await original(key, value)
-  }
-  const raced = await appendSeatNote(racy, 'amphoreus-testcard-b', { text: '三', author: 'user' })
-  assert.equal(raced?.text, '三')
-  assert.equal(racy.get('amphoreus-testcard-b')?.notes.length, 1)
-  assert.equal(racy.updateCalls, 1)
+  const [a, b, settings] = await Promise.all([
+    appendSeatNote(racy, 'amphoreus-testcard-b', { text: '席位说的', author: 'seat', id: 's:1:note' }),
+    appendSeatNote(racy, 'amphoreus-testcard-b', { text: '面板写的', author: 'user' }),
+    patchSeatMemorySettings(racy, 'amphoreus-testcard-b', { inject: false }),
+  ])
+  assert.equal(a?.text, '席位说的')
+  assert.equal(b?.text, '面板写的')
+  assert.deepEqual(settings.settings, { inject: false })
+  const record = racy.get('amphoreus-testcard-b')
+  assert.deepEqual(record?.notes.map(note => note.text), ['席位说的', '面板写的'])
+  assert.deepEqual(record?.settings, { inject: false })
+  assert.equal(racy.putCalls, 1, 'only the first writer creates the record')
+  assert.equal(racy.updateCalls, 2)
+})
+
+test('deleting a replayable note leaves a tombstone so append with the same id is refused', async () => {
+  const table = new FakeTable<MemoryRecord>()
+  await appendSeatNote(table, 'amphoreus-testcard-a', { text: '记住我', author: 'seat', id: `${SESSION_A}:5:note`, sessionId: SESSION_A, seq: 5 })
+  await appendSeatNote(table, 'amphoreus-testcard-a', { text: '手写', author: 'user', id: 'manual' })
+  assert.equal(await deleteSeatNote(table, 'amphoreus-testcard-a', `${SESSION_A}:5:note`), true)
+  assert.equal(await deleteSeatNote(table, 'amphoreus-testcard-a', 'manual'), true)
+  const record = table.get('amphoreus-testcard-a')
+  assert.deepEqual(record?.notes, [])
+  assert.deepEqual(record?.deletedNoteIds, [`${SESSION_A}:5:note`], 'user notes without seq need no tombstone')
+  assert.equal(await appendSeatNote(table, 'amphoreus-testcard-a', { text: '记住我', author: 'seat', id: `${SESSION_A}:5:note`, seq: 5 }), undefined)
+  assert.deepEqual(table.get('amphoreus-testcard-a')?.notes, [])
+  // A fresh id for the same seat still works.
+  assert.equal((await appendSeatNote(table, 'amphoreus-testcard-a', { text: '新的', author: 'seat', id: `${SESSION_A}:9:note`, seq: 9 }))?.text, '新的')
 })
 
 test('deleteSeatNote and patchSeatMemorySettings are partial and create-on-demand', async () => {
@@ -264,6 +285,26 @@ test('startup and session/created replay ownEvents idempotently and disposal unh
   assert.equal(fixture.memory.get('amphoreus-testcard-a')?.notes.length, 1)
 })
 
+test('a seat note deleted by the user stays deleted across startup replay and session/created', async () => {
+  const restored = session(SESSION_A, [assistant(1, `留言：记住我\n${RECEIPT}`), turnEnd(2)])
+  const fixture = fixture_({ sessions: [restored] })
+  fixture.bindings.values.set(SESSION_A, binding(SESSION_A, 'amphoreus-testcard-a'))
+  const first = fixture.register()
+  await first()
+  const id = fixture.memory.get('amphoreus-testcard-a')?.notes[0]?.id
+  assert.equal(id, `${SESSION_A}:1:note`)
+  assert.equal(await deleteSeatNote(fixture.memory, 'amphoreus-testcard-a', id!), true)
+  assert.equal(fixture.memory.get('amphoreus-testcard-a')?.notes.length, 0)
+
+  // Plugin restart: ownEvents() still holds the turn; the tombstone must win.
+  const second = fixture.register()
+  fixture.context.emit('session/created', restored)
+  fixture.context.emit('session/event', restored, restored.events[1])
+  await second()
+  assert.deepEqual(fixture.memory.get('amphoreus-testcard-a')?.notes, [], 'deleted note must stay deleted')
+  assert.deepEqual(fixture.memory.get('amphoreus-testcard-a')?.deletedNoteIds, [id])
+})
+
 test('a failed write is warned and the serialized queue keeps going', async () => {
   const fixture = fixture_()
   fixture.bindings.values.set(SESSION_A, binding(SESSION_A, 'amphoreus-testcard-a'))
@@ -316,6 +357,17 @@ test('reader honours inject/limit/autoNote and adds handoff notes only across a 
   assert.deepEqual(read(binding(SESSION_A, 'amphoreus-testcard-a'))?.notes.map(note => note.text), ['a2'])
   fixture.memory.values.set('amphoreus-testcard-a', record('amphoreus-testcard-a', ['a1'], { injectLimit: 0 }))
   assert.deepEqual(read(binding(SESSION_A, 'amphoreus-testcard-a'))?.notes, [])
+
+  // Handoff source honours its own injectLimit: 0 → nothing crosses; 1 → only its latest note; inject:false → nothing.
+  fixture.memory.values.set('amphoreus-testcard-a', record('amphoreus-testcard-a', ['a1']))
+  fixture.bindings.values.set(SESSION_B, binding(SESSION_B, 'amphoreus-testcard-b'))
+  const edge = binding(SESSION_A, 'amphoreus-testcard-a', { handoffFrom: { sessionId: SESSION_B, seq: 3 } })
+  fixture.memory.values.set('amphoreus-testcard-b', record('amphoreus-testcard-b', ['b1', 'b2', 'b3', 'b4'], { injectLimit: 0 }))
+  assert.equal(read(edge)?.handoff, undefined)
+  fixture.memory.values.set('amphoreus-testcard-b', record('amphoreus-testcard-b', ['b1', 'b2', 'b3', 'b4'], { injectLimit: 1 }))
+  assert.deepEqual(read(edge)?.handoff?.notes.map(note => note.text), ['b4'])
+  fixture.memory.values.set('amphoreus-testcard-b', record('amphoreus-testcard-b', ['b1', 'b2'], { inject: false }))
+  assert.equal(read(edge)?.handoff, undefined)
 })
 
 const fixture_ = fixture

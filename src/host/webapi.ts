@@ -6,7 +6,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { z } from 'zod'
-import { CUSTOM_WALLPAPER_PLACEMENT_DEFAULTS, GRAMMAR_DEFAULTS, type AmphoreusAssetsStatus, type AmphoreusState, type CustomWallpaperInfo, type CustomWallpaperPlacement, type DeriveProgress, type GrammarPrefs, type MemorySettings, type PublicSuite, type WorkbenchBoot, type WorkbenchStatus } from '../shared/api.ts'
+import { CUSTOM_WALLPAPER_PLACEMENT_DEFAULTS, GRAMMAR_DEFAULTS, type AmphoreusAssetsStatus, type AmphoreusState, type CustomWallpaperInfo, type CustomWallpaperPlacement, type DeriveProgress, type GrammarPrefs, type PublicSuite, type WorkbenchBoot, type WorkbenchStatus } from '../shared/api.ts'
 import { CustomWallpaperStore } from './custom-wallpapers.ts'
 import { GLOBAL_WALLPAPERS } from '../shared/heroes.ts'
 import type { AmphoreusConfig } from './config.ts'
@@ -18,7 +18,7 @@ import type { SuiteSnapshot } from './suite/types.ts'
 import { InputError, NotFoundError, type ProjectionIndex } from './workbench.ts'
 import type { SeatDirRecord } from './seatdirs.ts'
 import { readSticker } from './stickers.ts'
-import { appendSeatNote, deleteSeatNote, effectiveMemorySettings, patchSeatMemorySettings } from './memory.ts'
+import { appendSeatNote, deleteSeatNote, effectiveMemorySettings, patchSeatMemorySettings, withReplacementTombstones } from './memory.ts'
 
 const MAX_BODY_BYTES = 4 * 1024
 const MAX_CANVAS_BODY_BYTES = 64 * 1024
@@ -606,7 +606,8 @@ export class AmphoreusWebApi {
       }
       if (!method(request, response, 'PUT')) return
       const body = await readJson(request, 64 * 1024)
-      const value = MemorySchema.parse({ ...asRecord(body), skillName: skill, updatedAt: Date.now() })
+      // Whole-record replace: tombstone replayable notes the caller dropped (workbench ledger delete).
+      const value = withReplacementTombstones(table.get(skill), MemorySchema.parse({ ...asRecord(body), skillName: skill, updatedAt: Date.now() }))
       await table.put(skill, value)
       json(response, 200, { memory: value })
       return
@@ -639,7 +640,7 @@ export class AmphoreusWebApi {
         json(response, 400, { error: zodError(parsed.error) })
         return
       }
-      const memory = await patchSeatMemorySettings(table, skill, Object.fromEntries(Object.entries(parsed.data).filter(([, value]) => value !== undefined)) as Partial<MemorySettings>)
+      const memory = await patchSeatMemorySettings(table, skill, Object.fromEntries(Object.entries(parsed.data).filter(([, value]) => value !== undefined)) as Partial<import('../shared/api.ts').MemorySettings>)
       json(response, 200, { memory, effective: effectiveMemorySettings(this.#config, memory) })
       return
     }

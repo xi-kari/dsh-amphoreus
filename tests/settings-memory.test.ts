@@ -14,7 +14,7 @@ const MEMORY_KEYS = [
   'settings.memoryHeading', 'settings.memoryHint', 'settings.memoryCount', 'settings.memoryInject', 'settings.memoryInjectTip',
   'settings.memoryAutoNote', 'settings.memoryAutoNoteTip', 'settings.memoryInjectLimit', 'settings.memoryEmpty',
   'settings.memoryAuthorSeat', 'settings.memoryAuthorUser', 'settings.memoryAuthorLegacy', 'settings.memoryDelete',
-  'settings.memoryAdd', 'settings.memoryPlaceholder', 'settings.memoryCommandHint',
+  'settings.memoryAdd', 'settings.memoryPlaceholder', 'settings.memoryCommandHint', 'settings.memoryInactive',
 ] as const
 
 test('memory settings keys exist in both dictionaries and key sets stay identical', () => {
@@ -42,6 +42,11 @@ test('memory panel is mounted in the side column after the wallpaper panel and u
   assert.match(mount, /model\.setMemorySettings\(skill, patch\)/)
   assert.match(mount, /config=\{state\.effectiveConfig\.memory\}/)
   assert.match(mount, /memory=\{state\.memory\}/)
+  // Hidden / undeployed seats that own a memory record are still listed (flagged inactive) so overrides stay reachable.
+  assert.match(mount, /state\.memory\.some\(record => record\.skillName === seat\.skillName\)/)
+  assert.match(mount, /inactive: seat\.status !== 'deployed' \|\| seat\.hidden === true/)
+  assert.match(panel, /record\.notes\.length > 0 \|\| record\.settings !== undefined/)
+  assert.match(panel, /settings\.memoryInactive/)
   assert.match(settings, /type SettingsAction = 'reparse'[\s\S]*'derive-force'[\s\S]*'memory'/)
   // File inputs live in the panel component, keeping the visual slice pin intact.
   const visual = settings.indexOf('aria-labelledby="amphoreus-visual"')

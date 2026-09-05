@@ -1,4 +1,4 @@
-import type { AmphoreusState, CustomWallpaperPlacement, DeriveKind, DeriveProgress, GrammarPrefs, MemorySettings } from '../shared/api.ts'
+import type { AmphoreusState, CustomWallpaperPlacement, DeriveKind, DeriveProgress, GrammarPrefs } from '../shared/api.ts'
 
 export interface AmphoreusClientSnapshot {
   readonly phase: 'loading' | 'ready' | 'error'
@@ -224,7 +224,7 @@ export class AmphoreusClientModel {
   }
 
   /** Patch a seat's memory switches (inject / autoNote / injectLimit); omitted keys keep their value. */
-  async setMemorySettings(skill: string, patch: Partial<MemorySettings>): Promise<void> {
+  async setMemorySettings(skill: string, patch: Partial<import('../shared/api.ts').MemorySettings>): Promise<void> {
     const nonce = this.#snapshot.state?.nonce ?? window.__AMPHOREUS_BOOT__?.nonce
     if (nonce === undefined) throw new Error('首帧 nonce 尚未就绪')
     const response = await fetch(`/amphoreus/api/memory/${encodeURIComponent(skill)}/settings`, {

@@ -77,10 +77,54 @@ export function normalizeNoteText(text: string): string {
   return points.length <= SEAT_NOTE_MAX_CHARS ? flat : points.slice(0, SEAT_NOTE_MAX_CHARS).join('')
 }
 
+/** Upper bound of remembered tombstones per seat (oldest dropped first). */
+const MAX_TOMBSTONES = 200
+
+const writeChains = new WeakMap<object, Promise<unknown>>()
+
+/**
+ * Serialize every memory write (observer, web routes, slash command) on one chain per table.
+ * The platform's `put` is an unconditional overwrite, so two "first notes" for the same seat
+ * racing through get→put would silently drop one; inside the chain the existence check and the
+ * following put/update are atomic with respect to every other memory.ts writer.
+ */
+export function enqueueMemoryWrite<T>(table: MemoryTable, job: () => Promise<T>): Promise<T> {
+  const previous = writeChains.get(table) ?? Promise.resolve()
+  const next = previous.then(job, job)
+  writeChains.set(table, next.catch(() => undefined))
+  return next
+}
+
+/** Whether a note can be re-derived from a session log (and therefore needs a tombstone once deleted). */
+function replayable(note: Pick<MemoryNote, 'seq' | 'author'>): boolean {
+  return note.seq !== undefined || note.author === 'seat'
+}
+
+function withTombstone(record: MemoryRecord, ids: readonly string[]): MemoryRecord {
+  if (ids.length === 0) return record
+  const merged = [...(record.deletedNoteIds ?? []).filter(id => !ids.includes(id)), ...ids]
+  return { ...record, deletedNoteIds: merged.slice(-MAX_TOMBSTONES) }
+}
+
+/**
+ * Whole-record replace (legacy PUT route): notes that vanished but could be replayed from a
+ * session log are tombstoned so a restart does not resurrect what the workbench ledger deleted.
+ * Existing tombstones are carried over unless the caller supplied its own list.
+ */
+export function withReplacementTombstones(previous: MemoryRecord | undefined, next: MemoryRecord): MemoryRecord {
+  const kept = new Set(next.notes.map(note => note.id))
+  const removed = (previous?.notes ?? []).filter(note => replayable(note) && !kept.has(note.id)).map(note => note.id)
+  const base = previous?.deletedNoteIds === undefined || next.deletedNoteIds !== undefined
+    ? next
+    : { ...next, deletedNoteIds: previous.deletedNoteIds }
+  return withTombstone(base, removed)
+}
+
 /**
  * Append one note to a seat's memory record (creating the record when absent).
- * Idempotent by note id: a replayed turn or a retried request never duplicates.
- * Returns the stored note, or `undefined` when the text is empty after normalization.
+ * Idempotent by note id: a replayed turn or a retried request never duplicates, and an id the
+ * user deleted (tombstoned) is never re-added. Returns the STORED note for that id, or
+ * `undefined` when the text is empty after normalization or the id is tombstoned.
  */
 export async function appendSeatNote(
   table: MemoryTable,
@@ -98,30 +142,39 @@ export async function appendSeatNote(
     ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }),
     ...(input.seq === undefined ? {} : { seq: input.seq }),
   }
-  const existing = table.get(skillName)
-  if (existing?.notes.some(candidate => candidate.id === note.id)) return existing.notes.find(candidate => candidate.id === note.id)
-  const append = (current: MemoryRecord): MemoryRecord => current.notes.some(candidate => candidate.id === note.id)
-    ? current
-    : { ...current, notes: [...current.notes, note], updatedAt: now }
-  if (existing === undefined) {
-    try {
+  const stored = (record: MemoryRecord | undefined): MemoryNote | undefined => record?.notes.find(candidate => candidate.id === note.id)
+  return enqueueMemoryWrite(table, async () => {
+    const existing = table.get(skillName)
+    if (existing?.deletedNoteIds?.includes(note.id) === true) return undefined
+    const duplicate = stored(existing)
+    if (duplicate !== undefined) return duplicate
+    if (existing === undefined) {
       await table.put(skillName, { skillName, notes: [note], pinnedSessionIds: [], updatedAt: now })
-      return note
-    } catch (error) {
-      // A concurrent writer created the record first: fall through to the atomic update.
-      if (table.get(skillName) === undefined) throw error
+    } else {
+      await table.update(skillName, current => current.notes.some(candidate => candidate.id === note.id)
+        ? current
+        : { ...current, notes: [...current.notes, note], updatedAt: now })
     }
-  }
-  await table.update(skillName, append)
-  return note
+    return stored(table.get(skillName)) ?? note
+  })
 }
 
-/** Remove one note by id; resolves false when the record or the note does not exist. */
+/**
+ * Remove one note by id; resolves false when the record or the note does not exist.
+ * Replayable (seat-authored / seq-keyed) notes leave a tombstone so `ownEvents()` replay on the
+ * next start cannot bring them back.
+ */
 export async function deleteSeatNote(table: MemoryTable, skillName: string, id: string, now: number = Date.now()): Promise<boolean> {
-  const existing = table.get(skillName)
-  if (existing === undefined || !existing.notes.some(note => note.id === id)) return false
-  await table.update(skillName, current => ({ ...current, notes: current.notes.filter(note => note.id !== id), updatedAt: now }))
-  return true
+  return enqueueMemoryWrite(table, async () => {
+    const existing = table.get(skillName)
+    const target = existing?.notes.find(note => note.id === id)
+    if (existing === undefined || target === undefined) return false
+    await table.update(skillName, current => withTombstone(
+      { ...current, notes: current.notes.filter(note => note.id !== id), updatedAt: now },
+      replayable(target) ? [id] : [],
+    ))
+    return true
+  })
 }
 
 /** Merge a partial settings patch into the seat record (creating an otherwise empty record). */
@@ -136,12 +189,14 @@ export async function patchSeatMemorySettings(
     settings: { ...current.settings, ...definedEntries(patch) },
     updatedAt: now,
   })
-  if (table.get(skillName) === undefined) {
-    const created = merge({ skillName, notes: [], pinnedSessionIds: [], updatedAt: now })
-    await table.put(skillName, created)
-    return created
-  }
-  return table.update(skillName, merge)
+  return enqueueMemoryWrite(table, async () => {
+    if (table.get(skillName) === undefined) {
+      const created = merge({ skillName, notes: [], pinnedSessionIds: [], updatedAt: now })
+      await table.put(skillName, created)
+      return created
+    }
+    return table.update(skillName, merge)
+  })
 }
 
 /**
@@ -178,7 +233,10 @@ export function createSeatMemoryReader(options: SeatMemoryOptions): SeatMemoryRe
       if (source !== undefined && source.skillName !== binding.skillName) {
         const sourceRecord = memory().get(source.skillName)
         const sourceSettings = effectiveMemorySettings(options.config, sourceRecord)
-        const sourceNotes = sourceSettings.inject ? (sourceRecord?.notes ?? []).slice(-HANDOFF_NOTE_LIMIT).map(view) : []
+        // The source seat's own switches govern what leaves it: inject off OR injectLimit 0 → nothing crosses.
+        const sourceNotes = sourceSettings.inject && sourceSettings.injectLimit > 0
+          ? (sourceRecord?.notes ?? []).slice(-Math.min(HANDOFF_NOTE_LIMIT, sourceSettings.injectLimit)).map(view)
+          : []
         if (sourceNotes.length > 0) {
           handoff = { sourceDisplayName: displayNameOf(options, source.skillName), notes: sourceNotes }
         }

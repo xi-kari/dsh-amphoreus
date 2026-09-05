@@ -6,6 +6,7 @@ import { test } from 'node:test'
 import type { SuiteResolver } from '../src/host/bridge.ts'
 import { INITIAL_GLOBAL, type AmphoreusStores, type MemoryRecord } from '../src/host/store.ts'
 import { AmphoreusWebApi } from '../src/host/webapi.ts'
+import { appendSeatNote } from '../src/host/memory.ts'
 import { fixtureConfig, fixtureSnapshot } from './fixture-suite.ts'
 
 function memoryTable() {
@@ -134,9 +135,24 @@ test('memory sub-routes append, delete and patch without replacing the record; s
     const freshBody = ((await fresh.json()) as { memory: MemoryRecord }).memory
     assert.deepEqual({ ...freshBody, updatedAt: 0 }, { skillName: 'amphoreus-testcard-b', notes: [], pinnedSessionIds: [], settings: { autoNote: false }, updatedAt: 0 })
 
-    // Legacy full PUT is untouched (still whole-record replace) and state exposes effectiveConfig.memory.
+    // The append route always echoes the STORED note.
+    const echoed = await call(`/${skill}/notes`, 'POST', { text: '回显' })
+    const echoedBody = await echoed.json() as { note: { id: string; text: string }; memory: MemoryRecord }
+    assert.deepEqual(echoedBody.memory.notes.find(note => note.id === echoedBody.note.id), echoedBody.note)
+
+    // Legacy full PUT still replaces the record (64 KiB) but tombstones the replayable (seat/seq) notes it drops,
+    // so the workbench ledger's delete cannot be undone by startup replay. Plain user notes leave no tombstone.
+    const before = table('memory').get(skill) as MemoryRecord
+    assert.ok(before.notes.some(note => note.author === 'seat'))
     const put = await call(`/${skill}`, 'PUT', { notes: [], pinnedSessionIds: [] })
     assert.equal(put.status, 200)
+    const replaced = table('memory').get(skill) as MemoryRecord
+    assert.equal(replaced.notes.length, 0)
+    assert.deepEqual(replaced.deletedNoteIds, before.notes.filter(note => note.author === 'seat').map(note => note.id))
+    assert.deepEqual(((await put.json()) as { memory: MemoryRecord }).memory.deletedNoteIds, replaced.deletedNoteIds)
+    // A tombstoned id can no longer be appended.
+    const tombstoned = replaced.deletedNoteIds![0]!
+    assert.equal(await appendSeatNote(table('memory') as never, skill, { text: '复活？', author: 'seat', id: tombstoned }), undefined)
     assert.equal((table('memory').get(skill) as MemoryRecord).notes.length, 0)
     const state = await fetch(`http://127.0.0.1:${address.port}/amphoreus/api/state`)
     const stateBody = await state.json() as { effectiveConfig: { memory: unknown }; memory: MemoryRecord[] }
