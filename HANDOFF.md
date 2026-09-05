@@ -118,21 +118,30 @@ dsh-amphoreus/
 
 [已失效] **M2** 席位侧栏（`sidebar.workspaces` priority −10，两组：黄金裔席位 / 我的目录，D-E 预绑定建会话）、逐席 token 层与封面切换（切换协议：预加载 → 240ms 淡入 → 再换 token；失败退全局）、`src/host/injector.ts` 一次性注入状态机（session-start 置 pending、首个 pre-step 追加、手敲同名则 skipped）、`observer.ts` 回执/移交行解析、名牌（`conversation.session.header.actions` order −20）、工作台 Tab（iframe 承载 `workbench/`，桥接 `amphoreus:*` + 新增 `amphoreus:theme-tokens`，正文由宿主页 `useConversation` 喂入）。
 
-**M2 当前状态** 工作台以 iframe 承载 `workbench/`，宿主只维护无正文的内存 seq 索引；当前会话正文经 `uiConversation.binding(sessionId).target('chat')` 从浏览器控制器喂入。席位侧栏、逐席 token、技能卡身份与回执观察仍按 D、C、E 章继续建设。
+[已失效] **M2 当前状态** 工作台以 iframe 承载 `workbench/`，宿主只维护无正文的内存 seq 索引；当前会话正文经 `uiConversation.binding(sessionId).target('chat')` 从浏览器控制器喂入。席位侧栏、逐席 token、技能卡身份与回执观察仍按 D、C、E 章继续建设。
 
 **D 章消息更新（2026-09-05 实测）**：`amphoreus:theme-tokens` 已接通 87 个 token 与 light/dark；`amphoreus:seat-changed` 已接通逐席主题；`amphoreus:magazine-mode` 已接通持久档位与原位版式切换。派生素材由宿主安全路由服务，设置区可后台重建并接收 `derive-progress`。
-**M3** 移交坞（`conversation.input.dock` order 20，点击才 fork）、站位轨、台账、评估 native 工作台。
+[已失效] **M3** 移交坞（`conversation.input.dock` order 20，点击才 fork）、站位轨、台账、评估 native 工作台。
 
 ## 6. 注意事项汇总
 
 - 上游 `alpha` dist-tag 已到 alpha.5，本包钉 alpha.4；升级前先跑底账 05 §2 全表。
 - 工艺词防火墙 20 词只进设置区/台账/tooltip，不进气泡与名牌正文（INV-6）。
-- 移交从不自动切换、移交物不自动发送（INV-3）。
+- 未经明确点击，移交从不接受或切换；移交物不自动发送（INV-3）。
 - 缺卡不代演，显示 `common.md` 抽出的缺席标准行（INV-4）。
 - 昔涟席 = 全局层，进入不切壁纸与 token。
 - 素材：用户原图在 `../` 七个子目录（清单 `../设计底账/04`）；套件自带 webp 素材在 `D:\研究\amphoreus-skill-suite\assets\`（cards/layers/symbols/stickers/mag/meeting，英文 id 命名，可直接作 assetsRoot 的一部分）。杂志 zip 解包目录 `%TEMP%\amphoreus-mag\` 可能已丢，需要时按 06 附录重建。
 - `/tmp/refs/dsh-synapse` 克隆可能已丢；所需内容已在 `workbench/` 与 `reference/`。
 - 记忆文件 `C:\Users\cangm\.claude\projects\D--DeepSeek-Harness-deepseek----\memory\` 有工作区布局、构建坑、目标、硬约束、本次构建状态五条。
+
+### 6.1 E 章运行与人工验收（2026-09-05）
+
+- 全量 `326` 个测试中 `325` 通过、`1` 个预期跳过、`0` 失败；真实技能套件防火墙严格解析 `20` 词，服务重启后 L0 的 13 席与两条流水线保持正常。
+- 工作台的「全体会议」chip 已实测进入同一派发面板与泳道；门户「去派发」已实测把输入带到该画布而不直接创建会话。
+- 那刻夏会话头已实测显示「逐火线 5/10」，站位面板可由 Escape 关闭。
+- 同一 open 移交已实测同时显示输入区横条与详情尾页；明确接受后只生成一个白厄 child，不自动发送移交内容，随后尾页与待移交角标消失。
+- 台账已实测随画布活动线程从 `9` 行切到 `1` 行；单条便签新增、刷新、插入草稿、删除，以及连续八条 500 字便签的保序写入与清理均通过。
+- E 章专用 binding 已删除、会话已走官方 archiveSession 隐藏；权威 session 日志目录全部保留，测试便签与草稿已恢复为空。
 
 ## 7 M1 原样接入事后核对记录
 

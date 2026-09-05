@@ -993,7 +993,7 @@
 - 偏离与理由：任务书最小 putMemory 每次从可能滞后的 SSE snapshot 做 RMW，连续八笔会覆盖前笔；实现增加单一串行 Promise 队列，并使用已由服务端 schema 校验的 PUT response 推进下一笔基线。任务书列 index.ts 但同时裁决其不注入 activateChat，当前 owner props 已足够，故核对而不制造无意义改动。
 - 遗留：无。
 ## TE10：20 词防火墙与 E 章文档收尾 — 2026-09-05 08:55
-- commit: PENDING-TASK
+- commit: 7bfbbaa
 - 动手前核对：实际执行任务书 `sed -n '4434,4487p'`；`grep -c canvas-controls workbench/styles.css` 基线=`4`；读取真实 common.md 防火墙行并直接调用旧 parseSuite，确认旧 `lastIndexOf('：')` 因词项「读取：」误取最后冒号，只得到 `17/20` 词 PASS
 - 验收：
   - fixture `node --test tests/suite-parse.test.ts tests/firewall-words.test.ts` → `tests 9; pass 9; fail 0; skipped 0; duration_ms 336.8094` PASS（exit: `0`）
@@ -1013,3 +1013,34 @@
 - 人工断言：✓ 防火墙只豁免可证明的台账、tooltip 与设置表面；✓ 不扫描技能正文或生成产物；✓ 文档只陈述 A–E 已实现事实；✓ 未把运行态 common.md 词表复制进生产 UI。
 - 偏离与理由：任务书假定 parse.ts 已正确提供 20 词，真实验收证明只有 17 词；若不修解析器，静态门会系统性漏扫回执/档位/读取：三词，故本任务连带修复 parser 并补最小回归。任务书只列 locales `*Tip` 豁免，但现有 TD11 的两个档位文案确属设置区；采用两个精确键白名单而非放行整个 settings namespace。
 - 遗留：无。
+## E 章完成定义：派发、移交、站位轨与台账 — 2026-09-05 09:11
+- commit: PENDING-CHAPTER；tag: `chapter-E`
+- 范围：TE1–TE10 共 `10` 项均已有独立提交；因依赖环采用书内允许的 `TE2→TE3→TE1→TE4→…→TE10` 落地顺序，A→B→D→C→E 章节顺序与既有四章标签保持不变。
+- 最终测试与构建：
+  - `node --test tests/*.test.ts` → `tests 326; pass 325; fail 0; skipped 1; duration_ms 2793.9244` PASS（exit: `0`）；唯一 skip 是未设真实套件环境变量时的预期集成门
+  - `npm run build` → derive/client/host=`28.87/205.78/199.59 kB` PASS（exit: `0`）；typecheck、node check、Lightning CSS、`git diff --check` 均 exit `0`
+  - `AMPHOREUS_REAL_SUITE=C:\Users\cangm\.claude\skills node --test tests/firewall-words.test.ts tests/suite-real.test.ts` → `tests 2; pass 2; fail 0` PASS；运行态 suite contracts firewallWords=`20`、cards/seats/pipelines=`13/13/2`
+- E-DoD 机器门：
+  1. 指定 dispatch/observations/observer/firewall/fixture 五测试文件=`5/5`，全量 fail=`0` PASS
+  2. 构建产物 client 消息计数：dispatch/accept-handoff/insert-input/state/enter-seat=`2/2/2/1/2` PASS
+  3. store/webapi：dispatch source+kind=`2`、四扩展字段=`4`、web dispatch=`3` PASS
+  4. observer：registerObserver=`2`、NOTIFY_VERB=`1`、session.append=`0` PASS
+  5. observations route/create/key/safeParse/64KiB/413=`2/2/2/3/4/1` PASS
+  6. shared API 四 effectiveConfig 字段=`4` PASS
+  7. 六个 client 必需文件=`6/6`；dock/rail/uiConversation/order30/seat-actions reuse=`2/2/1/2/1` PASS
+  8. handoff prompt all/dispatch/accept=`1/1/0`，sessions.create=`0` PASS
+  9. mirror/functions/edge refs/app dispatched/bridge dispatched/handoff accepted/all chip=`1/6/4/1/1/1/2` PASS
+  10. x-amphoreus-nonce=`1` PASS
+  11. CSS 指定类 refs=`41`；dispatch-panel/lane/connecting/ledger alias=`29/20/10/21`，四段 dark=`0/0/0/0`；canvas-controls 仍=`4` PASS
+  12. handoff dock 与 pipeline rail CSS 的 hex/rgb=`0/0`、`0/0` PASS
+  13. 重启后 state HTTP=`200`、handoffEnabled=`true`；dispatch records=`3`、store `:0:dispatch` 行=`3`；source binding=`amphoreus-anaxa/dispatch/done`；TE8 accepted handoff 与 child/lineage/binding 均唯一，child dispatch=`0`，stderr=`0` bytes PASS
+  14. fixture 与真实 firewall tests 均 pass，20 词只位于台账、tooltip、两个精确设置键及合同白名单 PASS
+  15. README observation key/enter-seat=`1/1`；HANDOFF input dock/QueueDock=`3/1` PASS
+- 人工三项：
+  - fresh restart 后任一会话工作台点「全体会议」→ dispatch panel/lane/all-active=`1/1/true`；门户直接派发输入 `E-DOD-PORTAL` 后 overlay iframe `2→1`，同一 all 画布 panel/lane=`1/1` 且输入逐字带入，随后已清空，未派发会话 PASS
+  - 那刻夏 header chip=`逐火线 5/10`；点击后 dialog/expanded=`1/true`，按 Escape 后 dialog=`0` PASS
+  - TE8 实机 open handoff 同时出现 composer 横条与 iframe `.connecting-tail`，target=`白厄`、accept/dismiss=`1/1`；接受后 tail/角标=`0/0`、唯一 child 激活且输入为空 PASS
+- 无自动消息证明：被接受 child 的日志含 fork seed；按最后 `session/end-seed` 划定 child 自有后缀后 events=`0`、user/message=`0`、skill-invocation=`0`。任务书直接对整个多帧 fork 文件 grep 会把父会话继承史计入而不等，故以 DSH 的 end-seed 边界核对真正新增事件，结果严格 `0=0` PASS。
+- 恢复状态：Anaxa memory notes=`0`、门户临时文本与宿主草稿均清空；五个 E 章专用 binding 均 DELETE HTTP=`200`，五个专用会话以官方 gateway envelope `client-request → workspace/archiveSession({request})` 得 HTTP=`200/result.ok=true/archivedMatches=1`，对应权威 session 目录仍=`5/5`；首次只发 `{sessionId}` 虽 HTTP 200 但 result.ok=false，未误计成功，随后已用正确 envelope 完成。
+- 偏离与理由：① matcher 书面 11 与唯一词累计实算 13 冲突，按真实三词命中；② alpha.4 blank session 不渲染 conversation.view，portal fallback 保持覆盖层同一 all 画布；③ TE8 修复同步 current-session 竞态；④ fork 日志零消息按 end-seed 自有事件边界判定；其余偏离逐项见 TE1–TE10。
+- 遗留：无。E 章代码、运行态、浏览器与恢复门全部闭合；下一章为 F 发布包装、独立路径验收与实际发布。
