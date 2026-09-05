@@ -1,6 +1,7 @@
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import { useRef, useState, useSyncExternalStore } from 'react'
+import { useRef, useState, useSyncExternalStore, type CSSProperties } from 'react'
 import { GrammarPanel } from './grammar-panel.tsx'
+import { seatColorOf } from './seat-model.ts'
 import type { AmphoreusClientModel } from './state.ts'
 import css from './settings.module.css'
 
@@ -107,7 +108,7 @@ export function AmphoreusSettings({ model, t }: AmphoreusSettingsProps) {
             </div>
             <ol className={css.cardList}>
               {(suite?.cards ?? []).map((card, index) => (
-                <li key={card.name} className={css.cardRow}>
+                <li key={card.name} className={css.cardRow} style={{ '--amph-seat-accent': seatColorOf(card.name).accent } as CSSProperties}>
                   <span className={css.ordinal}>{String(card.ordinal ?? index + 1).padStart(2, '0')}</span>
                   <span className={css.cardIdentity}>
                     <strong>{card.displayName}</strong>

@@ -13,20 +13,28 @@
   position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 20px 28px;
+  gap: 16px 28px;
+  align-items: center;
   overflow: hidden;
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 8px 8px 2px 2px;
-  background: var(--dsw-alias-bg-layer-1);
-  padding: clamp(24px, 4vw, 42px);
+  border: 0;
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
+  background: transparent;
+  padding: 6px 4px 22px;
 }
 
 .hero::before {
   position: absolute;
-  inset: 0 auto 0 0;
-  width: 3px;
-  background: var(--dsw-alias-brand-primary);
-  content: "";
+  right: -6px;
+  top: -18px;
+  color: var(--dsw-alias-brand-primary);
+  font-family: var(--amphoreus-font-display);
+  font-size: 112px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -.04em;
+  opacity: .07;
+  pointer-events: none;
+  content: "δ";
 }
 
 .heroCopy { min-width: 0; }
@@ -145,18 +153,17 @@
 .metrics {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(180px, 1.6fr);
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-top: 0;
-  background: var(--dsw-alias-bg-layer-2);
+  gap: 10px;
+  margin-top: 16px;
 }
 
 .metric {
   min-width: 0;
-  border-right: 1px solid var(--dsw-alias-border-l1);
-  padding: 15px 18px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: var(--amph-radius-sm, 8px);
+  background: var(--dsw-alias-bg-layer-1);
+  padding: 13px 16px;
 }
-
-.metric:last-child { border-right: 0; }
 .metric span { display: block; margin-bottom: 6px; color: var(--dsw-alias-label-caption); font-size: 10px; letter-spacing: .05em; }
 .metric strong { display: block; overflow: hidden; font-size: 18px; font-weight: 620; text-overflow: ellipsis; white-space: nowrap; }
 .mono { font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; font-size: 12px !important; font-weight: 500 !important; }
@@ -173,8 +180,8 @@
 .sideColumn { display: flex; flex-direction: column; gap: 16px; }
 
 .panel {
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 6px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: var(--amph-radius, 10px);
   background: var(--dsw-alias-bg-layer-1);
 }
 
@@ -191,18 +198,34 @@
 .sectionHeading p { margin: 5px 0 0; color: var(--dsw-alias-label-tertiary); font-size: 11px; line-height: 1.5; }
 .index { color: var(--dsw-alias-label-caption); font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; font-size: 10px; letter-spacing: .1em; white-space: nowrap; }
 
-.cardList { margin: 0; padding: 0; list-style: none; }
-.cardRow {
+.cardList {
   display: grid;
-  grid-template-columns: 32px minmax(140px, .7fr) minmax(180px, 1.3fr) auto;
-  align-items: center;
-  gap: 10px 14px;
-  min-height: 56px;
-  border-bottom: 1px solid var(--dsw-alias-border-l1);
-  padding: 9px 16px;
-  transition: background-color 150ms ease-out;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 14px;
+  list-style: none;
 }
-.cardRow:last-child { border-bottom: 0; }
+.cardRow {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas: "ordinal identity" "duties duties" "policy policy";
+  align-content: start;
+  gap: 6px 8px;
+  min-height: 108px;
+  border: 1px solid color-mix(in srgb, var(--amph-seat-accent, var(--dsw-alias-brand-primary)) 30%, var(--dsw-alias-border-l1));
+  border-top: 3px solid var(--amph-seat-accent, var(--dsw-alias-brand-primary));
+  border-radius: var(--amph-radius-sm, 8px);
+  background: color-mix(in srgb, var(--amph-seat-accent, var(--dsw-alias-brand-primary)) 6%, var(--dsw-alias-bg-layer-2));
+  padding: 10px 12px 12px;
+  transition: transform 160ms ease-out, box-shadow 160ms ease-out;
+}
+.cardRow:hover { transform: translateY(-1px); box-shadow: 0 6px 18px color-mix(in srgb, var(--amph-seat-accent, var(--dsw-alias-brand-primary)) 18%, transparent); }
+.cardRow .ordinal { grid-area: ordinal; }
+.cardRow .cardIdentity { grid-area: identity; }
+.cardRow .duties { grid-area: duties; }
+.cardRow .policy, .cardRow .warning { grid-area: policy; justify-self: start; }
 .cardRow:hover { background: var(--dsw-alias-interactive-bg-hover); }
 .ordinal { color: var(--dsw-alias-label-caption); font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; font-size: 10px; }
 .cardIdentity { min-width: 0; }
