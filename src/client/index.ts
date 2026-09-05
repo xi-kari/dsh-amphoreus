@@ -43,6 +43,11 @@ import { heroVisualById } from '../shared/heroes.ts'
 // @anchor client-imports
 import { createSuiteNoticeStore, safeSessionStorage } from './suite-notice-store.ts'
 import { SuiteNoticeBanner, type SuiteNoticeInjected } from './suite-notice.tsx'
+import { createSeatCommandSource } from './seat-command.ts'
+import { installSeatHotkeys } from './seat-hotkeys.ts'
+import type { SeatView } from './seat-model.ts'
+import { createSeatStartGuard } from './seat-start-guard.ts'
+import { orderedHotkeySeats } from './seat-switch.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -250,6 +255,48 @@ export function apply(ctx: ClientContext): void {
     archivedSessionIds: () => ctx.workspaces.list.getSnapshot().archivedSessionIds,
   })
   ctx.effect(() => () => suiteNotice.dispose(), 'amphoreus: suite notice')
+  // seat-switch: begin
+  // Seat switching (Alt+digit hotkeys + `/seat <name>`): same landing as the sidebar — chat view of the latest bound session, or a fresh seat session.
+  const currentSeatViews = (): SeatView[] => seatViewsFrom(
+    model.getSnapshot(),
+    sessionsFace.list.getSnapshot() as unknown as Parameters<typeof seatViewsFrom>[1],
+    ctx.workspaces.list.getSnapshot(),
+  )
+  // Stays busy until the snapshot shows the new session, so hotkey / `/seat` presses cannot double-start a seat.
+  const seatStartGuard = createSeatStartGuard({
+    hasSession: skillName => currentSeatViews().some(view => view.skillName === skillName && view.sessionIds.length > 0),
+  })
+  const enterSeatView = async (view: SeatView): Promise<void> => {
+    const latest = view.sessionIds[0]
+    if (latest !== undefined) {
+      await openBoundSeatSession(latest, view.skillName, false)
+      openDirectSession(latest)
+      return
+    }
+    await seatStartGuard.run(view.skillName, async () => {
+      const created = await startSeatSession(seatDeps, view.skillName, { open: false })
+      openDirectSession(created)
+    })
+  }
+  ctx.effect(() => installSeatHotkeys({
+    target: window,
+    seats: () => orderedHotkeySeats(currentSeatViews()),
+    enter: enterSeatView,
+    togglePortal: portal.toggle,
+    isBusy: seatStartGuard.isBusy,
+    onError: error => { console.warn('[dsh-amphoreus] seat hotkey:', error) },
+  }), 'amphoreus: seat hotkeys')
+  // Degrade, don't gate: a profile without the slash pipeline still boots the plugin, only `/seat` is absent.
+  ctx.inject(['inputTriggers'], scope => {
+    scope.effect(() => scope.inputTriggers.registerSource(createSeatCommandSource({
+      seats: currentSeatViews,
+      cards: () => model.getSnapshot().state?.suite?.cards ?? [],
+      enter: enterSeatView,
+      openPortal: portal.open,
+      t,
+    })), 'amphoreus: /seat')
+  })
+  // seat-switch: end
   const bootWorkbench = window.__AMPHOREUS_BOOT__?.workbench
   const workbenchEnabled = bootWorkbench?.enabled ?? true
   ctx.effect(async () => {
