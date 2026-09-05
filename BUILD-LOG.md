@@ -949,7 +949,7 @@
 - 偏离与理由：任务书示例仅按 skill 判定当前站，会把三月七/长夜月这类同 skill 双面席错配；实现按 binding face 精确匹配，旧无 face 记录仍按首站兼容。增加提交时热状态重验与同步锁，避免配置刷新后向已撤站位派发或同 tick 双提交。
 - 遗留：无。
 ## TE8：「接通中」尾页与 iframe 移交闭环 — 2026-09-05 08:23
-- commit: PENDING-TASK
+- commit: f56902e
 - 动手前核对：实际执行任务书 `sed -n '4296,4345p'` 并继续读至 TE8 末尾；同时以源码核实 `sessions.open()` 经 manager `notifyNow()` 可同步推 current-session，确认原 TE3 的 open-before-reply 会使 iframe 来不及设置目标相机标记 PASS
 - 验收：
   - 聚焦 `node --test tests/workbench-connecting-tail.test.ts tests/client-handoff.test.ts tests/client-handoff-dock.test.ts tests/workbench-bridge.test.ts tests/workbench-handoff-edge.test.ts tests/client-pipeline-rail.test.ts` → `tests 50; pass 50; fail 0; skipped 0; duration_ms 349.1884` PASS（exit: `0`）
@@ -969,4 +969,26 @@
   - 服务重启后 PID `80176`、HTTP=`200`、stderr=`0` bytes；独立只读审查未发现 actionable finding PASS
 - 人工断言：✓ 尾页不自动接受/播放/发送；✓ 按钮固定移交/忽略；✓ 不显示档位与读取；✓ 贴纸失败走确定首字；✓ 接受后的打开权交回 iframe，最终仍使用官方 sessions.open 路径。
 - 偏离与理由：任务书示例假设 TE3 已打开 child 后再设置 mapCardSessionSwitches，但平台 `sessions.open()` 可同步推送 current-session，实测时序有竞态；因此给 `acceptHandoff` 增加默认兼容的 open option，bridge 只做 durable fork/binding/observation 并先回执，iframe 完成索引/相机准备后再激活。另把任务书未覆盖的 Dock/iframe 跨入口重复操作收口为共享同步锁。
+- 遗留：无。
+## TE9：侧栏台账、席位记忆与插入草稿 — 2026-09-05 08:38
+- commit: PENDING-TASK
+- 动手前核对：实际执行任务书 `sed -n '4349,4433p'`、指定 `grep -n "draft" .../contract/input.ts | head`，并继续 `sed -n '315,330p'` 定位当前 `InputState.draft`；确认 conversation.view owner 自动提供 useInput/inputActions，`InputActions.setDraft` 是正确的未发送草稿写入口 PASS
+- 验收：
+  - 聚焦 `node --test tests/workbench-ledger.test.ts tests/workbench-bridge.test.ts tests/webapi-body-limits.test.ts` → `tests 12; pass 12; fail 0; skipped 0; duration_ms 354.7493` PASS（exit: `0`）
+  - `node --check workbench/app.js`、`npm run typecheck` → 无诊断 PASS（各 exit: `0`）；Lightning CSS → `LIGHTNINGCSS_OK=76223` PASS（exit: `0`）
+  - `npm run build` → derive/client/host=`28.87/205.78/199.46 kB` PASS（exit: `0`）
+  - 全量 `node --test tests/*.test.ts` → `tests 325; pass 324; fail 0; skipped 1; duration_ms 2898.7465` PASS（exit: `0`）；`git diff --check` → 无空白错误 PASS（exit: `0`）
+  - 选中语义 → ledger 先取 `state.activeId` 所属 thread，仅无活动线程才退 currentDshThread；具体席使用 seatId 归属记忆，全体会议使用所选 session binding；单测排除 currentDsh 错串 PASS
+  - 记录 → 同 session observations 按 seq 升序，正文逐字使用 rawLine、title 使用 payload，五类标签只位于 renderLedger；无状态/侧栏收起不渲染；details toggle 写回 ledgerOpen，重渲染保持展开 PASS
+  - 记忆 RMW → 全局 Promise 写队列逐笔在执行时读取最新 memory，PUT 响应立即推进本地真值，失败链被解毒而后续仍可写；单测 8 笔并发入队的 notes 长度严格 `1,2,3,4,5,6,7,8` PASS
+  - bridge → `amphoreus:insert-input` 只接收非空字符串；WorkbenchView 由 owner props 读取当前 draft，空草稿直接写、非空以换行追加，再 rememberTab、openView(chat)、completeViewRequest；无 prompt/submit/自动发送，index.ts 的 uiConversation 注入仍唯一 PASS
+  - CSS → ledger begin/end=`1/1`、marker 内 alias refs=`21`、dark selector=`0`，没有重复 `.sidebar` 基础规则；全文件 `canvas-controls=4` 不变 PASS
+  - 工艺词局部性 → `grep -c 回执 workbench/app.js=1`，renderLedger 函数段同样=`1`；app.js 拼接固定回执模板 `卡｜读取：｜档位：=0` PASS
+  - 真实那刻夏源会话 → 侧栏 `details.ledger`、summary=`台账 9`；运行态记录含派发/回执/移交，回执行正文逐字为 observation.rawLine、title 精确为 payload；选择另一卡后 ledger 行数即时从 `9→1`，证明跟随 activeId PASS
+  - 添加「先看 README」→ memory GET=`200`，唯一 note text 逐字一致且含当前 sessionId；整页刷新后仍显示该便签；确认删除后 notes=`0` PASS
+  - 点击便签 `↳` → 宿主从工作台切到对话 Tab，输入框草稿=`先看 README`，源会话真实用户消息仍=`5`、last user seq=`13904`，没有发送；随后已清空草稿 PASS
+  - 同一真实 form 连续入队 `8` 条各 `500` 字便签 → 捕获 PUT status=`200×8`，DOM notes=`8` 且每条 code points=`500`、顺序 `TE9-0..7`；再同 tick 点 8 个删除按钮 → status=`200×8`、DOM/API notes=`0`，测试数据全部清理 PASS
+  - 服务 PID `67432`、HTTP=`200`、stderr=`0` bytes；独立只读审查未发现 actionable finding PASS
+- 人工断言：✓ 台账不写 localStorage；✓ 便签不自动 prompt/发送；✓ runtime rawLine 是回执行唯一来源；✓ state.amph=null、无 skill、空记录均可降级；✓ memory 最终恢复为开工前空状态。
+- 偏离与理由：任务书最小 putMemory 每次从可能滞后的 SSE snapshot 做 RMW，连续八笔会覆盖前笔；实现增加单一串行 Promise 队列，并使用已由服务端 schema 校验的 PUT response 推进下一笔基线。任务书列 index.ts 但同时裁决其不注入 activateChat，当前 owner props 已足够，故核对而不制造无意义改动。
 - 遗留：无。

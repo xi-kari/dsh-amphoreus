@@ -155,6 +155,7 @@ export interface WorkbenchBridgeDeps {
   readonly theme?: ThemeBridge
   readonly magazine?: MagazineBridge
   readonly openChat?: (focus: string) => void
+  readonly insertInput?: (text: string) => void
 }
 
 export interface WorkbenchBridgeHandlers {
@@ -190,6 +191,7 @@ export function useWorkbenchBridge(
     theme,
     magazine,
     openChat,
+    insertInput,
   } = deps
   const revisionRef = useRef(0)
   const pushMessagesRef = useRef<() => void>(() => {})
@@ -200,8 +202,10 @@ export function useWorkbenchBridge(
   const deferredActivationsRef = useRef(new Set<string>())
   const handlersRef = useRef(handlers)
   const openChatRef = useRef(openChat)
+  const insertInputRef = useRef(insertInput)
   handlersRef.current = handlers
   openChatRef.current = openChat
+  insertInputRef.current = insertInput
 
   const reply = useCallback((payload: object): void => {
     frameRef.current?.contentWindow?.postMessage({ source: 'dsh-amphoreus', ...payload }, window.location.origin)
@@ -470,6 +474,11 @@ export function useWorkbenchBridge(
             case 'amphoreus:request-config':
               pushConfig()
               return
+            case 'amphoreus:insert-input':
+              if (typeof data.text !== 'string' || data.text === '') throw new Error('缺少插入文本')
+              if (insertInputRef.current === undefined) throw new Error('当前视图没有输入框')
+              insertInputRef.current(data.text)
+              return
             case 'amphoreus:dispatch': {
               if (typeof data.skillName !== 'string' || data.skillName.trim() === '') {
                 throw new Error('缺少派发席位')
@@ -661,11 +670,14 @@ export function WorkbenchView({
   seatDeps,
   enterSeatQueue,
   openPortal,
+  useInput,
+  inputActions,
   openView,
   completeViewRequest,
   viewRequest,
 }: WorkbenchViewProps) {
   const frameRef = useRef<HTMLIFrameElement>(null)
+  const draft = useInput(state => state.draft)
 
   useEffect(() => {
     rememberTab(localStorage, WORKBENCH_VIEW_ID)
@@ -685,6 +697,12 @@ export function WorkbenchView({
     openView('chat', 'amphoreus:close')
     completeViewRequest()
   }, [completeViewRequest, openView])
+  const insertInput = useCallback((text: string): void => {
+    inputActions.setDraft(draft.trim() === '' ? text : [draft, text].join('\n'))
+    rememberTab(localStorage, 'chat')
+    openView('chat', 'amphoreus:insert-input')
+    completeViewRequest()
+  }, [completeViewRequest, draft, inputActions, openView])
   const { onFrameLoad } = useWorkbenchBridge(frameRef, {
     sessions,
     model,
@@ -698,6 +716,7 @@ export function WorkbenchView({
     theme,
     magazine,
     openChat,
+    insertInput,
   }, {
     ...(openPortal === undefined ? {} : { onOpenPortal: openPortal }),
     onClose: closeWorkbench,

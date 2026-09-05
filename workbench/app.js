@@ -85,7 +85,7 @@ const VIEWPORT_MARGIN = 1400
 const state = {
   index: new Map(), indexRevision: 0, indexRequest: 0, eventSource: null, persistenceHydrated: false, bootstrapped: false, mapOpenPending: false, workspace: null, activeId: null, selectedCardId: null, mode: BOOT_MODE === 'portal' ? 'portal' : 'canvas', zoom: 1, currentDsh: null, currentSessionId: null, tabEntered: false, tabEntryKey: null, sidebarCollapsed: false,
   // Seat portal: hero seats from the host (chronicle art, palette, folder).
-  seats: [], sessionsById: new Map(), assetsConfigured: false, seatId: BOOT_MODE === 'portal' ? null : restoredSeatId, cardFlightPending: false, cardTextLimit: WORKBENCH_CONFIG.cardTextLimit, magazineMode: 'light', amph: null, dispatch: { text: '', suggestions: [], pending: false, lastError: '' }, dispatchLaneCollapsed: false,
+  seats: [], sessionsById: new Map(), assetsConfigured: false, seatId: BOOT_MODE === 'portal' ? null : restoredSeatId, cardFlightPending: false, cardTextLimit: WORKBENCH_CONFIG.cardTextLimit, magazineMode: 'light', amph: null, dispatch: { text: '', suggestions: [], pending: false, lastError: '' }, dispatchLaneCollapsed: false, ledgerOpen: false,
   unprojectable: new Map(),
   historyBySession: new Map(), historyRevisionBySession: new Map(), historyCompleteBySession: new Map(), pendingReplies: new Map(), pendingRpc: new Map(), liveReplies: new Map(),
   draft: null, error: '', branchAnchors: new Map(), cardPositions: new Map(), legacyPositionKeys: new Set(), collapsedCardIds: new Set(), quickPhrases: [...DEFAULT_QUICK_PHRASES], quickPhraseEditorOpen: false,
@@ -234,6 +234,29 @@ function persistQuickPhrases() {
   const operation = quickPhraseSaveChain.then(() => api('/amphoreus/api/prefs', { method: 'PUT', body: JSON.stringify({ quickPhrases }) }))
   quickPhraseSaveChain = operation.catch(setError)
   return quickPhraseSaveChain
+}
+
+let memoryWriteChain = Promise.resolve()
+function putMemory(skill, mutate) {
+  const operation = memoryWriteChain.then(async () => {
+    const current = state.amph?.memory.find(memory => memory.skillName === skill)
+      ?? { skillName: skill, notes: [], pinnedSessionIds: [], updatedAt: 0 }
+    const next = mutate({ ...current, notes: [...current.notes] })
+    const result = await api(`/amphoreus/api/memory/${encodeURIComponent(skill)}`, {
+      method: 'PUT',
+      body: JSON.stringify(next),
+    })
+    if (typeof result.memory !== 'object' || result.memory === null) throw new Error('席位记忆响应无效')
+    if (state.amph !== null) {
+      state.amph.memory = [
+        ...state.amph.memory.filter(memory => memory.skillName !== skill),
+        result.memory,
+      ]
+    }
+    return result.memory
+  })
+  memoryWriteChain = operation.catch(() => {})
+  return operation
 }
 
 function rememberCardPosition(cardId, position, aliases = []) {
@@ -2073,6 +2096,36 @@ function renderThreadTree(threads, seat) {
   }).join('')
 }
 
+function renderLedger() {
+  if (state.amph === null || state.sidebarCollapsed) return ''
+  const thread = state.workspace?.threads.find(candidate => candidate.id === state.activeId) ?? currentDshThread()
+  const sessionId = thread?.dshSessionId ?? state.currentDsh?.id ?? null
+  const skill = state.seatId?.startsWith('seat:')
+    ? state.seats.find(seat => seat.heroId === state.seatId.slice(5))?.skillName
+    : sessionId === null ? undefined : state.amph.bindings.find(binding => binding.sessionId === sessionId)?.skillName
+  const rows = sessionId === null
+    ? []
+    : state.amph.observations.filter(observation => observation.sessionId === sessionId).sort((left, right) => left.seq - right.seq)
+  const memory = skill === undefined ? undefined : state.amph.memory.find(candidate => candidate.skillName === skill)
+  const label = { receipt: '回执', absence: '缺席', notify: '知会', handoff: '移交', dispatch: '派发' }
+  return `<details class="ledger" ${state.ledgerOpen ? 'open' : ''} data-ledger>
+    <summary>台账${rows.length === 0 ? '' : `<span class="ledger-count">${rows.length}</span>`}</summary>
+    <section class="ledger-section" aria-label="记录">
+      ${rows.length === 0 ? '<p class="tree-empty">本会话暂无记录</p>' : rows.map(observation => `<div class="ledger-row ledger-${observation.kind}">
+        <span class="ledger-kind">${label[observation.kind]}</span>
+        <span class="ledger-body" title="${escapeHtml(observation.payload ?? '')}">${escapeHtml(observation.rawLine)}</span>
+        <span class="ledger-status">${observation.status === 'open' ? '待处理' : observation.status === 'accepted' ? (observation.kind === 'handoff' ? '已移交' : '') : '已忽略'}</span>
+        <button type="button" class="ledger-insert" data-action="ledger-insert" data-text="${escapeHtml(observation.payload ?? observation.rawLine)}" title="插入到输入框">↳</button>
+      </div>`).join('')}
+    </section>
+    ${skill === undefined ? '' : `<section class="ledger-section" aria-label="席位记忆">
+      <h4>席位记忆 <small>${escapeHtml(state.amph.cards.find(card => card.name === skill)?.displayName ?? skill)}</small></h4>
+      ${(memory?.notes ?? []).map(note => `<div class="ledger-note" data-note="${escapeHtml(note.id)}"><span>${escapeHtml(note.text)}</span><button type="button" data-action="ledger-insert" data-text="${escapeHtml(note.text)}" title="插入到输入框">↳</button><button type="button" data-action="ledger-delete-note" data-note="${escapeHtml(note.id)}" data-skill="${escapeHtml(skill)}" title="删除">×</button></div>`).join('') || '<p class="tree-empty">还没有便签</p>'}
+      <form class="ledger-add" data-ledger-add data-skill="${escapeHtml(skill)}" data-session="${escapeHtml(sessionId ?? '')}"><input maxlength="500" placeholder="记一条便签…"><button type="submit">添加</button></form>
+    </section>`}
+  </details>`
+}
+
 function render() {
   disconnectDispatchLaneEdges()
   // Remember the departing thread's scroll position per thread id, so
@@ -2131,7 +2184,7 @@ function render() {
   const unprojectableList = orphanUnprojectable.length === 0 ? '' :
     `<div class="sidebar-heading"><span>不可投影</span></div><ul class="unprojectable-list">${orphanUnprojectable.map(item => `<li title="${escapeHtml(item.reason)}"><span>${escapeHtml(item.title ?? item.sessionId)}</span><i>${escapeHtml(item.reason)}</i></li>`).join('')}</ul>`
   const mainStageStyle = `--seat-stage-art:${seat?.cardUrl ? `url("${seat.cardUrl}")` : 'none'};--amphoreus-motif-url:${motifUrlForSeat(seat, document.documentElement.dataset.theme === 'dark')};--amphoreus-seat-accent:${seat?.accent ?? 'var(--dsw-alias-brand-primary)'};--amphoreus-seat-accent2:${seat?.accent2 ?? 'var(--dsw-alias-brand-primary)'}`
-  app.innerHTML = `<main class="synapse-shell ${state.sidebarCollapsed ? 'sidebar-collapsed' : ''} magazine-${state.magazineMode}"><aside class="sidebar"><div class="sidebar-brand-row">${seatBrand}<button class="sidebar-toggle" type="button" data-action="toggle-sidebar" aria-label="${state.sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}" title="${state.sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.75" y="1.75" width="12.5" height="12.5" rx="2.25"/><path d="M6 2v12"/></svg></button></div><button class="back-portal" type="button" data-action="${portalAction}"><svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5 5.5 8 10 12.5"/></svg><span>全部角色</span></button>${seatCardSlot}<button class="new-workspace" type="button" data-action="create-session" ${state.draft !== null ? 'disabled' : ''}><svg class="new-session-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.25"/><path d="M8 4.75v6.5M4.75 8h6.5"/></svg><span>新会话</span></button><div class="sidebar-heading"><span>会话</span></div><nav class="thread-tree">${renderThreadTree(threads, seat)}</nav>${unprojectableList}</aside><header class="topbar">${canvasControls}</header><section class="main-stage" style="${escapeHtml(mainStageStyle)}">${state.error ? `<div class="status-message" role="alert"><span>${escapeHtml(state.error)}</span><button data-action="dismiss-error" aria-label="关闭" title="关闭">×</button></div>` : ''}${canvasTabs}${renderDispatchPanel()}${view}${selectionFollowupButton()}</section></main>`
+  app.innerHTML = `<main class="synapse-shell ${state.sidebarCollapsed ? 'sidebar-collapsed' : ''} magazine-${state.magazineMode}"><aside class="sidebar"><div class="sidebar-brand-row">${seatBrand}<button class="sidebar-toggle" type="button" data-action="toggle-sidebar" aria-label="${state.sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}" title="${state.sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.75" y="1.75" width="12.5" height="12.5" rx="2.25"/><path d="M6 2v12"/></svg></button></div><button class="back-portal" type="button" data-action="${portalAction}"><svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5 5.5 8 10 12.5"/></svg><span>全部角色</span></button>${seatCardSlot}<button class="new-workspace" type="button" data-action="create-session" ${state.draft !== null ? 'disabled' : ''}><svg class="new-session-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.25"/><path d="M8 4.75v6.5M4.75 8h6.5"/></svg><span>新会话</span></button><div class="sidebar-heading"><span>会话</span></div><nav class="thread-tree">${renderThreadTree(threads, seat)}</nav>${unprojectableList}${renderLedger()}</aside><header class="topbar">${canvasControls}</header><section class="main-stage" style="${escapeHtml(mainStageStyle)}">${state.error ? `<div class="status-message" role="alert"><span>${escapeHtml(state.error)}</span><button data-action="dismiss-error" aria-label="关闭" title="关闭">×</button></div>` : ''}${canvasTabs}${renderDispatchPanel()}${view}${selectionFollowupButton()}</section></main>`
   installDragging()
   cacheCardConnectors()
   installDispatchLaneEdges()
@@ -2450,6 +2503,10 @@ app.addEventListener('pointerdown', event => {
 })
 app.addEventListener('pointerup', queueSelectionFollowup)
 app.addEventListener('scroll', hideSelectionFollowup, true)
+app.addEventListener('toggle', event => {
+  const details = event.target
+  if (details instanceof HTMLDetailsElement && details.matches('[data-ledger]')) state.ledgerOpen = details.open
+}, true)
 document.addEventListener('selectionchange', queueSelectionFollowup)
 document.addEventListener('keydown', event => {
   if (event.key === 'Escape' && BOOT_MODE === 'portal') {
@@ -2590,6 +2647,23 @@ app.addEventListener('click', async event => {
       if (heroId !== null) await enterSeat(`seat:${heroId}`)
       return
     }
+    if (button.dataset.action === 'ledger-insert') {
+      if (typeof button.dataset.text !== 'string' || button.dataset.text === '') throw new Error('没有可插入的文本')
+      post('amphoreus:insert-input', { text: button.dataset.text })
+      return
+    }
+    if (button.dataset.action === 'ledger-delete-note') {
+      const skill = button.dataset.skill
+      const noteId = button.dataset.note
+      if (typeof skill !== 'string' || skill === '' || typeof noteId !== 'string' || noteId === '') throw new Error('便签标识无效')
+      if (!window.confirm('删除这条便签？')) return
+      await putMemory(skill, memory => ({
+        ...memory,
+        notes: memory.notes.filter(note => note.id !== noteId),
+      }))
+      render()
+      return
+    }
     if (button.dataset.action === 'accept-handoff' || button.dataset.action === 'dismiss-handoff') {
       const sessionId = button.dataset.session
       const seq = optionalSafeInteger(button.dataset.seq)
@@ -2720,6 +2794,26 @@ app.addEventListener('input', event => {
 app.addEventListener('submit', event => {
   const form = event.target
   if (!(form instanceof HTMLFormElement)) return
+  if (form.matches('[data-ledger-add]')) {
+    event.preventDefault()
+    const skill = form.dataset.skill
+    const sessionId = form.dataset.session
+    const input = form.querySelector('input')
+    const text = input instanceof HTMLInputElement ? input.value.trim() : ''
+    if (typeof skill !== 'string' || skill === '') return setError('席位记忆不可用')
+    if (text === '') return
+    input.value = ''
+    void putMemory(skill, memory => ({
+      ...memory,
+      notes: [...memory.notes, {
+        id: crypto.randomUUID(),
+        text,
+        createdAt: Date.now(),
+        ...(typeof sessionId === 'string' && sessionId !== '' ? { sessionId } : {}),
+      }],
+    })).then(() => render()).catch(setError)
+    return
+  }
   if (form.matches('[data-portal-dispatch]')) {
     event.preventDefault()
     const input = form.querySelector('input')

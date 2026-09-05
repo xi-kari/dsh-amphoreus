@@ -145,7 +145,7 @@ test('shared hook retains full replay, strict source checks, dual current subscr
   assert.ok(requestCurrent.indexOf('pushState()') < requestCurrent.indexOf('pushCurrent()'))
 })
 
-test('different-target open remembers chat before navigation and Workbench keeps two direct chat openings', () => {
+test('different-target open remembers chat before navigation and Workbench keeps three direct chat openings', () => {
   const openCase = bridgeSource.slice(
     bridgeSource.indexOf("case 'amphoreus:open-session'"),
     bridgeSource.indexOf("case 'amphoreus:activate-session'"),
@@ -154,8 +154,30 @@ test('different-target open remembers chat before navigation and Workbench keeps
   const compare = openCase.indexOf('targetId === sessions.list.getSnapshot().current')
   const open = openCase.indexOf('sessions.open(targetId)')
   assert.ok(remember >= 0 && remember < compare && compare < open)
-  assert.equal((bridgeSource.match(/openView\('chat'/g) ?? []).length, 2)
+  assert.equal((bridgeSource.match(/openView\('chat'/g) ?? []).length, 3)
   assert.match(openCase, /handlersRef\.current\.onOpened\?\.\(\)/)
+})
+
+test('TE9 insert-input uses conversation owner props, appends the draft, and opens chat without submitting', () => {
+  const insertCase = bridgeSource.slice(
+    bridgeSource.indexOf("case 'amphoreus:insert-input'"),
+    bridgeSource.indexOf("case 'amphoreus:dispatch'"),
+  )
+  assert.match(insertCase, /typeof data\.text !== 'string' \|\| data\.text === ''/u)
+  assert.match(insertCase, /insertInputRef\.current === undefined/u)
+  assert.match(insertCase, /insertInputRef\.current\(data\.text\)/u)
+  assert.doesNotMatch(insertCase, /\.prompt\(|submit\(/u)
+
+  const view = bridgeSource.slice(bridgeSource.indexOf('export function WorkbenchView'))
+  assert.match(view, /useInput,\s*inputActions,/u)
+  assert.match(view, /const draft = useInput\(state => state\.draft\)/u)
+  assert.match(view, /inputActions\.setDraft\(draft\.trim\(\) === '' \? text : \[draft, text\]\.join\('\\n'\)\)/u)
+  assert.match(view, /rememberTab\(localStorage, 'chat'\)/u)
+  assert.match(view, /openView\('chat', 'amphoreus:insert-input'\)/u)
+  assert.match(view, /completeViewRequest\(\)/u)
+  assert.match(view, /insertInput,/u)
+  assert.doesNotMatch(bridgeSource, /activateChat|switchToChat/u)
+  assert.equal(clientSource.match(/'uiConversation'/gu)?.length, 1)
 })
 
 test('TC4 no-open create flow and the temporary optional portal seam stay explicit', () => {
