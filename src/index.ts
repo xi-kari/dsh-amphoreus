@@ -17,6 +17,11 @@ import { AmphoreusWebApi } from './host/webapi.ts'
 import { ProjectionIndex, type ProjectableEvent, type ProjectableSession } from './host/workbench.ts'
 import type { WorkbenchStatus } from './shared/api.ts'
 // @anchor host-imports
+/** Effective assets root: the runtime pref chosen in the setup wizard wins over cordis.patch.yml. */
+function effectiveAssetsRoot(config: AmphoreusConfig, stores: AmphoreusStores | undefined): string {
+  const saved = stores?.main.global.get().prefs.assetsRoot ?? ''
+  return saved.trim() !== '' ? saved.trim() : config.assetsRoot.trim()
+}
 
 export { Config }
 export type { AmphoreusConfig }
@@ -193,6 +198,7 @@ export function apply(ctx: Context, config: AmphoreusConfig): void {
           assetsCacheDir: join(dataDir, 'assets-cache'),
           dataDir,
           // @anchor webapi-construct
+          assetsRoot: () => effectiveAssetsRoot(config, stores),
           workbenchStatus: () => workbenchStatus,
           ...(workbench === undefined ? {} : { workbench }),
           ...(seatDirs === undefined ? {} : { seatDirs: seatDirs.dirs }),
@@ -213,6 +219,7 @@ export function apply(ctx: Context, config: AmphoreusConfig): void {
       current: () => bridge.resolver.current(),
       wallpaperIndex: randomInt(6),
       derivedWallpaper: index => webApi?.derivedWallpaperUrl(index) ?? null,
+      assetsRoot: () => effectiveAssetsRoot(config, stores),
     })
     await bridge.start()
     const disposeObserver = stores === undefined

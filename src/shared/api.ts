@@ -239,10 +239,56 @@ export interface AmphoreusState {
     readonly dispatchHints: boolean
     readonly pipelinesEnabled: boolean
     // @anchor effective-config-type-fields
+    /** True when no assets root is effective or nothing has been derived yet (drives the first-run wizard). */
+    readonly setupNeeded: boolean
   }
 }
 
 // @anchor shared-types
+/** Status of one known asset file (path is relative to the assets root; never file contents). */
+export interface AssetsCheckItem {
+  readonly key: string
+  readonly path: string
+  readonly status: 'ok' | 'missing' | 'large' | 'optional-missing'
+}
+
+/** Image count of one home-wallpaper folder (`count` is -1 when the folder is absent). */
+export interface AssetsCheckHomeFolder {
+  readonly owner: string
+  readonly path: string
+  readonly count: number
+}
+
+/** Host self-check of an assets root: inventory statuses plus a compact summary. */
+export interface AssetsCheckReport {
+  readonly root: string
+  readonly canonical?: string
+  /** True when the root is a usable directory and every required file is present. */
+  readonly ok: boolean
+  /** Set only when the root itself is unusable (missing, not a directory, overlaps the cache). */
+  readonly error?: string
+  readonly required: readonly AssetsCheckItem[]
+  readonly optional: readonly AssetsCheckItem[]
+  readonly home: readonly AssetsCheckHomeFolder[]
+  readonly summary: {
+    readonly requiredOk: number
+    readonly requiredTotal: number
+    readonly optionalOk: number
+    readonly optionalTotal: number
+    readonly large: number
+    readonly homePopulated: number
+    readonly homeTotal: number
+  }
+  readonly checkedAt: number
+}
+
+/** Setup-wizard additions to the assets status (interface merge keeps the base declaration untouched). */
+export interface AmphoreusAssetsStatus {
+  /** Where the effective root comes from: plugin prefs win over cordis.patch.yml; 'none' when empty. */
+  readonly rootSource: 'none' | 'config' | 'prefs'
+  /** Self-check of the effective root (computed at preparation and refreshed when the root changes). */
+  readonly check?: AssetsCheckReport
+}
 
 declare global {
   interface Window {

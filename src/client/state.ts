@@ -1,4 +1,4 @@
-import type { AmphoreusState, CustomWallpaperPlacement, DeriveKind, DeriveProgress, GrammarPrefs } from '../shared/api.ts'
+import type { AmphoreusState, AssetsCheckReport, CustomWallpaperPlacement, DeriveKind, DeriveProgress, GrammarPrefs } from '../shared/api.ts'
 
 export interface AmphoreusClientSnapshot {
   readonly phase: 'loading' | 'ready' | 'error'
@@ -197,6 +197,56 @@ export class AmphoreusClientModel {
   }
 
   // @anchor client-model-methods
+
+  /** Host self-check of a candidate assets folder (or of the effective root when omitted). */
+  async checkAssets(root?: string): Promise<AssetsCheckReport> {
+    const nonce = this.#snapshot.state?.nonce ?? window.__AMPHOREUS_BOOT__?.nonce
+    if (nonce === undefined) throw new Error('首帧 nonce 尚未就绪')
+    const response = await fetch('/amphoreus/api/assets/check', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json', 'x-amphoreus-nonce': nonce },
+      body: JSON.stringify(root === undefined || root.trim() === '' ? {} : { root: root.trim() }),
+    })
+    if (!response.ok) {
+      const detail = await response.json().catch(() => undefined) as { error?: string } | undefined
+      throw new Error(detail?.error ?? `素材自检失败（HTTP ${response.status}）`)
+    }
+    const body = await response.json() as { report: AssetsCheckReport }
+    if (root === undefined || root.trim() === '') await this.refresh()
+    return body.report
+  }
+
+  /** Persist the runtime assets root (null drops the override back to cordis.patch.yml); refreshes state afterwards. */
+  async setAssetsRoot(root: string | null): Promise<void> {
+    const nonce = this.#snapshot.state?.nonce ?? window.__AMPHOREUS_BOOT__?.nonce
+    if (nonce === undefined) throw new Error('首帧 nonce 尚未就绪')
+    const response = await fetch('/amphoreus/api/assets/root', {
+      method: 'PUT',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json', 'x-amphoreus-nonce': nonce },
+      body: JSON.stringify({ root: root === null ? null : root.trim() }),
+    })
+    if (!response.ok) {
+      const detail = await response.json().catch(() => undefined) as { error?: string } | undefined
+      throw new Error(detail?.error ?? `素材目录保存失败（HTTP ${response.status}）`)
+    }
+    await this.refresh()
+  }
+
+  /** Remember that the first-run wizard was dismissed (it never auto-opens again). */
+  async dismissSetup(): Promise<void> {
+    const nonce = this.#snapshot.state?.nonce ?? window.__AMPHOREUS_BOOT__?.nonce
+    if (nonce === undefined) throw new Error('首帧 nonce 尚未就绪')
+    const response = await fetch('/amphoreus/api/prefs', {
+      method: 'PUT',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json', 'x-amphoreus-nonce': nonce },
+      body: JSON.stringify({ setupDismissedAt: Date.now() }),
+    })
+    if (!response.ok) throw new Error(`向导状态保存失败（HTTP ${response.status}）`)
+    await this.refresh()
+  }
 
   close(): void {
     this.#closed = true

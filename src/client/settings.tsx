@@ -2,6 +2,8 @@ import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots
 import { useRef, useState, useSyncExternalStore, type CSSProperties } from 'react'
 import { GrammarPanel } from './grammar-panel.tsx'
 import { WallpaperPanel } from './wallpaper-panel.tsx'
+import { SetupPanel } from './setup-panel.tsx'
+import type { SetupStore } from './setup-store.ts'
 import { seatColorOf } from './seat-model.ts'
 import type { AmphoreusClientModel } from './state.ts'
 import css from './settings.module.css'
@@ -9,6 +11,8 @@ import css from './settings.module.css'
 export interface AmphoreusSettingsInjected {
   readonly model: AmphoreusClientModel
   // @anchor settings-injected
+  /** Setup wizard store (open from the assets panel); optional so older hosts render without it. */
+  readonly setup?: SetupStore
 }
 
 export type AmphoreusSettingsProps = PropsRuntime<'settings.section'> & PropsLocale<'amphoreus'> & AmphoreusSettingsInjected
@@ -16,7 +20,7 @@ export type AmphoreusSettingsProps = PropsRuntime<'settings.section'> & PropsLoc
 type SettingsAction = 'reparse' | 'magazine-light' | 'magazine-full' | 'magazine-reset' | 'derive' | 'derive-force' | 'grammar' | 'wallpaper'
 // @anchor settings-actions
 
-export function AmphoreusSettings({ model, t }: AmphoreusSettingsProps) {
+export function AmphoreusSettings({ model, t, setup }: AmphoreusSettingsProps) {
   const snapshot = useSyncExternalStore(model.subscribe, model.getSnapshot)
   const [actionError, setActionError] = useState<string>()
   const [activeAction, setActiveAction] = useState<SettingsAction>()
@@ -198,6 +202,14 @@ export function AmphoreusSettings({ model, t }: AmphoreusSettingsProps) {
             onPlacement={(heroId, patch) => { void run('wallpaper', () => model.setCustomWallpaperPlacement(heroId, patch)) }}
           />
           {/* @anchor settings-panels */}
+          <SetupPanel
+            assets={state.assets}
+            busy={busy}
+            t={t}
+            onOpenWizard={() => setup?.open('root')}
+            onRecheck={async () => { await model.checkAssets() }}
+            onResetRoot={() => model.setAssetsRoot(null)}
+          />
 
           <section className={css.panel} aria-labelledby="amphoreus-workbench">
             <div className={css.sectionHeading}><h2 id="amphoreus-workbench">{t('settings.workbenchHeading')}</h2></div>

@@ -41,6 +41,8 @@ import { createWorkspacesSource } from './workspaces-source.ts'
 import { currentOrdinaryWorkspace, orphanSeatWorkspacePath, syncWorkspaceSession, waitForReadySnapshot } from './workspace-routing.ts'
 import { heroVisualById } from '../shared/heroes.ts'
 // @anchor client-imports
+import { createSetupStore, watchSetupAutoOpen } from './setup-store.ts'
+import { registerSetupOverlay, type SetupWizardInjected } from './setup-wizard.tsx'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -295,6 +297,7 @@ export function apply(ctx: ClientContext): void {
     inject: () => ({
       model,
       // @anchor settings-inject
+      setup,
     }),
   }, AmphoreusSettings))
   ctx.slots.inject('sidebar.workspaces', () => ctx.slots.register({
@@ -385,6 +388,12 @@ export function apply(ctx: ClientContext): void {
     }),
   }, PortalOverlay),
   // @anchor shell-overlay-entries
+  registerSetupOverlay(ctx.slots, (): SetupWizardInjected => ({
+    setup,
+    model,
+    pickDirectory: () => ctx.uiWorkspace.pickDirectory(),
+    listDirectory: path => ctx.uiWorkspace.listDirectory(path),
+  })),
   ])
 
   if (workbenchEnabled) {
@@ -415,6 +424,9 @@ export function apply(ctx: ClientContext): void {
     }, WorkbenchView))
   }
   // @anchor client-slots
+  // Setup wizard store: declared after the overlay/settings registrations that close over it (inject factories run at render, never during apply).
+  const setup = createSetupStore()
+  ctx.effect(() => watchSetupAutoOpen(model, setup), 'amphoreus: setup wizard auto-open')
   ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({
     name: 'conversation.input.dock',
     id: 'amphoreus-handoff',

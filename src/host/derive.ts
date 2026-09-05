@@ -16,6 +16,7 @@ import type { DeriveKind, DeriveProgress } from '../shared/api.ts'
 import { listZip, readZipEntry } from './zip.ts'
 
 export type { DeriveKind, DeriveProgress } from '../shared/api.ts'
+export { ASSETS_LARGE_BYTES, assetsInventory, checkAssets, summarizeAssetsCheck, type AssetsCheckOptions, type AssetsCheckReport, type AssetsCheckItem, type AssetsCheckHomeFolder } from './assets-check.ts'
 
 export interface DeriveOptions {
   readonly assetsRoot: string
