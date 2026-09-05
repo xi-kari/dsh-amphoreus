@@ -1121,7 +1121,7 @@
 - 偏离与理由：无。
 - 遗留：远程尚未创建，故 `gh run` 的 Ubuntu/Windows 实际结论留 TF12 创建仓库并 push 后回填；若 Windows Node 24 暴露 glob 问题，按任务书只修 test script 并保留 Windows job。
 ## TF6：README 发布态、完整配置与外置素材说明 — 2026-09-05 09:21
-- commit: PENDING-TASK
+- commit: 916cd5b
 - 动手前核对：实际执行任务书 `sed -n '4768,4856p'`、`grep -n '^## ' README.md` 与 `sed -n '1,140p' src/host/config.ts`；确认原 README 十个二级节、A/B/D/E 锁定字面、当前全部 23 个顶层配置键及其嵌套默认值 PASS
 - 验收：
   - 任务书 README grep → headings=`14`、四锁定标题=`4`、workbench host=`1`、骨架阶段=`0`、SYNAPSE license=`1`、正文不经宿主路由=`1`、素材标题=`1`、observation key/enter-seat=`1/1` PASS
@@ -1138,3 +1138,19 @@
 - 人工断言：✓ 保留 client-assembly 锁定的席位/目录五语义与 M3 完成行；✓ 不把配置预留项写成可用命令；✓ 不夹带截图或原素材；✓ 显示名与职责继续以运行时技能套件为准。
 - 偏离与理由：任务书配置 keys-ok 示例只列 16 个名字，而实际 config.ts 有 23 个顶层键；按“以当时 config.ts 为准”扩大到全部顶层与嵌套叶键。端到端清单链接按任务书先写入，目标文件由 TF10 创建，静检将它与四张故意缺席截图列为预期缺失。
 - 遗留：GitHub 安装方式仍须 TF12 实测；失败时按任务书删除该方式并记录 HANDOFF。其余无。
+## TF7：外置素材清单自检 — 2026-09-05 09:31
+- commit: PENDING-TASK
+- 动手前核对：实际执行任务书 `sed -n '4857,4883p'`，并逐项读取 heroes.ts 的五个导出与 webapi 四目录命名；确认 required=`6+13×4=58`、optional=`13+1+12+2+4=32`，package files 不含 check-assets PASS
+- 验收：
+  - 无参数 `node scripts/check-assets.mjs` → `Usage: node scripts/check-assets.mjs "<assetsRoot>"`、exit=`2` PASS
+  - `npm run assets:check -- "D:/DeepSeek Harness/deepseek插件开发"` 末行 → `assets: required 58/58 ok, optional 32/32 ok, large 5` PASS（exit: `0`）
+  - 实盘逐行结果 missing/optional-missing=`0/0`，required large=`5`；large 文件仍计入 required ok，没有被误判为缺失 PASS
+  - 受界空目录 → `assets: required 0/58 ok, optional 0/32 ok, large 0`、missing/optional-missing=`58/32`、exit=`1`；目录随后以非递归空目录删除，`EMPTY_CLEANED=true` PASS
+  - 清单严格来自 `GLOBAL_WALLPAPERS`、13 个 `HERO_VISUALS.assets`、BRAND/CHIMERA/TRAILBLAZER 导出；物理多余日历/表情/金卡不凭目录扫描计入合同 PASS
+  - 存在但不是普通文件按 missing 处理；ENOENT/ENOTDIR 分为 required/optional missing，其他 stat 错误整理为 `assets: <message>` 并 exit `1`；显示路径统一 `/` PASS
+  - `node --check scripts/check-assets.mjs` PASS；写盘 API 命中=`0`，只使用 stat；manifest files 包含 check-assets=`false`，`npm run verify:dist` → `verify-dist: OK 377 checks` PASS
+  - 全量 `npm test` → `tests 326; pass 325; fail 0; skipped 1; duration_ms 3040.4853` PASS（exit: `0`）
+  - `npm run build` → derive/client/host=`28.87/205.78/199.59 kB` PASS（exit: `0`）；`git diff --check` PASS（exit: `0`）
+- 人工断言：✓ 不下载、复制、重采样或写结果；✓ 只输出状态与汇总；✓ 不把仓库开发辅助脚本塞入 npm 包。
+- 偏离与理由：无。
+- 遗留：无。
