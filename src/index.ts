@@ -17,6 +17,7 @@ import { AmphoreusWebApi } from './host/webapi.ts'
 import { ProjectionIndex, type ProjectableEvent, type ProjectableSession } from './host/workbench.ts'
 import type { WorkbenchStatus } from './shared/api.ts'
 // @anchor host-imports
+import { registerSeatPermission } from './host/seat-permission.ts'
 
 export { Config }
 export type { AmphoreusConfig }
@@ -219,10 +220,12 @@ export function apply(ctx: Context, config: AmphoreusConfig): void {
       ? () => Promise.resolve()
       : registerObserver(ctx, { config, stores, resolver: bridge.resolver })
     // @anchor host-register
+    const disposeSeatPermission = stores === undefined ? () => {} : registerSeatPermission(ctx, { stores })
     startColdReplay()
     return async () => {
       await disposeObserver()
       // @anchor host-dispose
+      disposeSeatPermission()
       disposeFirstFrame()
       disposeSeatPrompt()
       disposeInjector()

@@ -155,3 +155,28 @@ function seat(skillName: string, displayName: string, at: number): SeatRecord {
     lastSeenAt: at,
   }
 }
+
+test('seat preset: schema accepts the three optional tiers, rejects malformed ones, and stays optional for legacy records', () => {
+  const base = seat('amphoreus-testcard-a', '甲', 1)
+  assert.equal(SeatSchema.safeParse(base).success, true)
+  assert.equal(SeatSchema.safeParse({ ...base, preset: {} }).success, true)
+  assert.equal(SeatSchema.safeParse({ ...base, preset: { agentPreset: 'standard' } }).success, true)
+  assert.equal(SeatSchema.safeParse({ ...base, preset: { model: { provider: 'deepseek', model: 'deepseek-chat', reasoningEffort: 'high' } } }).success, true)
+  assert.equal(SeatSchema.safeParse({ ...base, preset: { permission: 'read-only' } }).success, true)
+  assert.equal(SeatSchema.safeParse({ ...base, preset: { agentPreset: 'Bad Preset' } }).success, false)
+  assert.equal(SeatSchema.safeParse({ ...base, preset: { agentPreset: '-leading' } }).success, false)
+  assert.equal(SeatSchema.safeParse({ ...base, preset: { model: { provider: 'deepseek' } } }).success, false)
+  assert.equal(SeatSchema.safeParse({ ...base, preset: { permission: 7 } }).success, false)
+  assert.equal(SeatSchema.safeParse({ ...base, preset: null }).success, false)
+})
+
+test('seat preset: reconciliation preserves the preset like the other user-owned fields', () => {
+  const original = planSeatReconciliation(suite(['amphoreus-testcard-a', 'amphoreus-testcard-b']), [], INITIAL_GLOBAL, 100)
+  const preset = { agentPreset: 'standard', model: { provider: 'deepseek', model: 'deepseek-chat' }, permission: 'workspace-write' }
+  const existing = original.puts.map(put => [put.key, put.key === 'amphoreus-testcard-a' ? { ...put.value, preset } : put.value] as const)
+  const unchanged = planSeatReconciliation(suite(['amphoreus-testcard-a', 'amphoreus-testcard-b']), existing, original.global, 100)
+  assert.equal(unchanged.puts.length, 0, 'a preserved preset is not a change')
+  const next = planSeatReconciliation(suite(['amphoreus-testcard-a']), existing, original.global, 200)
+  assert.deepEqual(next.puts.find(put => put.key === 'amphoreus-testcard-a')?.value.preset, preset)
+  assert.equal(Object.hasOwn(next.puts.find(put => put.key === 'amphoreus-testcard-b')!.value, 'preset'), false)
+})

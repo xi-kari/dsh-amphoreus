@@ -16,6 +16,8 @@ export type AmphoreusSettingsProps = PropsRuntime<'settings.section'> & PropsLoc
 
 type SettingsAction = 'reparse' | 'magazine-light' | 'magazine-full' | 'magazine-reset' | 'derive' | 'derive-force' | 'grammar' | 'wallpaper' | 'scheme-export' | 'scheme-import'
 // @anchor settings-actions
+// Seat preset panel (import kept beside its action so the pinned header above stays untouched; ESM hoists it).
+import { SeatPresetPanel } from './seat-preset-panel.tsx'
 
 export function AmphoreusSettings({ model, t }: AmphoreusSettingsProps) {
   const snapshot = useSyncExternalStore(model.subscribe, model.getSnapshot)
@@ -207,6 +209,14 @@ export function AmphoreusSettings({ model, t }: AmphoreusSettingsProps) {
             t={t}
             onExport={() => { void run('scheme-export', () => model.exportVisualScheme()) }}
             onImport={file => { void run('scheme-import', () => model.importVisualScheme(file)) }}
+          />
+          <SeatPresetPanel
+            seats={state.seats}
+            seatNames={new Map(state.seats.map(seat => [seat.skillName, seat.userDisplayName ?? suite?.cards.find(card => card.name === seat.skillName)?.displayName ?? seat.displayName]))}
+            directory={model.presetDirectory}
+            busy={busy}
+            t={t}
+            onSave={(skillName, preset) => model.setSeatPreset(skillName, preset)}
           />
 
           <section className={css.panel} aria-labelledby="amphoreus-workbench">

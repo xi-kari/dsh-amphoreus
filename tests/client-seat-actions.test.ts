@@ -420,3 +420,62 @@ test('workbench and client injection use only the shared skillName seat-session 
   const admittedSend = app.indexOf("dshRpc('amphoreus:send-message'", deferredActivation)
   assert.ok(bridgeReply < deferredActivation && deferredActivation < admittedSend)
 })
+
+test('seat preset: applySeatPreset runs after create (and workspace sync) and before open, receiving the new id and seat', async () => {
+  const order: string[] = []
+  let applied: { sessionId: string; skillName: string } | undefined
+  const fixture = deps({
+    ensureSeatWorkspace: async () => 'workspace-seat',
+    ensureSessionWorkspace: async () => { order.push('sync') },
+    sessions: {
+      create: async options => { order.push('create'); return options.sessionId! },
+      open: id => { order.push('open'); assert.equal(id, applied?.sessionId) },
+    },
+    applySeatPreset: async (sessionId, skillName) => {
+      order.push('preset')
+      applied = { sessionId, skillName }
+    },
+  })
+  const id = await withFetch(async (_input, init) => { order.push(String(init?.method)); return ok() }, () => startSeatSession(fixture, SKILL))
+  assert.deepEqual(order, ['PUT', 'create', 'sync', 'preset', 'open'])
+  assert.deepEqual(applied, { sessionId: id, skillName: SKILL })
+})
+
+test('seat preset: a failing applySeatPreset is only warned, keeps the binding, and still opens', async () => {
+  const order: string[] = []
+  const warnings: unknown[] = []
+  const originalWarn = console.warn
+  console.warn = (...args: unknown[]) => { warnings.push(args[0]) }
+  try {
+    const fixture = deps({
+      sessions: {
+        create: async options => { order.push('create'); return options.sessionId! },
+        open: () => { order.push('open') },
+      },
+      applySeatPreset: async () => { throw new Error('locked') },
+    })
+    const id = await withFetch(async (_input, init) => { order.push(String(init?.method)); return ok() }, () => startSeatSession(fixture, SKILL))
+    assert.match(id, SESSION_ID)
+    assert.deepEqual(order, ['PUT', 'create', 'open'])
+    assert.equal(warnings.length, 1)
+    assert.match(String(warnings[0]), /amphoreus seat preset \(amphoreus-aglaea\) not applied: locked/u)
+  } finally {
+    console.warn = originalWarn
+  }
+})
+
+test('seat preset: the step is skipped entirely when the dependency is absent', async () => {
+  const order: string[] = []
+  await withFetch(async () => ok(), () => startSeatSession(deps({
+    sessions: { create: async options => { order.push('create'); return options.sessionId! }, open: () => { order.push('open') } },
+  }), SKILL))
+  assert.deepEqual(order, ['create', 'open'])
+  const source = readFileSync(new URL('../src/client/seat-actions.ts', import.meta.url), 'utf8')
+  const start = source.indexOf('if (workspaceId !== undefined) await deps.ensureSessionWorkspace')
+  const apply = source.indexOf('await deps.applySeatPreset(sessionId, skillName)', start)
+  const open = source.indexOf('if (options.open !== false) deps.sessions.open(sessionId)', apply)
+  assert.ok(start >= 0 && start < apply && apply < open, 'apply sits between workspace sync and open')
+  const index = readFileSync(new URL('../src/client/index.ts', import.meta.url), 'utf8')
+  assert.match(index, /seatDeps\.applySeatPreset = \(sessionId, skillName\) => seatPresetApplier\.apply\(sessionId, skillName\)/u)
+  assert.ok(index.indexOf('const seatDeps: HandoffDeps = {') < index.indexOf('seatDeps.applySeatPreset ='))
+})

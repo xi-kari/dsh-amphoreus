@@ -48,6 +48,7 @@ import { installSeatHotkeys } from './seat-hotkeys.ts'
 import type { SeatView } from './seat-model.ts'
 import { createSeatStartGuard } from './seat-start-guard.ts'
 import { orderedHotkeySeats } from './seat-switch.ts'
+import { createSeatPresetApplier, parseDefaultModelUser } from './seat-preset-apply.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -162,6 +163,46 @@ export function apply(ctx: ClientContext): void {
       binding: sessionId => sessionsFace.binding(sessionId),
     },
   }
+  // Seat presets: three independent tiers landed on a fresh blank seat session
+  // (agent preset / model / permission-on-host). Optional remote faces attach
+  // through inject scopes so a deployment without them degrades to "default".
+  const seatPresetApplier = createSeatPresetApplier({
+    presetOf: skillName => model.getSnapshot().state?.seats.find(seat => seat.skillName === skillName)?.preset,
+    selectModel: request => ctx.remote.session.selectModel({
+      sessionId: request.sessionId as SessionId,
+      provider: request.provider,
+      model: request.model,
+      ...(request.reasoningEffort === undefined ? {} : { reasoningEffort: request.reasoningEffort }),
+    }),
+    modelCatalog: () => ctx.remote.session.modelCatalog(),
+  })
+  seatDeps.applySeatPreset = (sessionId, skillName) => seatPresetApplier.apply(sessionId, skillName)
+  model.presetDirectory = seatPresetApplier
+  ctx.inject(['remote.agentPresets'], scope => {
+    scope.effect(() => seatPresetApplier.attach({
+      selectAgentPreset: (sessionId, agentPreset) => scope.remote.agentPresets.select(sessionId as SessionId, agentPreset),
+      listAgentPresets: () => scope.remote.agentPresets.list(),
+    }), 'amphoreus: seat preset roster')
+  })
+  ctx.inject(['remote.settings'], scope => {
+    scope.effect(() => seatPresetApplier.attach({
+      // selectModel also rewrites this namespace (core/agent-default-model saveSelection → settings.replace).
+      // Read the raw user layer + revision around the select and write the prior section back revision-checked.
+      describeDefaultModel: async () => {
+        const described = await scope.remote.settings.describe()
+        if (!described.ok) return described
+        const view = described.value.namespaces.find(namespace => namespace.ns === 'agent-default-model')
+        return { ok: true, value: view === undefined ? undefined : { user: parseDefaultModelUser(view.user), revision: view.revision } }
+      },
+      restoreDefaultModel: (section, expectedRevision) => scope.remote.settings.replace('agent-default-model', {
+        ...(section === undefined ? {} : {
+          provider: section.provider,
+          model: section.model,
+          ...(section.reasoningEffort === undefined ? {} : { reasoningEffort: section.reasoningEffort }),
+        }),
+      }, expectedRevision),
+    }), 'amphoreus: seat preset default-model restore')
+  })
   type SessionFeed = Exclude<ReturnType<WorkbenchViewInjected['sessionFace']>, undefined>
   const sessionAdapter = ctx.sessions as unknown as {
     binding(id: SessionId): { session: SessionFeed } | undefined

@@ -197,6 +197,26 @@ export class AmphoreusClientModel {
   }
 
   // @anchor client-model-methods
+  /** Store (or clear with `null`) one seat's default tiers; refreshes state afterwards. */
+  async setSeatPreset(skillName: string, preset: import('../shared/seat-preset.ts').SeatPreset | null): Promise<void> {
+    const nonce = this.#snapshot.state?.nonce ?? window.__AMPHOREUS_BOOT__?.nonce
+    if (nonce === undefined) throw new Error('首帧 nonce 尚未就绪')
+    const response = await fetch(`/amphoreus/api/seats/${encodeURIComponent(skillName)}/preset`, {
+      method: 'PUT',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json', 'x-amphoreus-nonce': nonce },
+      body: JSON.stringify(preset),
+    })
+    if (!response.ok) throw new Error(`席位预设保存失败（HTTP ${response.status}）`)
+    await this.refresh()
+  }
+
+  /** Seat preset directory (agent roster / model catalog); the assembly swaps in the live applier so the pinned settings props stay untouched. */
+  presetDirectory: import('./seat-preset-apply.ts').SeatPresetDirectory = {
+    listAgentPresets: async () => [],
+    modelCatalog: async () => undefined,
+    canRestoreDefaultModel: () => false,
+  }
 
   /**
    * Download the stored visual prefs (magazine mode, grammar, wallpaper placements) as a JSON file.

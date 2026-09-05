@@ -54,6 +54,13 @@ export interface SeatActionDeps {
     create(options: { workspaceId?: string; cwd?: string; sessionId?: string }): Promise<string>
     open(id: string): void
   }
+  /**
+   * Seat preset tiers (agent preset / model / permission) applied to the freshly
+   * created, still-blank session. Runs after create + workspace sync and BEFORE
+   * open so callers that prompt immediately (dispatch) see the preset land first.
+   * Mutable so the assembly can attach it after the pinned `seatDeps` literal.
+   */
+  applySeatPreset?: (sessionId: string, skillName: string) => Promise<void>
 }
 
 interface BindingBody {
@@ -133,6 +140,14 @@ export async function startSeatSession(
     if (created !== sessionId) throw new Error(`宿主返回了不同的会话 id（${created}）`)
     createdSession = true
     if (workspaceId !== undefined) await deps.ensureSessionWorkspace?.(sessionId, workspaceId)
+    if (deps.applySeatPreset !== undefined) {
+      // A preset that fails to land must not lose the session or its binding.
+      try {
+        await deps.applySeatPreset(sessionId, skillName)
+      } catch (error) {
+        console.warn(`amphoreus seat preset (${skillName}) not applied: ${error instanceof Error ? error.message : String(error)}`)
+      }
+    }
     if (options.open !== false) deps.sessions.open(sessionId)
   } catch (error) {
     if (!createdSession) await deleteBinding(deps, sessionId).catch(() => undefined)

@@ -26,6 +26,12 @@ export const SeatSchema = z.object({
   userDisplayName: z.string().optional(),
   hidden: z.boolean().optional(),
   // @anchor seat-fields
+  /** Seat-level defaults applied to every NEW seat session (three independent platform tiers). */
+  preset: z.object({
+    agentPreset: z.string().regex(/^[a-z0-9][a-z0-9-]*$/u).optional(),
+    model: z.object({ provider: z.string(), model: z.string(), reasoningEffort: z.string().optional() }).optional(),
+    permission: z.string().optional(),
+  }).optional(),
 })
 
 export const BindingSchema = z.object({
