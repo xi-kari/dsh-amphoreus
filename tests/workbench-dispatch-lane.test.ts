@@ -29,6 +29,37 @@ test('dispatch lane tolerates a null amph state and renders only for the all wor
   assert.match(lane(), /<small>0 次派发<\/small>/u)
 })
 
+test('archived dispatches and handoff targets disappear without dropping pending live dispatches', () => {
+  const state = {
+    archivedSessionIds: new Set(['archived']),
+    amph: { observations: [
+      { kind: 'dispatch', sessionId: 'archived', parsedAt: 3 },
+      { kind: 'dispatch', sessionId: 'pending', parsedAt: 2 },
+      { kind: 'dispatch', sessionId: 'active', parsedAt: 1 },
+      { kind: 'handoff', sessionId: 'active', status: 'accepted', acceptedSessionId: 'archived' },
+      { kind: 'handoff', sessionId: 'archived', status: 'accepted', acceptedSessionId: 'downstream' },
+      { kind: 'handoff', sessionId: 'archived', status: 'open', seq: 5 },
+    ] },
+  }
+  const context = { state, globalThis: {} as Record<string, unknown> }
+  context.globalThis = context
+  vm.createContext(context)
+  vm.runInContext(`${functionSource('dispatchRecords')}\n${functionSource('handoffChain')}\n${functionSource('openHandoffOf')}\nglobalThis.records = dispatchRecords; globalThis.chain = handoffChain; globalThis.openHandoff = openHandoffOf`, context)
+  const records = context.globalThis.records as () => { sessionId: string }[]
+  const chain = context.globalThis.chain as (sessionId: string) => string[]
+  const openHandoff = context.globalThis.openHandoff as (sessionId: string) => unknown
+
+  assert.deepEqual([...records()].map(record => record.sessionId), ['pending', 'active'])
+  assert.deepEqual([...chain('active')], ['active'])
+  assert.deepEqual([...chain('archived')], [])
+  assert.equal(openHandoff('archived'), undefined)
+
+  state.archivedSessionIds.clear()
+  assert.deepEqual([...records()].map(record => record.sessionId), ['archived', 'pending', 'active'])
+  assert.deepEqual([...chain('active')], ['active', 'archived', 'downstream'])
+  assert.notEqual(openHandoff('archived'), undefined)
+})
+
 test('dispatch status has exactly the three public words and never exposes the forbidden process word', () => {
   const state = {
     amph: { observations: [] as { kind: string; sessionId: string }[] },

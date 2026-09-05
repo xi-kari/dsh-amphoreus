@@ -5,6 +5,7 @@ import {
   orphanSeatWorkspacePath,
   sameWorkspacePath,
   syncWorkspaceSession,
+  unboundSeatWorkspaces,
   waitForReadySnapshot,
   withoutSeatWorkspaces,
   workspacePathKey,
@@ -41,6 +42,40 @@ test('seat Workspace filtering preserves a case-distinct POSIX Workspace', () =>
     withoutSeatWorkspaces(rows, ['/srv/Seats/Anaxa']).map(item => item.workspaceId),
     ['ordinary-case-distinct', 'ordinary'],
   )
+})
+
+test('native unbound seat sessions remain manageable without duplicating bound or archived sessions', () => {
+  const seat = { ...workspace('seat', 'D:\\Roles\\Castorice\\', ['blank', 'nonblank', 'bound', 'archived', 'missing']), title: 'Castorice' }
+  const ordinary = { ...workspace('ordinary', 'D:/project', ['plain']), title: 'Project' }
+  const rows = [seat, ordinary]
+  const bound = new Set(['bound'])
+  const archived = new Set(['archived'])
+  const available = ['blank', 'nonblank', 'bound', 'archived', 'plain']
+
+  const result = unboundSeatWorkspaces(rows, ['d:/roles/castorice'], bound, archived, available)
+  assert.deepEqual(result, [{ ...seat, sessionIds: ['blank', 'nonblank'] }])
+  assert.notEqual(result[0], seat)
+  assert.deepEqual(seat.sessionIds, ['blank', 'nonblank', 'bound', 'archived', 'missing'])
+  assert.deepEqual([...bound], ['bound'])
+
+  archived.add('blank')
+  assert.deepEqual(unboundSeatWorkspaces(rows, ['d:/roles/castorice'], bound, archived, available)[0]?.sessionIds, ['nonblank'])
+  bound.add('nonblank')
+  assert.deepEqual(unboundSeatWorkspaces(rows, ['d:/roles/castorice'], bound, archived, available), [])
+})
+
+test('unbound seat recovery requires an exact configured directory and never absorbs ordinary directories', () => {
+  const rows = [
+    workspace('seat', '/srv/Seats/Anaxa', ['internal']),
+    workspace('different-case', '/srv/seats/anaxa', ['case-distinct']),
+    workspace('child-directory', '/srv/Seats/Anaxa/project', ['child']),
+    workspace('empty-seat', '/srv/Seats/Cyrene', []),
+  ]
+  const available = new Set(['internal', 'case-distinct', 'child'])
+  assert.deepEqual(unboundSeatWorkspaces(rows, ['/srv/Seats/Anaxa', '/srv/Seats/Cyrene'], [], [], available), [rows[0]])
+  assert.deepEqual(unboundSeatWorkspaces(rows, [], [], [], available), [])
+  assert.deepEqual(unboundSeatWorkspaces(rows, ['/srv/Seats/Anaxa'], [], [], []), [])
+  assert.deepEqual(withoutSeatWorkspaces(rows, ['/srv/Seats/Anaxa', '/srv/Seats/Cyrene']).map(row => row.workspaceId), ['different-case', 'child-directory'])
 })
 
 test('current Workspace selection never guesses another ordinary Workspace', () => {

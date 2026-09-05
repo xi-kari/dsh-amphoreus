@@ -102,3 +102,43 @@ test('started and progress messages keep thirteen independent seat results addre
   }), false)
   assert.equal(refreshes, 2)
 })
+
+test('archiving conference sessions removes their open actions while retaining this round replies', () => {
+  const state = {
+    archivedSessionIds: new Set(['old-chat']),
+    conference: {
+      id: 'conference',
+      question: 'Who are you?',
+      starting: false,
+      seats: [
+        { skillName: 'amphoreus-anaxa', displayName: 'Anaxa', sessionId: 'old-chat', phase: 'done', text: 'old reply' },
+        { skillName: 'amphoreus-cipher', displayName: 'Cipher', sessionId: 'live-chat', phase: 'done', text: 'live reply' },
+      ],
+    },
+  }
+  const context = {
+    state,
+    escapeHtml: (value: unknown) => String(value),
+    renderMarkdown: (value: unknown) => String(value),
+    stickerOrInitial: () => '',
+    globalThis: {} as Record<string, unknown>,
+  }
+  context.globalThis = context
+  vm.createContext(context)
+  vm.runInContext(`${functionSource('conferenceActive')}\n${functionSource('conferenceStatusLabel')}\n${functionSource('renderConferenceResults')}\nglobalThis.renderResults = renderConferenceResults; globalThis.active = conferenceActive`, context)
+  const renderResults = context.globalThis.renderResults as () => string
+  const active = context.globalThis.active as () => boolean
+
+  const html = renderResults()
+  assert.doesNotMatch(html, /data-session="old-chat"/u)
+  assert.match(html, /old reply/u)
+  assert.match(html, /会话已归档/u)
+  assert.match(html, /data-session="live-chat"/u)
+  assert.match(html, /live reply/u)
+  assert.match(html, /2\/2 已回复 · 本轮结束/u)
+  assert.equal(active(), false)
+
+  state.archivedSessionIds.add('live-chat')
+  assert.doesNotMatch(renderResults(), /open-conference-session/u)
+  assert.match(renderResults(), /live reply/u)
+})

@@ -1348,3 +1348,15 @@
 - 精确清理：两轮 final 会议 26 个 Session、参考路径对照 4 个 Session、baseline Anaxa 与 blank Cipher 各 1，共 32 个已官方 archive，binding absent=32/32，画布隐藏=32/32，权威 zstd 日志保留=32/32；最终 Cipher 展示会话保留。外部技能、主项目文件与用户既有 Workspace 未替换；初始化生成的有效 seat Workspace 保留以支持直聊。npm 0.2.0 未重发，发布 tag 不动。
 - 干净环境 CI：首个修复提交 `a4db4d1` 的 run `33952603414` 在 Ubuntu／Windows 都完成测试，但 build 发现缺少 `system-prompt/assemble` 类型声明。已显式添加 `@deepseek-ai/dsh-system-prompt@0.1.2-alpha.4` devDependency 与 type-only import，锁文件仅增该包条目；本地 typecheck exit 0，远程复跑以随后 CI 为准。此项不改变已验证的运行代码。
 - 远程复跑闭合：代码提交 `fd5c8769a8cfa9f607ca8aa72c4ae30298021877` 的 CI run `33952725757` 已 completed/success；Ubuntu 与 Windows 的 npm ci、test、build、verify:dist、pack 均 success。主修复为 `a4db4d1f0da4c95f40ad36f19dcef6c7cec785ab`，本地工作树已完成提交并推送；本轮未发布新的 npm 版本。
+
+## 0.2.1：会话管理、归档一致性与功能回归 — 2026-09-05
+- 用户反馈黄金裔侧栏 + 新建多段后没有删除入口。根因为自定义 sidebar.workspaces 遮蔽原生菜单，只展示前5条，普通目录还隐藏 blank；门户桥未过滤官方 archived 集合，旧派发记录继续可见。
+- 每条席位／目录会话（含blank）新增常驻“归档”入口与行内确认／取消；超过5条可展开全部。同id归档单飞；当前归档后clear，用户已切换的新会话不误清。角色binding与权威日志保留，归档只从界面移除。
+- 归档状态通过ctx.workspaces.list贯通门户、工作台线程、派发泳道、移交与会议结果；归档会话不可从旧按钮重新打开／发送／fork，已归档会议卡保留正文而隐藏打开入口。侧栏归档只调用官方archive，不走递归canvas hide，未归档子分支仍可独立使用。
+- 快速双击+复现为clicks=2/startCalls=2/pending=2；修复后同skill的+与空席进入共享同步锁，pending禁用，完成后可再次独立新建，不影响会议派发。
+- 原生watchNavigation刷新时会按最近工作区准备一个无binding的blank。新增“未绑定角色的对话”组，只显示内部seat目录中真实存在、未绑定、未归档会话，支持普通打开和归档，不自动赋予角色；普通目录规则不变。
+- 清理：先停服务备份sessions与storages，CHAT-BACKUP.zip包含347文件、171份会话日志，14897024 bytes，逐文件SHA256回读通过。对清理基线171个会话执行官方归档和画布隐藏，171/171成功，旧可见35→0，15个Workspace注册原样保留。备份后的新建会话按新操作保留；未物理删除权威日志。
+- 浏览器实测：两个+生成两段blank；取消归档维持2，确认依次2→1→0，当前归档回首页不主动补新会话；门户“尚无会话”，全体会议画布0次派发。随后超过5条测试6段展开全部，6条都可逐条归档。父会话归档后子分支保留并能打开对话、显示继承的“父会话正常”；内部unbound castorice与普通目录1的blank均可打开／归档。
+- 全量验收：tests396/pass395/fail0/skipped1，duration_ms3140.2614；build derive/client/host=29.34/238.61/206.50 kB；verify-dist: OK397 checks，exit0。唯一skip为AMPHOREUS_REAL_SUITE未设置的条件合同。
+- 清理事务路径：D:/DeepSeek Harness/.codex-transactions/2026-09-05-chat-cleanup。BASELINE scoped171/archived136/visible35，MODIFIED scoped171/archived171/visible0，副本ROLLBACK恢复scoped171/archived136/visible35；archive和canvas-hidden之外字段不变。回滚脚本在显式live storage目标时按Stop/Start运行，默认需给出目标路径。
+- 发布版本定为0.2.1；同步GitHub main、v0.2.1与Release，npm默认latest与既有alpha均指向本补丁，具体结果在发布后补记。

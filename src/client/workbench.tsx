@@ -17,6 +17,7 @@ import type { EnterSeatQueue } from './enter-seat-queue.ts'
 import { acceptHandoff, dismissHandoff, dispatchTask, type DispatchInput, type HandoffDeps } from './handoff.ts'
 import { beginScrollRequest, safeOptionalInteger, scrollToTurn } from './scroll-to-turn.ts'
 import { bindingIndex, currentSeatOf } from './seat-model.ts'
+import { assertSessionUnarchived } from './session-archive.ts'
 import type { AmphoreusClientModel } from './state.ts'
 import { rememberTab, WORKBENCH_VIEW_ID } from './tabmemory.ts'
 import type { BridgedTokens } from './theme.ts'
@@ -447,6 +448,10 @@ export function useWorkbenchBridge(
       if (data?.source !== 'dsh-amphoreus' || typeof data.type !== 'string') return
       void (async () => {
         try {
+          if (typeof data.sessionId === 'string' && [
+            'amphoreus:open-session', 'amphoreus:activate-session', 'amphoreus:fork-session',
+            'amphoreus:send-message', 'amphoreus:accept-handoff', 'amphoreus:dismiss-handoff',
+          ].includes(data.type ?? '')) assertSessionUnarchived(data.sessionId, workspaces.getSnapshot().archivedSessionIds ?? [])
           switch (data.type) {
             case 'amphoreus:map-ready':
               readyRef.current = true
@@ -576,6 +581,7 @@ export function useWorkbenchBridge(
               if (snapshot.phase !== 'ready' || snapshot.state === undefined || snapshot.error !== undefined) {
                 throw new Error(snapshot.error ?? '移交状态尚未就绪')
               }
+              assertSessionUnarchived(data.sessionId, workspaces.getSnapshot().archivedSessionIds ?? [])
               const observation = snapshot.state.observations.find(candidate =>
                 candidate.sessionId === data.sessionId
                 && candidate.seq === seq

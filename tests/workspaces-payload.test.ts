@@ -7,6 +7,23 @@ import { createWorkspacesSource } from '../src/client/workspaces-source.ts'
 
 const idle = <T>(value: T) => ({ getSnapshot: () => value, subscribe: () => () => {} })
 
+function mutable<T>(initial: T) {
+  let value = initial
+  const listeners = new Set<() => void>()
+  return {
+    getSnapshot: () => value,
+    subscribe: (listener: () => void) => {
+      listeners.add(listener)
+      return () => { listeners.delete(listener) }
+    },
+    set: (next: T) => {
+      value = next
+      for (const listener of listeners) listener()
+    },
+    listenerCount: () => listeners.size,
+  }
+}
+
 const seat = (skillName: string, overrides: Partial<SeatRecord> = {}): SeatRecord => ({
   skillName,
   heroId: null,
@@ -95,4 +112,58 @@ test('workspace payload retains unknown visible seats with fallback hue and carr
     source: null,
   })
   assert.equal(payload.sessions.some(session => session.id === 'session-blank'), false)
+})
+
+test('workspace payload omits archived sessions even when their list entries and role bindings remain', () => {
+  const state = {
+    seats: [],
+    bindings: [binding('archived', 'amphoreus-anaxa', 'seat-new')],
+    effectiveConfig: { assetsConfigured: false },
+  } as unknown as AmphoreusState
+  const source = createWorkspacesSource(
+    idle({
+      ids: ['archived', 'active'],
+      byId: {
+        archived: { displayTitle: 'Archived role conversation', running: false, blank: false },
+        active: { displayTitle: 'Active conversation', running: false, blank: false },
+      },
+    }),
+    idle({ state }),
+    idle({ archivedSessionIds: ['archived'] }),
+  )
+
+  assert.deepEqual(source.getSnapshot().sessions.map(session => session.id), ['active'])
+  assert.deepEqual(source.getSnapshot().archivedSessionIds, ['archived'])
+})
+
+test('workspace archive changes invalidate the portal snapshot and unsubscribe cleanly', async () => {
+  const list = idle({
+    ids: ['chat'],
+    byId: { chat: { displayTitle: 'Chat', running: false, blank: false } },
+  })
+  const archives = mutable<{ archivedSessionIds: readonly string[] }>({ archivedSessionIds: [] })
+  const source = createWorkspacesSource(list, idle({}), archives)
+  const initial = source.getSnapshot()
+  let notifications = 0
+  const stop = source.subscribe(() => { notifications += 1 })
+
+  archives.set({ archivedSessionIds: ['chat'] })
+  await Promise.resolve()
+  assert.equal(notifications, 1)
+  assert.notEqual(source.getSnapshot(), initial)
+  assert.deepEqual(source.getSnapshot().sessions, [])
+
+  const archived = source.getSnapshot()
+  assert.equal(source.getSnapshot(), archived)
+  archives.set({ archivedSessionIds: [] })
+  await Promise.resolve()
+  assert.equal(notifications, 2)
+  assert.deepEqual(source.getSnapshot().sessions.map(session => session.id), ['chat'])
+
+  archives.set({ archivedSessionIds: ['chat'] })
+  stop()
+  await Promise.resolve()
+  assert.equal(archives.listenerCount(), 0)
+  assert.equal(notifications, 2)
+  assert.deepEqual(source.getSnapshot().sessions, [])
 })

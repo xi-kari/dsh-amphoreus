@@ -17,7 +17,10 @@
 
 遗留：B 章的 30+ 轮字面场景以同 route/schema 的 70-position 事务作容量验收；CSS 原色 fallback 按 TD12 的条件裁决保留；稳定 URL 在强制重派生时的 cache-bust 仍待后续版本化。首发 npm tarball 内的 README 已冻结任务书原 `allowBuilds` 短 key，安装 GitHub SHA 时应以当前 GitHub README 的完整 codeload key 为准；`v0.2.0` 的旧 release workflow 在本机发布路径下因无 `NPM_TOKEN` 留有一次 ENEEDAUTH 历史失败，main 已由维护提交 `15af35baa7fad82a494c45d153b92802fcec7ab1` 改为本机预发布／CI token 互斥且幂等的后续流程。其余代码与发布动作遗留为无。
 
-### 0.2 发布后实机修复（仓库 main，尚未进入 npm `0.2.0`）
+### 0.2 发布后实机修复（后续 `0.2.1`）
+
+- 0.2.1 会话管理：席位和目录会话均有归档确认，超过五条可展开全部，快速新建按席位单飞；官方归档集合贯通所有视图，未归档分支独立保留，原生生成的未绑定内部草稿有可管理入口。396项测试/395通过/0失败/1条件跳过，产物397项验证；用户旧会话已备份后统一归档，具体见BUILD-LOG最新段。
+
 
 - 席位直聊已等待三个首帧与真实 Workspace membership，明确切回对话 Tab；角色 system prompt 替换两句通用身份并附技能参考文件的绝对路径；首卡只有进入会话日志后才记 done，取消、拒绝与恢复均可重试。最终验收为 `377 tests / 376 pass / 0 fail / 1 skip`、`verify-dist 392`；真实会议 `13/13`，参考路径问题三席定向复测全部正确读取两份文件，普通会话对照保留原生身份。
 

@@ -42,7 +42,12 @@ export interface WorkspaceSession {
 export interface WorkspacesPayload {
   seats: WorkspaceSeat[]
   sessions: WorkspaceSession[]
+  archivedSessionIds: readonly string[]
   assetsConfigured: boolean
+}
+
+export interface WorkspaceArchiveSnapshot {
+  readonly archivedSessionIds: readonly string[]
 }
 
 interface ListSnapshot {
@@ -64,7 +69,11 @@ export function derivedUrl(derived: readonly string[], heroId: string, file: str
   return derived.includes(`${heroId}/${file}`) ? `/amphoreus/derived/${heroId}/${file}` : null
 }
 
-function composeWorkspaces(list: ListSnapshot, state: AmphoreusState | undefined): WorkspacesPayload {
+function composeWorkspaces(
+  list: ListSnapshot,
+  state: AmphoreusState | undefined,
+  archive: WorkspaceArchiveSnapshot | undefined,
+): WorkspacesPayload {
   const assetsConfigured = state?.effectiveConfig.assetsConfigured ?? false
   const derived = state?.assets?.derived ?? []
   const seats = (state?.seats ?? [])
@@ -107,10 +116,11 @@ function composeWorkspaces(list: ListSnapshot, state: AmphoreusState | undefined
     .sort((left, right) => left.order - right.order)
 
   const bindings = new Map((state?.bindings ?? []).map(binding => [binding.sessionId, binding]))
+  const archived = new Set(archive?.archivedSessionIds ?? [])
   const sessions: WorkspaceSession[] = []
   for (const id of list.ids) {
     const session = list.byId[id]
-    if (session === undefined || session.blank) continue
+    if (session === undefined || session.blank || archived.has(id)) continue
     const binding = bindings.get(id)
     sessions.push({
       id,
@@ -125,24 +135,28 @@ function composeWorkspaces(list: ListSnapshot, state: AmphoreusState | undefined
     })
   }
 
-  return { seats, sessions, assetsConfigured }
+  return { seats, sessions, archivedSessionIds: [...archived], assetsConfigured }
 }
 
 export function createWorkspacesSource(
   list: ObservableSnapshot<ListSnapshot>,
   model: ObservableSnapshot<{ state?: AmphoreusState }>,
+  archives?: ObservableSnapshot<WorkspaceArchiveSnapshot>,
 ): ObservableSnapshot<WorkspacesPayload> {
   let cached: WorkspacesPayload | undefined
   let cachedList: ListSnapshot | undefined
   let cachedModel: { state?: AmphoreusState } | undefined
+  let cachedArchives: WorkspaceArchiveSnapshot | undefined
 
   const getSnapshot = (): WorkspacesPayload => {
     const nextList = list.getSnapshot()
     const nextModel = model.getSnapshot()
-    if (cached === undefined || nextList !== cachedList || nextModel !== cachedModel) {
+    const nextArchives = archives?.getSnapshot()
+    if (cached === undefined || nextList !== cachedList || nextModel !== cachedModel || nextArchives !== cachedArchives) {
       cachedList = nextList
       cachedModel = nextModel
-      cached = composeWorkspaces(nextList, nextModel.state)
+      cachedArchives = nextArchives
+      cached = composeWorkspaces(nextList, nextModel.state, nextArchives)
     }
     return cached
   }
@@ -165,10 +179,12 @@ export function createWorkspacesSource(
     }
     const disposeList = list.subscribe(invalidate)
     const disposeModel = model.subscribe(invalidate)
+    const disposeArchives = archives?.subscribe(invalidate)
     return () => {
       active = false
       disposeList()
       disposeModel()
+      disposeArchives?.()
       if (frame !== undefined && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(frame)
     }
   }

@@ -25,6 +25,7 @@ import { PipelineRail } from './pipeline-rail.tsx'
 import { PortalFooterAction, PortalOverlay, type PortalFooterInjected, type PortalOverlayInjected } from './portal.tsx'
 import { createPortalStore } from './portal-store.ts'
 import { createDirectChatRequests, openDirectSeatChat, startSeatSession } from './seat-actions.ts'
+import { assertSessionUnarchived, createSessionArchiveAction } from './session-archive.ts'
 import { SeatBrowser, type SeatBrowserInjected } from './seat-browser.tsx'
 import { seatViewsFrom } from './seat-model.ts'
 import { AmphoreusSettings } from './settings.tsx'
@@ -74,8 +75,14 @@ export function apply(ctx: ClientContext): void {
   const workspaces = createWorkspacesSource(
     ctx.sessions.list as unknown as Parameters<typeof createWorkspacesSource>[0],
     model,
+    ctx.workspaces.list,
   )
   const sessionsFace = ctx.sessions as unknown as SessionsFace
+  const archiveSession = createSessionArchiveAction({
+    archive: sessionId => ctx.workspaces.archiveSession(sessionId as SessionId),
+    current: () => sessionsFace.list.getSnapshot().current,
+    clear: () => (ctx.sessions as unknown as { clear(): void }).clear(),
+  })
   const sessionList = ctx.sessions.list as unknown as {
     getSnapshot(): { phase: 'pending' | 'ready' }
     subscribe(listener: () => void): () => void
@@ -132,6 +139,7 @@ export function apply(ctx: ClientContext): void {
     ctx.remote.session.follow({ address: { kind: 'session', sessionId: sessionId as SessionId }, maxMessages: 50 }, signal)
   )
   const openBoundSeatSession = async (sessionId: string, skillName?: string, open = true): Promise<void> => {
+    assertSessionUnarchived(sessionId, ctx.workspaces.list.getSnapshot().archivedSessionIds)
     if (skillName === undefined) {
       if (open) sessionsFace.open(sessionId)
       return
@@ -150,6 +158,7 @@ export function apply(ctx: ClientContext): void {
       const adopted = await createWorkspaceSession({ sessionId, workspaceId })
       if (adopted !== sessionId) throw new Error(`宿主返回了不同的会话 id（${adopted}）`)
     }
+    assertSessionUnarchived(sessionId, ctx.workspaces.list.getSnapshot().archivedSessionIds)
     if (open) sessionsFace.open(sessionId)
   }
   const openDirectSession = (sessionId: string): void => openDirectSeatChat({
@@ -251,6 +260,7 @@ export function apply(ctx: ClientContext): void {
     locale: NS,
     inject: (): SeatBrowserInjected => ({
       model,
+      archiveSession,
       openSession: async (sessionId, skillName) => {
         await openBoundSeatSession(sessionId, skillName, skillName === undefined)
         if (skillName !== undefined) openDirectSession(sessionId)

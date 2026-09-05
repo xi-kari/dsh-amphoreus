@@ -3,7 +3,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import { useState, useSyncExternalStore, type CSSProperties } from 'react'
+import { useRef, useState, useSyncExternalStore, type CSSProperties } from 'react'
 import {
   bindingIndex,
   currentSeatOf,
@@ -13,11 +13,12 @@ import {
 } from './seat-model.ts'
 import type { AmphoreusClientModel } from './state.ts'
 import css from './seat-browser.module.css'
-import { withoutSeatWorkspaces } from './workspace-routing.ts'
+import { unboundSeatWorkspaces, withoutSeatWorkspaces } from './workspace-routing.ts'
 
 export interface SeatBrowserInjected {
   readonly model: AmphoreusClientModel
   readonly openSession: (sessionId: string, skillName?: string) => Promise<void>
+  readonly archiveSession: (sessionId: string) => Promise<void>
   readonly startSeatSession: (skillName: string) => Promise<string>
   readonly startDirectorySession: (workspaceId: string) => void
   readonly createDirectoryWorkspace: (fallbackPrompt: () => string | null) => Promise<void>
@@ -40,6 +41,7 @@ export function SeatBrowser({
   useWorkspaces,
   model,
   openSession,
+  archiveSession,
   startSeatSession,
   startDirectorySession,
   createDirectoryWorkspace,
@@ -51,6 +53,13 @@ export function SeatBrowser({
   const [seatsExpanded, setSeatsExpanded] = useState(true)
   const [directoriesExpanded, setDirectoriesExpanded] = useState(true)
   const [seatOpen, setSeatOpen] = useState<ReadonlySet<string>>(() => new Set())
+  const [seatShowAll, setSeatShowAll] = useState<ReadonlySet<string>>(() => new Set())
+  const [creating, setCreating] = useState<ReadonlySet<string>>(() => new Set())
+  const creatingSkills = useRef(new Set<string>())
+  const [archiveConfirm, setArchiveConfirm] = useState<string>()
+  const [archiving, setArchiving] = useState<ReadonlySet<string>>(() => new Set())
+  const archivingIds = useRef(new Set<string>())
+  const [archiveRetry, setArchiveRetry] = useState<string>()
   const [error, setError] = useState<string>()
 
   const views = seatViewsFrom(snap, list as unknown as Parameters<typeof seatViewsFrom>[1], workspaces)
@@ -62,9 +71,14 @@ export function SeatBrowser({
   const suiteMissing = snap.state?.suite === undefined || snap.state.suite.level === 'L3'
   const seatDirectories = (snap.state?.seatDirs ?? []).map(item => item.dir)
   const directoryWorkspaces = withoutSeatWorkspaces(workspaces.items, seatDirectories)
+  const unboundWorkspaces = unboundSeatWorkspaces(
+    workspaces.items, seatDirectories, bindings.keys(), workspaces.archivedSessionIds,
+    Object.keys(list.byId).filter(id => list.byId[id as SessionId] !== undefined),
+  )
 
   const run = (operation: () => Promise<unknown>): void => {
     setError(undefined)
+    setArchiveRetry(undefined)
     void operation().catch(cause => {
       setError(cause instanceof Error ? cause.message : String(cause))
     })
@@ -79,10 +93,26 @@ export function SeatBrowser({
     })
   }
 
+  const createSeat = (skillName: string): void => {
+    if (creatingSkills.current.has(skillName)) return
+    creatingSkills.current.add(skillName)
+    setCreating(new Set(creatingSkills.current))
+    setSeatOpen(current => new Set([...current, skillName]))
+    setError(undefined)
+    setArchiveRetry(undefined)
+    void Promise.resolve().then(() => startSeatSession(skillName)).catch(cause => {
+      setError(cause instanceof Error ? cause.message : String(cause))
+    }).finally(() => {
+      creatingSkills.current.delete(skillName)
+      setCreating(new Set(creatingSkills.current))
+    })
+  }
+
   const enter = (view: SeatView): void => {
+    if (creatingSkills.current.has(view.skillName)) return
     toggleSeat(view.skillName)
     const latest = view.sessionIds[0]
-    if (latest === undefined) run(() => startSeatSession(view.skillName))
+    if (latest === undefined) createSeat(view.skillName)
     else run(() => openSession(latest, view.skillName))
   }
 
@@ -95,6 +125,65 @@ export function SeatBrowser({
   const promptForDirectory = (): string | null => window.prompt(t('seats.newDirectoryPrompt'))
   const createDirectory = (): void => run(() => createDirectoryWorkspace(promptForDirectory))
 
+  const archive = (sessionId: string): void => {
+    if (archivingIds.current.has(sessionId)) return
+    archivingIds.current.add(sessionId)
+    setArchiving(new Set(archivingIds.current))
+    setError(undefined)
+    setArchiveRetry(undefined)
+    void Promise.resolve().then(() => archiveSession(sessionId)).then(() => {
+      setArchiveConfirm(current => current === sessionId ? undefined : current)
+    }).catch(cause => {
+      setError(cause instanceof Error ? cause.message : String(cause))
+      setArchiveRetry(sessionId)
+    }).finally(() => {
+      archivingIds.current.delete(sessionId)
+      setArchiving(new Set(archivingIds.current))
+    })
+  }
+
+  const sessionEntry = (sessionId: string, skillName?: string) => {
+    const session = list.byId[sessionId as SessionId]
+    const title = session?.displayTitle || t('seats.untitledSession')
+    const pending = archiving.has(sessionId)
+    return (
+      <li key={sessionId} className={css.sessionEntry}>
+        <button
+          className={css.sessionRow}
+          type="button"
+          title={title}
+          data-active={list.current === sessionId || undefined}
+          disabled={pending}
+          onClick={() => run(() => openSession(sessionId, skillName))}
+        >
+          <span className={css.sessionName}>{title}</span>
+          {skillName === undefined && boundMark(sessionId)}
+        </button>
+        <button
+          className={css.archive}
+          type="button"
+          aria-label={t('seats.archiveNamed').replace('{title}', title)}
+          aria-expanded={archiveConfirm === sessionId}
+          disabled={pending}
+          onClick={() => setArchiveConfirm(sessionId)}
+        >
+          {pending ? t('seats.archiving') : t('seats.archive')}
+        </button>
+        {archiveConfirm === sessionId && (
+          <div className={css.archiveConfirm}>
+            <p>{t('seats.archiveConfirm')}</p>
+            <button className={css.archive} type="button" disabled={pending} onClick={() => archive(sessionId)}>
+              {pending ? t('seats.archiving') : t('seats.archiveConfirmAction')}
+            </button>
+            <button className={css.archive} type="button" disabled={pending} onClick={() => setArchiveConfirm(undefined)}>
+              {t('seats.archiveCancel')}
+            </button>
+          </div>
+        )}
+      </li>
+    )
+  }
+
   if (!wide) {
     return (
       <div className={`${css.root} ${css.rail}`} data-amphoreus-seat-browser>
@@ -105,6 +194,8 @@ export function SeatBrowser({
             type="button"
             title={view.displayName}
             aria-label={view.displayName}
+            disabled={creating.has(view.skillName)}
+            aria-busy={creating.has(view.skillName)}
             data-current={currentSeat?.skillName === view.skillName || undefined}
             style={seatVars(view)}
             onClick={() => {
@@ -160,6 +251,8 @@ export function SeatBrowser({
                   type="button"
                   title={view.duty ?? view.displayName}
                   aria-expanded={seatOpen.has(view.skillName)}
+                  disabled={creating.has(view.skillName)}
+                  aria-busy={creating.has(view.skillName)}
                   onClick={() => enter(view)}
                 >
                   {view.stickerUrl !== null
@@ -176,25 +269,35 @@ export function SeatBrowser({
                   className={css.plus}
                   type="button"
                   aria-label={t('seats.newSession')}
-                  onClick={() => run(() => startSeatSession(view.skillName))}
+                  disabled={creating.has(view.skillName)}
+                  aria-busy={creating.has(view.skillName)}
+                  onClick={() => createSeat(view.skillName)}
                 >
-                  <span aria-hidden="true">＋</span>
+                  <span aria-hidden="true">{creating.has(view.skillName) ? '…' : '＋'}</span>
                 </button>
                 {seatOpen.has(view.skillName) && view.sessionIds.length > 0 && (
                   <ul className={css.sessionList}>
-                    {view.sessionIds.slice(0, 5).map(sessionId => (
-                      <li key={sessionId}>
+                    {(seatShowAll.has(view.skillName) ? view.sessionIds : view.sessionIds.slice(0, 5))
+                      .map(sessionId => sessionEntry(sessionId, view.skillName))}
+                    {view.sessionIds.length > 5 && (
+                      <li>
                         <button
-                          className={css.sessionRow}
+                          className={css.more}
                           type="button"
-                          data-active={list.current === sessionId || undefined}
-                          onClick={() => run(() => openSession(sessionId, view.skillName))}
+                          aria-expanded={seatShowAll.has(view.skillName)}
+                          onClick={() => setSeatShowAll(current => {
+                            const next = new Set(current)
+                            if (next.has(view.skillName)) next.delete(view.skillName)
+                            else next.add(view.skillName)
+                            return next
+                          })}
                         >
-                          <span className={css.sessionName}>{list.byId[sessionId as SessionId]?.displayTitle ?? sessionId}</span>
+                          {seatShowAll.has(view.skillName)
+                            ? t('seats.showLess')
+                            : t('seats.showAll').replace('{n}', String(view.sessionIds.length))}
                         </button>
                       </li>
-                    ))}
-                    {view.sessionIds.length > 5 && <li className={css.more}>…</li>}
+                    )}
                   </ul>
                 )}
               </li>
@@ -243,20 +346,8 @@ export function SeatBrowser({
                 <ul className={css.sessionList}>
                   {workspace.sessionIds.map(sessionId => {
                     const session = list.byId[sessionId]
-                    if (archived.has(sessionId) || session === undefined || session.blank) return null
-                    return (
-                      <li key={sessionId}>
-                        <button
-                          className={css.sessionRow}
-                          type="button"
-                          data-active={list.current === sessionId || undefined}
-                          onClick={() => run(() => openSession(sessionId))}
-                        >
-                          <span className={css.sessionName}>{session.displayTitle}</span>
-                          {boundMark(sessionId)}
-                        </button>
-                      </li>
-                    )
+                    if (archived.has(sessionId) || session === undefined) return null
+                    return sessionEntry(sessionId)
                   })}
                 </ul>
               </div>
@@ -265,7 +356,33 @@ export function SeatBrowser({
         )}
       </section>
 
-      {error !== undefined && <p className={css.error} role="alert">{error}</p>}
+      {unboundWorkspaces.length > 0 && (
+        <section className={css.group} data-group="unbound-sessions">
+          <header className={css.groupHead}>{t('seats.unboundSessions')}</header>
+          <p className={css.empty}>{t('seats.unboundSessionsHint')}</p>
+          <div className={css.directoryList}>
+            {unboundWorkspaces.map(workspace => (
+              <div key={workspace.workspaceId} className={css.dir}>
+                <div className={css.dirLabel} title={workspace.path}>{workspace.title}</div>
+                <ul className={css.sessionList}>
+                  {workspace.sessionIds.map(sessionId => sessionEntry(sessionId))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {error !== undefined && (
+        <div className={css.error} role="alert">
+          <p>{error}</p>
+          {archiveRetry !== undefined && (
+            <button className={css.archive} type="button" disabled={archiving.has(archiveRetry)} onClick={() => archive(archiveRetry)}>
+              {t('seats.archiveRetry')}
+            </button>
+          )}
+        </div>
+      )}
     </div>
   )
 }

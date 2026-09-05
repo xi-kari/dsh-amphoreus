@@ -24,6 +24,28 @@ export function withoutSeatWorkspaces<T extends { readonly path: string }>(
   return workspaces.filter(workspace => !seatPaths.has(workspacePathKey(workspace.path)))
 }
 
+export function unboundSeatWorkspaces<T extends {
+  readonly path: string
+  readonly sessionIds: readonly string[]
+}>(
+  workspaces: readonly T[],
+  seatDirectories: readonly string[],
+  boundSessionIds: Iterable<string>,
+  archivedSessionIds: Iterable<string>,
+  availableSessionIds: Iterable<string>,
+): T[] {
+  const seatPaths = new Set(seatDirectories.map(workspacePathKey))
+  const bound = new Set(boundSessionIds)
+  const archived = new Set(archivedSessionIds)
+  const available = new Set(availableSessionIds)
+  return workspaces.flatMap(workspace => {
+    if (!seatPaths.has(workspacePathKey(workspace.path))) return []
+    const sessionIds = workspace.sessionIds.filter(sessionId =>
+      available.has(sessionId) && !bound.has(sessionId) && !archived.has(sessionId))
+    return sessionIds.length === 0 ? [] : [{ ...workspace, sessionIds }]
+  })
+}
+
 export function currentOrdinaryWorkspace<T extends {
   readonly path: string
   readonly sessionIds: readonly string[]

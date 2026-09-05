@@ -85,7 +85,7 @@ const VIEWPORT_MARGIN = 1400
 const state = {
   index: new Map(), indexRevision: 0, indexRequest: 0, eventSource: null, persistenceHydrated: false, bootstrapped: false, mapOpenPending: false, workspace: null, activeId: null, selectedCardId: null, mode: BOOT_MODE === 'portal' ? 'portal' : 'canvas', zoom: 1, currentDsh: null, currentSessionId: null, tabEntered: false, tabEntryKey: null, sidebarCollapsed: false,
   // Seat portal: hero seats from the host (chronicle art, palette, folder).
-  seats: [], sessionsById: new Map(), assetsConfigured: false, seatId: BOOT_MODE === 'portal' ? null : restoredSeatId, cardFlightPending: false, cardTextLimit: WORKBENCH_CONFIG.cardTextLimit, magazineMode: 'light', amph: null, dispatch: { text: '', suggestions: [], pending: false, lastError: '' }, conference: { id: null, question: '', starting: false, seats: [] }, dispatchLaneCollapsed: false, ledgerOpen: false,
+  seats: [], sessionsById: new Map(), archivedSessionIds: new Set(), assetsConfigured: false, seatId: BOOT_MODE === 'portal' ? null : restoredSeatId, cardFlightPending: false, cardTextLimit: WORKBENCH_CONFIG.cardTextLimit, magazineMode: 'light', amph: null, dispatch: { text: '', suggestions: [], pending: false, lastError: '' }, conference: { id: null, question: '', starting: false, seats: [] }, dispatchLaneCollapsed: false, ledgerOpen: false,
   unprojectable: new Map(),
   historyBySession: new Map(), historyRevisionBySession: new Map(), historyCompleteBySession: new Map(), pendingReplies: new Map(), pendingRpc: new Map(), liveReplies: new Map(),
   draft: null, error: '', branchAnchors: new Map(), cardPositions: new Map(), legacyPositionKeys: new Set(), collapsedCardIds: new Set(), quickPhrases: [...DEFAULT_QUICK_PHRASES], quickPhraseEditorOpen: false,
@@ -512,6 +512,7 @@ function rebuildWorkspace() {
 function applyWorkspaces(data) {
   state.seats = (Array.isArray(data.seats) ? data.seats : []).filter(seat => seat !== null && typeof seat === 'object')
   state.assetsConfigured = data.assetsConfigured === true
+  state.archivedSessionIds = new Set((Array.isArray(data.archivedSessionIds) ? data.archivedSessionIds : []).filter(id => typeof id === 'string'))
   state.sessionsById = new Map((Array.isArray(data.sessions) ? data.sessions : []).filter(session => typeof session?.id === 'string').map(session => [session.id, session]))
   if (state.seatId?.startsWith('seat:') && state.seats.length > 0 && !state.seats.some(seat => seat.heroId === state.seatId.slice(5))) {
     state.seatId = null
@@ -1302,6 +1303,7 @@ function handoffFromBadge(card, thread) {
 
 function openHandoffOf(sessionId) {
   if (typeof sessionId !== 'string' || sessionId === '') return undefined
+  if (state.archivedSessionIds?.has(sessionId)) return undefined
   return (state.amph?.observations ?? [])
     .filter(observation => observation?.sessionId === sessionId
       && observation.kind === 'handoff'
@@ -1584,11 +1586,13 @@ function suggestSeats(text, dispatch, cards, limit = 3) {
 
 function dispatchRecords() {
   return (state.amph?.observations ?? [])
-    .filter(observation => observation?.kind === 'dispatch' && typeof observation.sessionId === 'string')
+    .filter(observation => observation?.kind === 'dispatch' && typeof observation.sessionId === 'string'
+      && !state.archivedSessionIds?.has(observation.sessionId))
     .sort((left, right) => Number(right.parsedAt ?? 0) - Number(left.parsedAt ?? 0))
 }
 
 function handoffChain(sessionId) {
+  if (state.archivedSessionIds?.has(sessionId)) return []
   const chain = [sessionId]
   const seen = new Set(chain)
   for (let guard = 0; guard < 32; guard++) {
@@ -1598,6 +1602,7 @@ function handoffChain(sessionId) {
       && observation.status === 'accepted'
       && observation.sessionId === current
       && typeof observation.acceptedSessionId === 'string'
+      && !state.archivedSessionIds?.has(observation.acceptedSessionId)
       && !seen.has(observation.acceptedSessionId))
     if (next === undefined) break
     chain.push(next.acceptedSessionId)
@@ -1711,10 +1716,11 @@ function renderConferenceResults() {
       : typeof seat.text === 'string' && seat.text !== ''
         ? `<div class="conference-reply">${renderMarkdown(seat.text)}</div>`
         : `<p class="conference-wait">${seat.phase === 'queued' ? '等待调度…' : seat.phase === 'dispatching' ? '正在创建专属会话…' : '等待角色作答…'}</p>`
-    const open = (seat.phase === 'done' || seat.phase === 'failed') && typeof seat.sessionId === 'string' && seat.sessionId !== ''
+    const archived = state.archivedSessionIds?.has(seat.sessionId) === true
+    const open = !archived && (seat.phase === 'done' || seat.phase === 'failed') && typeof seat.sessionId === 'string' && seat.sessionId !== ''
       ? `<button type="button" data-action="open-conference-session" data-session="${escapeHtml(seat.sessionId)}">打开会话</button>`
       : ''
-    return `<article class="conference-card phase-${escapeHtml(seat.phase)}" data-conference-skill="${escapeHtml(seat.skillName)}"><header>${stickerOrInitial(seat.skillName, 'chip')}<strong>${escapeHtml(seat.displayName)}</strong><span>${conferenceStatusLabel(seat.phase)}</span>${open}</header>${body}</article>`
+    return `<article class="conference-card phase-${escapeHtml(seat.phase)}" data-conference-skill="${escapeHtml(seat.skillName)}"><header>${stickerOrInitial(seat.skillName, 'chip')}<strong>${escapeHtml(seat.displayName)}</strong><span>${archived ? '会话已归档' : conferenceStatusLabel(seat.phase)}</span>${open}</header>${body}</article>`
   }).join('')
   const summary = conference.starting
     ? '正在取得已部署席位…'
