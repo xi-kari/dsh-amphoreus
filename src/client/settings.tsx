@@ -1,5 +1,6 @@
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { useRef, useState, useSyncExternalStore } from 'react'
+import { GrammarPanel } from './grammar-panel.tsx'
 import type { AmphoreusClientModel } from './state.ts'
 import css from './settings.module.css'
 
@@ -9,7 +10,7 @@ export interface AmphoreusSettingsInjected {
 
 export type AmphoreusSettingsProps = PropsRuntime<'settings.section'> & PropsLocale<'amphoreus'> & AmphoreusSettingsInjected
 
-type SettingsAction = 'reparse' | 'magazine-light' | 'magazine-full' | 'magazine-reset' | 'derive' | 'derive-force'
+type SettingsAction = 'reparse' | 'magazine-light' | 'magazine-full' | 'magazine-reset' | 'derive' | 'derive-force' | 'grammar'
 
 export function AmphoreusSettings({ model, t }: AmphoreusSettingsProps) {
   const snapshot = useSyncExternalStore(model.subscribe, model.getSnapshot)
@@ -176,6 +177,13 @@ export function AmphoreusSettings({ model, t }: AmphoreusSettingsProps) {
               ? null
               : <p className={css.hintLine}>{t('settings.lastDerive')} {formatTime(state.assets.lastDerive.at)} · {state.assets.lastDerive.written}/{state.assets.lastDerive.failed}{state.assets.lastDerive.error === undefined ? '' : ` · ${state.assets.lastDerive.error}`}</p>}
           </section>
+
+          <GrammarPanel
+            grammar={state.effectiveConfig.grammar}
+            busy={busy}
+            t={t}
+            onPatch={patch => { void run('grammar', () => model.setGrammar(patch)) }}
+          />
 
           <section className={css.panel} aria-labelledby="amphoreus-workbench">
             <div className={css.sectionHeading}><h2 id="amphoreus-workbench">{t('settings.workbenchHeading')}</h2></div>

@@ -96,6 +96,15 @@ export const GlobalSchema = z.object({
     quickPhrases: z.array(z.string()),
     quickPhrasesInitialized: z.boolean().default(false),
     magazineMode: z.enum(['light', 'full']).optional(),
+    grammar: z.object({
+      enabled: z.boolean().optional(),
+      blurScale: z.number().min(0).max(2).optional(),
+      frostScale: z.number().min(0.6).max(1.4).optional(),
+      scrimBoost: z.number().min(0).max(0.4).optional(),
+      motifScale: z.number().min(0).max(1).optional(),
+      mascot: z.enum(['reactive', 'static', 'off']).optional(),
+      ambient: z.boolean().optional(),
+    }).optional(),
   }),
   workbench: z.object({
     hiddenSessionIds: z.array(z.string()).default([]),

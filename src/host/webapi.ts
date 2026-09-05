@@ -6,7 +6,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { z } from 'zod'
-import type { AmphoreusAssetsStatus, AmphoreusState, DeriveProgress, PublicSuite, WorkbenchBoot, WorkbenchStatus } from '../shared/api.ts'
+import { GRAMMAR_DEFAULTS, type AmphoreusAssetsStatus, type AmphoreusState, type DeriveProgress, type GrammarPrefs, type PublicSuite, type WorkbenchBoot, type WorkbenchStatus } from '../shared/api.ts'
 import { GLOBAL_WALLPAPERS } from '../shared/heroes.ts'
 import type { AmphoreusConfig } from './config.ts'
 import { deriveAssets, probeMagick, resolveGlobalWallpaperDir, type DeriveOptions, type DeriveResult } from './derive.ts'
@@ -39,10 +39,22 @@ const BindInput = z.object({
   fromSeq: z.number().int().nonnegative().optional(),
 })
 
+const GrammarInput = z.object({
+  enabled: z.boolean().optional(),
+  blurScale: z.number().min(0).max(2).optional(),
+  frostScale: z.number().min(0.6).max(1.4).optional(),
+  scrimBoost: z.number().min(0).max(0.4).optional(),
+  motifScale: z.number().min(0).max(1).optional(),
+  mascot: z.enum(['reactive', 'static', 'off']).optional(),
+  ambient: z.boolean().optional(),
+}).strict()
+
 const PrefsInput = z.object({
   quickPhrases: z.array(z.string().max(16)).max(12).optional(),
   lastSeat: z.string().nullable().optional(),
   magazineMode: z.enum(['light', 'full']).nullable().optional(),
+  /** Partial grammar patch; `null` resets every knob to the defaults. */
+  grammar: GrammarInput.nullable().optional(),
 })
 
 const DeriveInput = z.object({ force: z.boolean().optional() }).strict()
@@ -319,7 +331,12 @@ export class AmphoreusWebApi {
           return
         }
         if (!method(request, response, 'PUT')) return
-        const input = PrefsInput.parse(await readJson(request))
+        const parsedPrefs = PrefsInput.safeParse(await readJson(request))
+        if (!parsedPrefs.success) {
+          json(response, 400, { error: zodError(parsedPrefs.error) })
+          return
+        }
+        const input = parsedPrefs.data
         const updated = await updateAmphoreusGlobal(this.#stores.main, current => {
           const prefs = {
             ...current.prefs,
@@ -328,6 +345,8 @@ export class AmphoreusWebApi {
           }
           if (input.magazineMode === null) delete prefs.magazineMode
           else if (input.magazineMode !== undefined) prefs.magazineMode = input.magazineMode
+          if (input.grammar === null) delete prefs.grammar
+          else if (input.grammar !== undefined) prefs.grammar = { ...current.prefs.grammar, ...input.grammar }
           return { ...current, prefs }
         })
         json(response, 200, { prefs: updated.prefs })
@@ -385,6 +404,13 @@ export class AmphoreusWebApi {
     return this.#stores.main.global.get().prefs.magazineMode ?? this.#config.magazineMode
   }
 
+  #effectiveGrammar(): GrammarPrefs {
+    const stored = this.#stores.main.global.get().prefs.grammar ?? {}
+    const merged: Record<string, unknown> = { ...GRAMMAR_DEFAULTS }
+    for (const [key, value] of Object.entries(stored)) if (value !== undefined) merged[key] = value
+    return merged as unknown as GrammarPrefs
+  }
+
   state(): AmphoreusState {
     const snapshot = this.#resolver.current()
     const global = this.#stores.main.global.get()
@@ -417,6 +443,7 @@ export class AmphoreusWebApi {
         wallpaper: this.#config.wallpaper,
         magazineMode: this.#effectiveMagazineMode(),
         magazineModeSource: global.prefs.magazineMode === undefined ? 'config' : 'prefs',
+        grammar: this.#effectiveGrammar(),
         seatStyle: this.#config.seatStyle,
         assetsConfigured: this.#config.assetsRoot.trim() !== '',
         heroWorkspaceMode: this.#config.heroWorkspaceMode,

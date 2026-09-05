@@ -1,4 +1,4 @@
-import type { AmphoreusState, DeriveKind, DeriveProgress } from '../shared/api.ts'
+import type { AmphoreusState, DeriveKind, DeriveProgress, GrammarPrefs } from '../shared/api.ts'
 
 export interface AmphoreusClientSnapshot {
   readonly phase: 'loading' | 'ready' | 'error'
@@ -124,6 +124,20 @@ export class AmphoreusClientModel {
       body: JSON.stringify({ magazineMode: mode }),
     })
     if (!response.ok) throw new Error(`杂志模式保存失败（HTTP ${response.status}）`)
+    await this.refresh()
+  }
+
+  /** Patch the durable grammar knobs (null resets to defaults); refreshes state afterwards. */
+  async setGrammar(patch: Partial<GrammarPrefs> | null): Promise<void> {
+    const nonce = this.#snapshot.state?.nonce ?? window.__AMPHOREUS_BOOT__?.nonce
+    if (nonce === undefined) throw new Error('首帧 nonce 尚未就绪')
+    const response = await fetch('/amphoreus/api/prefs', {
+      method: 'PUT',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json', 'x-amphoreus-nonce': nonce },
+      body: JSON.stringify({ grammar: patch }),
+    })
+    if (!response.ok) throw new Error(`视觉语法保存失败（HTTP ${response.status}）`)
     await this.refresh()
   }
 

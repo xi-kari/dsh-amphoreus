@@ -89,6 +89,44 @@ export interface MagazineModeMessage {
 
 export type DeriveKind = 'covers' | 'chronicle' | 'cards' | 'stickers' | 'wallpapers' | 'home'
 
+/**
+ * User-tunable knobs of the per-seat visual grammar (glass, motif, mascot, ambient).
+ * Persisted in the plugin's storage domain (`prefs.grammar`), so they survive port churn.
+ */
+export interface GrammarPrefs {
+  /** Master switch for the seat visual grammar layer (off = today's token-only look). */
+  readonly enabled: boolean
+  /** Glass blur multiplier applied to every seat's own blur radius. */
+  readonly blurScale: number
+  /** Glass fill-opacity multiplier applied to every seat's own frost. */
+  readonly frostScale: number
+  /** Extra wallpaper scrim added on top of the seat scrim (0–0.4). */
+  readonly scrimBoost: number
+  /** Motif opacity multiplier (0 hides the tiled pattern). */
+  readonly motifScale: number
+  /** Mascot sticker behaviour on the shell. */
+  readonly mascot: 'reactive' | 'static' | 'off'
+  /** Per-seat ambient CSS animation. */
+  readonly ambient: boolean
+}
+
+export const GRAMMAR_DEFAULTS: GrammarPrefs = Object.freeze({
+  enabled: true,
+  blurScale: 1,
+  frostScale: 1,
+  scrimBoost: 0,
+  motifScale: 1,
+  mascot: 'reactive',
+  ambient: true,
+})
+
+export const GRAMMAR_LIMITS = Object.freeze({
+  blurScale: { min: 0, max: 2, step: 0.1 },
+  frostScale: { min: 0.6, max: 1.4, step: 0.05 },
+  scrimBoost: { min: 0, max: 0.4, step: 0.02 },
+  motifScale: { min: 0, max: 1, step: 0.05 },
+} as const)
+
 export interface DeriveProgress {
   readonly kind: DeriveKind
   readonly done: number
@@ -147,6 +185,8 @@ export interface AmphoreusState {
     readonly wallpaper: { readonly enabled: boolean; readonly global: 'rotate' | 'fixed'; readonly globalIndex: number; readonly sidebarIndex: number; readonly perSeat: boolean; readonly darkMask: number; readonly lightMask: number; readonly surfaceAlpha: { readonly light: number; readonly dark: number } }
     readonly magazineMode: 'light' | 'full'
     readonly magazineModeSource: 'config' | 'prefs'
+    /** Effective grammar knobs (defaults merged under stored prefs). */
+    readonly grammar: GrammarPrefs
     readonly seatStyle: boolean
     readonly assetsConfigured: boolean
     readonly heroWorkspaceMode: 'seats' | 'off'
