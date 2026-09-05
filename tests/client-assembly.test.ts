@@ -117,6 +117,6 @@ test('README distinguishes seat bindings from official directories and reports c
 
   const status = readme.split(/\r?\n/u).find(line => line.includes('`M3` 总空间派发')) ?? ''
   assert.match(status, /现已完成/u)
-  assert.match(status, /尚待 F 章/u)
+  assert.doesNotMatch(status, /尚待|待后续/u)
   assert.doesNotMatch(readme, /仍待后续章节兑现：`M3`/u)
 })

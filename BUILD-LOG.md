@@ -1106,7 +1106,7 @@
 - 偏离与理由：无。
 - 遗留：发布物无 src 的真实文件系统形态由 TF9 独立 npm-ci 克隆复核。
 ## TF5：GitHub Actions 双系统 CI 与 alpha 发布流 — 2026-09-05 09:18
-- commit: PENDING-TASK
+- commit: ed5d008
 - 动手前核对：实际执行任务书 `sed -n '4701,4767p'`；确认 `.node-version=24`、npm lock/.npmrc/verify-dist/发布字段均已由 TF1–TF4 提交，`.github/workflows` 尚不存在，当前无 remote/远程仓且 npmjs 未登录 PASS
 - 验收：
   - `yaml.parse` 同时解析 `ci.yml` 与 `release.yml` → 两行 `yaml-ok`；结构脚本 → `workflow-structure-ok` PASS（exit: `0`）
@@ -1116,6 +1116,25 @@
   - 全量 `npm test` → `tests 326; pass 325; fail 0; skipped 1; duration_ms 2827.0688` PASS（exit: `0`）
   - `npm run build` → derive/client/host=`28.87/205.78/199.59 kB`；`npm run verify:dist` → `verify-dist: OK 377 checks` PASS（各 exit: `0`）
   - `git diff --check` → 无空白错误 PASS（exit: `0`）
+  - 独立审查修正两处时态：ZIP 会始终参与可选 cover 派生，只有派生结果的使用受 full 模式限制；删除发布后会立即过期的「尚待 F 章」进度句，并同步把 README 回归门改为稳定的 M3 已完成断言 PASS
 - 人工断言：✓ 不写任何 token；✓ 不运行真实技能根 CI；✓ 不把任一 OS 标为可失败；✓ release 的 alpha/public/npmjs 由 publishConfig 单源约束。
 - 偏离与理由：无。
 - 遗留：远程尚未创建，故 `gh run` 的 Ubuntu/Windows 实际结论留 TF12 创建仓库并 push 后回填；若 Windows Node 24 暴露 glob 问题，按任务书只修 test script 并保留 Windows job。
+## TF6：README 发布态、完整配置与外置素材说明 — 2026-09-05 09:21
+- commit: PENDING-TASK
+- 动手前核对：实际执行任务书 `sed -n '4768,4856p'`、`grep -n '^## ' README.md` 与 `sed -n '1,140p' src/host/config.ts`；确认原 README 十个二级节、A/B/D/E 锁定字面、当前全部 23 个顶层配置键及其嵌套默认值 PASS
+- 验收：
+  - 任务书 README grep → headings=`14`、四锁定标题=`4`、workbench host=`1`、骨架阶段=`0`、SYNAPSE license=`1`、正文不经宿主路由=`1`、素材标题=`1`、observation key/enter-seat=`1/1` PASS
+  - 发布文案 grep → allowBuilds=`2`、dsh-synapse=`2`、非官方=`3`、amphoreus-skill-suite=`6`、`amphoreus-sync|即将支持|计划中|裸装会 ETARGET`=`0`、本机真实路径=`0` PASS
+  - 十三席 skill 单元格唯一计数=`13`；截图 PNG=`0`；`docs/screenshots/README.md` 为任务书指定单行占位文本 PASS
+  - 配置一致性扩展门 → `config.ts` 与 README 的 23 个顶层键全部双向存在；wallpaper/autoInvoke/handoff/workbench/suiteWatch/validate/sync 的每个当前子键均独立成行，类型与默认值逐项相同；`sync` 明标预留且当前无消费者 PASS
+  - 素材事实复核 → README 七目录与 heroes.ts 相同；必需=`58`（6+13×4）、可选=`32`（13+1+12+2+4），实盘存在=`58/58`、`32/32`，required 大文件=`5`；日历/表情包/金卡物理数=`14/78/15` PASS
+  - 三安装路径 → npm/tarball/GitHub 命令、reconcile 后重启、allowBuilds、含空格 link、卸载与三处保留数据、缺 lib 诊断均存在；未写任何凭据、原图下载或技能正文 PASS
+  - Markdown 本地链接静检 → 共 `11`，意外缺失=`0`；唯一缺失为任务书明定暂不放盘的四张截图与 TF10 将创建的 `docs/E2E-CHECKLIST.md` PASS
+  - `node --test tests/client-assembly.test.ts` → `tests 4; pass 4; fail 0; skipped 0; duration_ms 115.3726` PASS（exit: `0`）
+  - 全量 `npm test` → `tests 326; pass 325; fail 0; skipped 1; duration_ms 2796.5712` PASS（exit: `0`）
+  - `npm run build` → derive/client/host=`28.87/205.78/199.59 kB`；`npm run verify:dist` → `verify-dist: OK 377 checks` PASS（各 exit: `0`）
+  - `git diff --check` → 无空白错误 PASS（exit: `0`）
+- 人工断言：✓ 保留 client-assembly 锁定的席位/目录五语义与 M3 完成行；✓ 不把配置预留项写成可用命令；✓ 不夹带截图或原素材；✓ 显示名与职责继续以运行时技能套件为准。
+- 偏离与理由：任务书配置 keys-ok 示例只列 16 个名字，而实际 config.ts 有 23 个顶层键；按“以当时 config.ts 为准”扩大到全部顶层与嵌套叶键。端到端清单链接按任务书先写入，目标文件由 TF10 创建，静检将它与四张故意缺席截图列为预期缺失。
+- 遗留：GitHub 安装方式仍须 TF12 实测；失败时按任务书删除该方式并记录 HANDOFF。其余无。

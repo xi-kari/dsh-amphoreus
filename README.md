@@ -1,23 +1,272 @@
 # dsh-amphoreus
 
-翁法罗斯 × DSH：黄金裔席位工作区、技能无损桥接与画布工作台。基于 DeepSeek Harness（dsh-v0.1.2-alpha.4）构建，非官方产品。
+[![CI](https://github.com/xi-kari/dsh-amphoreus/actions/workflows/ci.yml/badge.svg)](https://github.com/xi-kari/dsh-amphoreus/actions/workflows/ci.yml) [![npm version](https://img.shields.io/npm/v/dsh-amphoreus/alpha)](https://www.npmjs.com/package/dsh-amphoreus)
 
-## 现状（2026-09-05）
+翁法罗斯 × DSH：为 amphoreus-skill-suite 的 13 张黄金裔技能卡各建一席专属工作区（专属配色、壁纸与首轮自动注入），并用一张总览画布调控与派发任务。它是基于 DeepSeek Harness 构建的第三方插件，属于非官方产品。
 
-已实现：
+## 截图
+
+![十三席门户](docs/screenshots/portal.png)
+
+![那刻夏席内视图](docs/screenshots/seat-anaxa.png)
+
+![总览工作台](docs/screenshots/workbench.png)
+
+![翁法罗斯设置区](docs/screenshots/settings.png)
+
+截图待补；所需画幅与明暗版本见 [`docs/screenshots/README.md`](docs/screenshots/README.md)。
+
+## 兼容性
+
+本版本只承诺兼容 **dsh-v0.1.2-alpha.4**。`@deepseek-ai/dsh` 的 npm `latest`／`next` 为 `0.1.2-rc.1`，`alpha` 已到 `0.1.2-alpha.5`；运行 DSH 本体时请钉定：
+
+```bash
+npx @deepseek-ai/dsh@0.1.2-alpha.4 web
+```
+
+安装本插件时请显式使用 `dsh-amphoreus@alpha` 或精确版本 `dsh-amphoreus@0.2.0`，不要依赖 `latest`。
+
+## 安装
+
+以下命令以 `web` profile 为例。插件被加入后，launcher 会把它 reconcile 进 `dsh.profile.bundles`；bundle 列表只在启动时组合，所以每种安装方式完成后都要**重启 `dsh web`**。`patchReload: live` 只重载 `cordis.patch.yml`，不能代替这次重启。
+
+### npm
+
+```bash
+dsh plugin --profile web add dsh-amphoreus@alpha
+# 或钉定版本
+dsh plugin --profile web add dsh-amphoreus@0.2.0
+```
+
+### tarball
+
+```bash
+npm pack dsh-amphoreus@alpha --registry https://registry.npmjs.org
+dsh plugin --profile web add ./dsh-amphoreus-0.2.0.tgz
+```
+
+### GitHub
+
+```bash
+dsh plugin --profile web add github:xi-kari/dsh-amphoreus#<sha>
+```
+
+GitHub 安装会在本机执行本包的 `prepare` 脚本以生成 `lib/`。第一次安装会失败并打印 `allowBuilds` 提示；把下面配置加入 `$DSH_HOME/profiles/web/pnpm-workspace.yaml` 后，再执行一次上面的 add 命令：
+
+```yaml
+allowBuilds:
+  dsh-amphoreus: true
+```
+
+这一步表示用户明确授权安装期构建，建议始终钉定 commit SHA。若启动时报 `run pnpm run build before launch`，说明 `prepare` 没有获准执行；npm 与 tarball 已携带构建产物，不会走这条源码构建路径。GitHub 方式以发布后的独立安装抽测结果为最终依据。
+
+### 含空格的本地路径
+
+不要把含空格的路径直接传给 `dsh plugin add`；launcher 的参数转发会在空格处断开。改在 profile 目录安装 link，再让 launcher reconcile：
+
+```bash
+cd "$DSH_HOME/profiles/web"
+pnpm add "link:D:/有 空格/dsh-amphoreus"
+dsh plugin --profile web install
+```
+
+本地开发的另一种占位路径写法是 `D:/<你的目录>/dsh-amphoreus`；请替换为自己的目录。
+
+### 卸载与数据
+
+```bash
+dsh plugin --profile web remove dsh-amphoreus
+```
+
+卸载插件不会删除技能目录，也不会删除已有插件数据。若用户决定手工清理，相关位置是：
+
+- `$DSH_HOME/storages/amphoreus.json`
+- `$DSH_HOME/storages/amphoreus_canvas/`
+- `$DSH_HOME/amphoreus/`，其中包括可重建的 `assets-cache/`
+
+## 配置
+
+profile 的 `cordis.patch.yml` 按 id 整体替换该插件的 config，而不是递归深合并；用户只需写想覆盖的键，未写键会由 schema 填入默认值。例如：
+
+```yaml
+- id: amphoreus
+  config:
+    skillRoots: ['~/.claude/skills', '~/.codex/skills']
+    dataDir: !!js dshHomePath('amphoreus')
+    assetsRoot: 'D:/我的素材/翁法罗斯'
+```
+
+`dataDir` 留空时，插件回退到 `$DSH_HOME/amphoreus`。`skillRoots` 只是运行时解析的只读目录引用；`assetsRoot` 指向用户自己的本地素材根，留空时视觉层使用抽象回退，不读取原图。
+
+下表逐项对应当前 `src/host/config.ts`；嵌套对象的每个子键单独列出：
+
+| 范围 | 键 | 类型 | 默认值 | 作用 |
+|---|---|---|---|---|
+| 顶层 | `skillRoots` | `string[]` | `['~/.claude/skills', '~/.codex/skills']` | 按顺序搜索技能套件的只读目录。 |
+| 顶层 | `dataDir` | `string` | `''` | 插件自有文件数据目录；空值回退到 `$DSH_HOME/amphoreus`。 |
+| 顶层 | `assetsRoot` | `string` | `''` | 用户本地素材根；空值启用无原图回退。 |
+| 顶层 | `commonPath` | `string` | `amphoreus/references/common.md` | 相对技能根的共享合同文件。 |
+| 顶层 | `relationsPath` | `string` | `amphoreus/references/relations.md` | 相对技能根的关系文件。 |
+| 顶层 | `sectionAliases` | `Record<string, string[]>` | `{}` | 为解析器补充章节标题别名。 |
+| 顶层 | `providerName` | `string` | `dsh-amphoreus` | 注册到 DSH 的技能提供者名。 |
+| 顶层 | `providerSource` | `string` | `amphoreus` | 技能提供者来源标识。 |
+| 顶层 | `providerRank` | `number` | `300` | 技能提供者排序权重。 |
+| 顶层 | `registerProvider` | `boolean` | `true` | 是否注册技能提供者。 |
+| 顶层 | `forceUserOnly` | `boolean` | `false` | 是否把提供者暴露范围限制为用户调用。 |
+| 顶层 | `heroWorkspaceMode` | `'seats' \| 'off'` | `seats` | 启用十三席分组或关闭席位工作区。 |
+| 顶层 | `magazineMode` | `'light' \| 'full'` | `light` | 选择轻量或完整杂志视觉。 |
+| 顶层 | `seatStyle` | `boolean` | `true` | 是否启用逐席配色与纹样。 |
+| `wallpaper` | `wallpaper` | `object` | 见下列子键 | 席位与全局壁纸设置。 |
+| `wallpaper` | `enabled` | `boolean` | `true` | 壁纸总开关。 |
+| `wallpaper` | `global` | `'rotate' \| 'fixed'` | `fixed` | 全局壁纸轮换或固定模式。 |
+| `wallpaper` | `globalIndex` | `number` | `4` | 全局壁纸索引，范围 0–5。 |
+| `wallpaper` | `sidebarIndex` | `number` | `5` | 侧栏壁纸索引，范围 0–5。 |
+| `wallpaper` | `perSeat` | `boolean` | `true` | 是否按席位切换壁纸。 |
+| `wallpaper` | `darkMask` | `number` | `0.18` | 暗色模式遮罩强度。 |
+| `wallpaper` | `lightMask` | `number` | `0.03` | 亮色模式遮罩强度。 |
+| `wallpaper` | `surfaceAlpha` | `object` | 见下列子键 | 表面层透明度。 |
+| `wallpaper.surfaceAlpha` | `light` | `number` | `0.22` | 亮色表面透明度。 |
+| `wallpaper.surfaceAlpha` | `dark` | `number` | `0.4` | 暗色表面透明度。 |
+| `autoInvoke` | `autoInvoke` | `object` | 见下列子键 | 首轮技能注入设置。 |
+| `autoInvoke` | `enabled` | `boolean` | `true` | 首轮自动注入总开关。 |
+| `autoInvoke` | `sources` | `SessionStartSourceName[]` | `['startup', 'clear']` | 允许触发注入的会话启动来源。 |
+| 顶层 | `receiptParsing` | `boolean` | `true` | 是否解析运行时回执。 |
+| `handoff` | `handoff` | `object` | 见下列子键 | 移交能力设置。 |
+| `handoff` | `enabled` | `boolean` | `true` | 移交按钮与观察能力总开关。 |
+| `workbench` | `workbench` | `object` | 见下列子键 | 工作台设置。 |
+| `workbench` | `enabled` | `boolean` | `true` | 是否注册工作台界面与路由。 |
+| `workbench` | `host` | `'iframe' \| 'native'` | `iframe` | 工作台承载方式；`native` 当前按 `iframe` 处理。 |
+| `workbench` | `defaultView` | `'chat' \| 'workbench'` | `chat` | 会话默认视图。 |
+| `workbench` | `cardTextLimit` | `number` | `8000` | 浏览器侧卡片正文上限，允许 1000–32000。 |
+| `workbench` | `autoProjection` | `boolean` | `true` | 是否把会话事件自动投影到工作台索引。 |
+| `suiteWatch` | `suiteWatch` | `object` | 见下列子键 | 技能套件监听设置。 |
+| `suiteWatch` | `mode` | `'fs' \| 'poll' \| 'off'` | `fs` | 文件监听、轮询或关闭。 |
+| `suiteWatch` | `pollMs` | `number` | `15000` | 轮询间隔（毫秒）。 |
+| `suiteWatch` | `debounceMs` | `number` | `800` | 变更防抖时间（毫秒）。 |
+| `validate` | `validate` | `object` | 见下列子键 | 外部校验器设置。 |
+| `validate` | `enabled` | `boolean` | `false` | 是否运行外部校验。 |
+| `validate` | `python` | `string` | `python` | Python 可执行文件。 |
+| `sync` | `sync` | `object` | 见下列子键 | 预留，当前无消费者。 |
+| `sync` | `source` | `string` | `github:xi-kari/amphoreus-skill-suite` | 预留的套件来源。 |
+| `sync` | `ref` | `string` | `main` | 预留的套件引用。 |
+| `sync` | `keepBackups` | `number` | `3` | 预留的备份数量。 |
+| 顶层 | `trustedHosts` | `string[]` | `[]` | Host 门额外允许的主机。 |
+
+## 素材包
+
+素材为《崩坏：星穹铁道》官方图或相应二创；本仓库与 npm 包**不包含、不下载**任何原图。用户把自己持有的文件按下表命名并放入 `assetsRoot`。缺少素材不会让插件伪造角色内容，而会进入对应的抽象视觉回退。
+
+| 目录 | 文件名规则与张数 | 用途 | 缺失时表现 |
+|---|---|---|---|
+| `昔涟壁纸/` | 6 张 `GLOBAL_WALLPAPERS` PNG | 全局与侧栏壁纸 | 不显示原图壁纸，保留 token 与纹样。 |
+| `翁法罗斯英雄纪/` | 13 张 `HERO_VISUALS[].assets.chronicle` JPG；含源文件错字 `09阿格莱呀.jpg` | 十三席门户封面 | 使用席位配色与抽象卡面。 |
+| `翁法罗斯如我所书卡牌/` | 13 张 `HERO_VISUALS[].assets.card` PNG | 席位卡牌视觉 | 使用抽象卡面。 |
+| `翁法罗斯日历/` | 14 张 JPG；其中 13 张由 `HERO_VISUALS[].assets.calendar` 引用 | 逐席壁纸与派生宽封面 | 该席回退到无原图视觉。 |
+| `表情包/` | 本地素材集 78 张；检查 13 张必需席位贴纸及 17 张可选品牌、奇美拉与开拓者贴纸 | 徽记、席位图标与辅助视觉 | 席位贴纸缺失时显示确定性的首字徽记。 |
+| `翁法罗斯金卡（游戏截图）/` | 本地素材集 15 张；检查器将 `0开拓者女.png`、`14开拓者男.png` 记为可选 | 开拓者视觉储备 | 不影响十三席核心界面。 |
+| `黄金裔杂志_13册分册压缩包/` | Vol.01–Vol.13，共 13 个 ZIP，均为可选 | 派生供 `magazineMode: full` 使用的杂志封面 | 缺失时沿用轻量或原图回退，不解压内页到磁盘。 |
+
+自检基线共 58 个必需文件（6 张壁纸 + 13 席 × 英雄纪／卡牌／日历／贴纸）与 32 个可选文件（13 个 ZIP + 1 个品牌贴纸 + 12 个奇美拉贴纸 + 2 张开拓者金卡 + 4 张开拓者贴纸）。克隆仓库后可执行：
+
+```bash
+npm run assets:check -- "<assetsRoot>"
+```
+
+`check-assets.mjs` 依赖仓库中的 `src/shared/heroes.ts`，因此不随 npm 包发布；npm／tarball 用户按下表核对即可。
+
+全局壁纸文件名：
+
+- `Image_1788022237216_660.png`
+- `Image_1788022238729_461.png`
+- `Image_1788022241165_565.png`
+- `Image_1788022242885_262.png`
+- `Image_1788022248464_572.png`
+- `Image_1788022255434_340.png`
+
+十三席的五类源文件名直接对应 `HERO_VISUALS[].assets`：
+
+| heroId | Vol. | 英雄纪 | 日历 | 如我所书卡牌 | 杂志分册 | 席位贴纸 |
+|---|---:|---|---|---|---|---|
+| `cyrene` | 13 | `13昔涟.jpg` | `翁法罗斯2026一年历-封面-昔涟.jpg` | `13昔涟.png` | `Vol.13_往昔的涟漪_昔涟_14张.zip` | `昔涟-收到.png` |
+| `tribbie` | 02 | `01缇宝.jpg` | `1月-门关月-缇宝.jpg` | `01缇宝.png` | `Vol.02_命运的三子_缇宝_11张.zip` | `缇宝-睿智.png` |
+| `cerydra` | 10 | `02刻律德菈.jpg` | `2月-平衡月-刻律德菈.jpg` | `02刻律德菈.png` | `Vol.10_执棋的君主_刻律德菈_12张.zip` | `刻律德菈-将军.png` |
+| `march7th` | 11 | `03长夜月.jpg` | `3月-长夜月-长夜月.jpg` | `03长夜月.png` | `Vol.11_隐秘的陌客_长夜月_12张.zip` | `长夜月-去吧.png` |
+| `terrae` | 12 | `04丹恒.jpg` | `4月-耕耘月-丹恒.jpg` | `04丹恒.png` | `Vol.12_腾飞的荒龙_丹恒·腾荒_12张.zip` | `丹恒-倾听.png` |
+| `hysilens` | 09 | `05海瑟音.jpg` | `5月-欢喜月-海瑟音.jpg` | `05海瑟音.png` | `Vol.09_奏浪的剑骑_海瑟音_12张.zip` | `海瑟音-哼歌.png` |
+| `hyacine` | 06 | `06风堇.jpg` | `6月-长昼月-风堇.jpg` | `06风堇.png` | `Vol.06_摇光的医师_雅辛忒丝_12张.zip` | `风堇-治愈.png` |
+| `phainon` | 08 | `07白厄.jpg` | `7月-自由月-白厄.jpg` | `07白厄.png` | `Vol.08_无名的英雄_白厄_12张.zip` | `白厄-诶嘿.png` |
+| `anaxa` | 05 | `08那刻夏.jpg` | `8月-收获月-那刻夏.jpg` | `08那刻夏.png` | `Vol.05_殁世的学士_阿那克萨戈拉斯_12张.zip` | `那刻夏-看穿.png` |
+| `aglaea` | 01 | `09阿格莱呀.jpg` | `9月-拾线月-阿格莱雅.jpg` | `09阿格莱雅.png` | `Vol.01_黄金的织者_阿格莱雅_12张.zip` | `阿格莱雅-设计.png` |
+| `mydei` | 03 | `10万敌.jpg` | `10月-纷争月-万敌.jpg` | `10万敌.png` | `Vol.03_亡国的王储_迈德漠斯_11张.zip` | `万敌-狂.png` |
+| `castorice` | 04 | `11遐蝶.jpg` | `11月-哀悼月-遐蝶.jpg` | `11遐蝶.png` | `Vol.04_死荫的侍女_遐蝶_14张.zip` | `遐蝶-创作.png` |
+| `cipher` | 07 | `12赛飞儿.jpg` | `12月-机缘月-赛飞儿.jpg` | `12赛飞儿.png` | `Vol.07_捷足的羁客_赛法利娅_12张.zip` | `赛飞儿-得手.png` |
+
+表情包的 8160² 原图请先缩到不超过 1024²，否则首帧读取会变慢；也可以直接使用派生命令生成 WebP 缓存。先完成构建并确保 ImageMagick 的 `magick` 在 PATH，然后显式指定与服务相同的 `dataDir`：
+
+```bash
+npm run build
+npm run derive -- --assets-root "<dir>" --data-dir "<DSH_HOME>/amphoreus"
+```
+
+当前 shell 的 `DSH_HOME` 未必与服务进程一致，因此不要省略 `--data-dir`。派生物写入 `<dataDir>/assets-cache/`；运行时优先使用 WebP，缺失时回退原图。缓存可重建；若要清理，先停止服务，只删除该精确缓存目录，再启动服务让文件清单重新扫描。
+
+也可以在 DSH 设置中进入：**翁法罗斯 → 视觉层 → 重新派生素材**。后台任务会显示进度、完成数量与最近结果。
+
+## 技能套件：获取与更新
+
+插件不内嵌任何 `SKILL.md`、`persona.md`、`common.md` 或 `relations.md`。席位、分派表、流水线与回执格式全部在运行时从 `skillRoots` 解析，绑定键等于 skill name。
+
+获取 amphoreus-skill-suite：
+
+```bash
+git clone https://github.com/xi-kari/amphoreus-skill-suite.git
+cp -r amphoreus-skill-suite/skills/* ~/.claude/skills/
+```
+
+Windows 用户需确认当前 shell 如何展开 `~`。更新有两种方式：
+
+1. 在套件仓库执行 `git pull`，再重新 `cp -r`；也可以让 `skillRoots` 直接指向克隆目录的 `skills/`，此时 `git pull` 后即可重新解析。
+2. 在 DSH 设置中打开「翁法罗斯」，点击「重新解析套件」。
+
+解析失败时界面明确显示「套件格式未识别，已降级」，不会静默沿用旧结果；新加入的技能卡自动出席，移除的技能卡变为「未部署」且保留已有会话。
+
+## 十三席一览
+
+| 席序 | heroId | skill | 杂志册 | 母题 | 常用名 |
+|---:|---|---|---|---|---|
+| 0 | cyrene | amphoreus-cyrene | Vol.13 | ripples | 昔涟（全局层／总览） |
+| 1 | tribbie | amphoreus-tribbie | Vol.02 | stars | 缇宝 |
+| 2 | cerydra | amphoreus-cerydra | Vol.10 | checker | 刻律德菈 |
+| 3 | march7th | amphoreus-march7th | Vol.11 | film | 三月七／长夜月（同席翻面） |
+| 4 | terrae | amphoreus-terrae | Vol.12 | scales | 丹恒·腾荒 |
+| 5 | hysilens | amphoreus-hysilens | Vol.09 | waves | 海瑟音 |
+| 6 | hyacine | amphoreus-hyacine | Vol.06 | clouds | 风堇 |
+| 7 | phainon | amphoreus-phainon | Vol.08 | arches | 白厄 |
+| 8 | anaxa | amphoreus-anaxa | Vol.05 | astrolabe | 那刻夏 |
+| 9 | aglaea | amphoreus-aglaea | Vol.01 | gold-thread | 阿格莱雅 |
+| 10 | mydei | amphoreus-mydei | Vol.03 | lion | 万敌 |
+| 11 | castorice | amphoreus-castorice | Vol.04 | butterfly | 遐蝶 |
+| 12 | cipher | amphoreus-cipher | Vol.07 | coins | 赛飞儿 |
+
+显示名与职责在运行时来自技能卡 description 与分派表；这里的常用名只帮助读者识别视觉席位。
+
+## 现状（0.2.0 发布态）
+
+完整工作流是：打开十三席门户 → 进席 → 在此席新建会话 → 首轮自动注入当前技能卡 → 识别回执 → 在总览画布派发或移交。未经明确点击，移交不会接受或切换，移交物也不会自动发送；技能卡缺席时不代演，界面显示套件提供的缺席标准行。
 
 - 从 `skillRoots` 在运行时解析技能套件，并提供目录监听、内容指纹与显式降级。
 - 建立 13 席黄金裔席位表与席位目录；席内新会话在首轮一次性注入对应技能卡。
 - 提供 `/amphoreus/*` Web API，并以进程级 nonce 与 Host 门保护写请求。
 - 提供首帧壁纸层、全局昔涟主题层、品牌三槽和设置区。
-- 提供工作台 Tab；其中 iframe 承载由 dsh-synapse 改造的 vendored 画布。会话结构由冷重放与实时事件共同维护，卡片正文只由当前浏览器会话控制器喂入。
-- 提供 13 席 light/dark token、共享 SVG 纹样、`light`/`full` 杂志版式，以及可重建的本地 WebP 派生缓存；视觉层设置可即时切档并显示后台派生进度。
+- 提供 13 席 light/dark token、共享 SVG 纹样、`light`／`full` 杂志版式，以及可重建的本地 WebP 派生缓存；视觉层设置可即时切换并显示后台派生进度。
 
-`M3` 总空间派发、移交与台账现已完成；尚待 F 章的发布包装与独立路径终验。历史审计基线见 [AUDIT-2026-09-04.md](docs/AUDIT-2026-09-04.md)。
+`M3` 总空间派发、移交与台账现已完成；当前可复核边界见下方 `## 已知限制`。
 
 - 正文与会话列表不经宿主路由，宿主只保留 seq 索引（B 章）。
 
-## 工作台
+### 工作台
+
+iframe 画布基于 dsh-synapse 的 MIT 实现改造，完整署名与改动边界见致谢和 NOTICE。
 
 - 全体会议 chip 进入总空间；派发面板按技能套件的词面匹配给出建议承办席，派发泳道展示已经创建的下游会话。
 - 移交坞只在存在待处理移交时出现；用户明确点击接受后才切换到下游，未点击时不接受、不切换，也不自动发送移交内容。
@@ -39,126 +288,43 @@ iframe 发给宿主页的新消息包括 `amphoreus:dispatch`、`amphoreus:accep
 
 在席内新建会话时，插件先预生成会话 ID 并写入席位绑定，再用该 ID 创建会话；创建或打开失败时回滚预绑定。由已有会话 fork 出的子会话继承父席。昔涟席代表全体会议与全局视觉层，进入时不切换逐席壁纸或主题 token。
 
-## 配置
-
-| 配置键 | 说明 |
-|---|---|
-| `skillRoots` | 按顺序列出运行时搜索和解析 Amphoreus 技能套件的只读目录。 |
-| `dataDir` | 指定插件自有文件数据的落盘目录。 |
-| `assetsRoot` | 指向用户本地素材根目录；原始图片不随插件分发。 |
-| `heroWorkspaceMode` | 选择启用十三席席位目录（`seats`）或关闭席位工作区（`off`）。 |
-| `magazineMode` | 选择杂志视觉的 `light` 或 `full` 档；视觉层设置可写入持久偏好覆盖此配置，并可恢复为配置值。 |
-| `seatStyle` | 控制逐席视觉样式是否启用。 |
-| `wallpaper.*` | 配置壁纸开关、全局选图方式与索引、侧栏索引、逐席壁纸、明暗遮罩和表面透明度。 |
-| `autoInvoke.*` | 配置首轮技能卡自动注入开关及允许的会话启动来源。 |
-| `workbench.enabled` | 控制工作台 Tab 与相关工作台能力是否启用。 |
-| `workbench.host` | 选择工作台承载方式；`native` 预留，当前按 `iframe` 处理。 |
-| `workbench.defaultView` | 选择会话默认进入 `chat` 或 `workbench`；页面加载时的首个会话通常不受该设置影响。 |
-| `workbench.cardTextLimit` | 设置浏览器侧工作台卡片的正文截断字数；详情仍保留当前会话控制器提供的全文。 |
-| `workbench.autoProjection` | 控制会话事件是否自动投影到工作台。 |
-| `suiteWatch.*` | 配置技能套件监听模式（`fs`、`poll`、`off`）、轮询间隔和防抖时间。 |
-| `trustedHosts` | 列出允许通过 Host 门访问插件 Web 路由的额外主机。 |
-
-## 开发环
+## 开发
 
 ```bash
 npm run dev:link
-```
-
-把 `package.json` 声明的依赖以 junction 从本机 DSH 安装链进 `node_modules`。
-
-```bash
 npm run build
-```
-
-typecheck → 声明文件 → tsdown（`lib/index.js` 宿主半侧、`lib/client.js` 浏览器半侧）。
-
-```bash
 npm test
+npm run verify:dist
+npm run assets:check -- "<assetsRoot>"
 ```
 
-## 安装到 profile web
-
-在 profile 目录执行（路径含空格时不要用 `dsh plugin add <path>`）：
-
-```bash
-pnpm add "link:D:/<你的目录>/dsh-amphoreus"
-```
-
-再运行 `dsh plugin --profile web install` 让 launcher 把本包 reconcile 进 `dsh.profile.bundles`，然后重启 `dsh web`。
+`npm run dev:link` 在 Windows 上以 junction 链接本地 DSH 依赖。改宿主代码后重启 `dsh web`；改浏览器代码后先 build，再刷新页面。含空格的本地 link 安装仍使用“安装”一节中的 profile 内 `pnpm add` 方法。
 
 ## 已知限制
 
-1. 首帧 nonce 每个进程随机生成；宿主重启后需刷新工作台。
-2. 页面加载时的首个会话通常不受 `workbench.defaultView` 影响。
-3. “记住 Tab”在插件热重载或会话回到空白态时可能被误记为“对话”；下次进入工作台 Tab 后会自愈。
-4. 派生素材使用稳定 `.webp` URL 与一天私有缓存；强制重做后，已经打开的浏览器页可能需要刷新才能立即看见新图。
-5. DSH alpha.4 的空白会话不渲染会话视图；从对话 Tab 打开总览再进入“全体会议”或使用“去派发”时，总空间画布因此留在门户覆盖层内承载，不新建空白宿主会话。
-
-## 素材包
-
-发布包不含任何图片、杂志内页或技能正文。原始素材留在用户自己的目录中，插件只从 profile 配置的 `assetsRoot` 读取；请勿把素材复制进插件包目录。
-
-在目标 profile 的 `cordis.patch.yml` 中，以包内 [`cordis.patch.yml`](cordis.patch.yml) 的 insert 形状覆盖素材根，例如：
-
-```yaml
-- insert:
-    - id: amphoreus
-      name: dsh-amphoreus
-      config:
-        assetsRoot: 'D:/你的素材目录'
-```
-
-素材根采用以下目录名；名称与运行时代码逐字一致：
-
-| 目录 | 内容与用途 |
-|---|---|
-| `昔涟壁纸/` | 6 张全局壁纸：`Image_1788022237216_660.png`、`Image_1788022238729_461.png`、`Image_1788022241165_565.png`、`Image_1788022242885_262.png`、`Image_1788022248464_572.png`、`Image_1788022255434_340.png`。 |
-| `翁法罗斯英雄纪/` | 13 张英雄纪原图；保留源文件原名，包括 `09阿格莱呀.jpg`。 |
-| `翁法罗斯日历/` | 13 席日历图；属于完整素材清单，当前派生 CLI 不消费这一目录。 |
-| `翁法罗斯如我所书卡牌/` | 13 张角色卡牌原图。 |
-| `表情包/` | 至少包含 13 张席位贴纸、品牌贴纸 `小昔涟-嘻嘻.png` 与 12 张奇美拉贴纸。 |
-| `黄金裔杂志_13册分册压缩包/` | Vol.01–Vol.13；派生器只在内存中读取每册唯一的根级 `00_封面`，不解压杂志内页。 |
-
-十三席的五类源文件名直接对应 `HERO_VISUALS[].assets`：
-
-| heroId | Vol. | 英雄纪 | 日历 | 如我所书卡牌 | 杂志分册 | 席位贴纸 |
-|---|---:|---|---|---|---|---|
-| `cyrene` | 13 | `13昔涟.jpg` | `翁法罗斯2026一年历-封面-昔涟.jpg` | `13昔涟.png` | `Vol.13_往昔的涟漪_昔涟_14张.zip` | `昔涟-收到.png` |
-| `tribbie` | 02 | `01缇宝.jpg` | `1月-门关月-缇宝.jpg` | `01缇宝.png` | `Vol.02_命运的三子_缇宝_11张.zip` | `缇宝-睿智.png` |
-| `cerydra` | 10 | `02刻律德菈.jpg` | `2月-平衡月-刻律德菈.jpg` | `02刻律德菈.png` | `Vol.10_执棋的君主_刻律德菈_12张.zip` | `刻律德菈-将军.png` |
-| `march7th` | 11 | `03长夜月.jpg` | `3月-长夜月-长夜月.jpg` | `03长夜月.png` | `Vol.11_隐秘的陌客_长夜月_12张.zip` | `长夜月-去吧.png` |
-| `terrae` | 12 | `04丹恒.jpg` | `4月-耕耘月-丹恒.jpg` | `04丹恒.png` | `Vol.12_腾飞的荒龙_丹恒·腾荒_12张.zip` | `丹恒-倾听.png` |
-| `hysilens` | 09 | `05海瑟音.jpg` | `5月-欢喜月-海瑟音.jpg` | `05海瑟音.png` | `Vol.09_奏浪的剑骑_海瑟音_12张.zip` | `海瑟音-哼歌.png` |
-| `hyacine` | 06 | `06风堇.jpg` | `6月-长昼月-风堇.jpg` | `06风堇.png` | `Vol.06_摇光的医师_雅辛忒丝_12张.zip` | `风堇-治愈.png` |
-| `phainon` | 08 | `07白厄.jpg` | `7月-自由月-白厄.jpg` | `07白厄.png` | `Vol.08_无名的英雄_白厄_12张.zip` | `白厄-诶嘿.png` |
-| `anaxa` | 05 | `08那刻夏.jpg` | `8月-收获月-那刻夏.jpg` | `08那刻夏.png` | `Vol.05_殁世的学士_阿那克萨戈拉斯_12张.zip` | `那刻夏-看穿.png` |
-| `aglaea` | 01 | `09阿格莱呀.jpg` | `9月-拾线月-阿格莱雅.jpg` | `09阿格莱雅.png` | `Vol.01_黄金的织者_阿格莱雅_12张.zip` | `阿格莱雅-设计.png` |
-| `mydei` | 03 | `10万敌.jpg` | `10月-纷争月-万敌.jpg` | `10万敌.png` | `Vol.03_亡国的王储_迈德漠斯_11张.zip` | `万敌-狂.png` |
-| `castorice` | 04 | `11遐蝶.jpg` | `11月-哀悼月-遐蝶.jpg` | `11遐蝶.png` | `Vol.04_死荫的侍女_遐蝶_14张.zip` | `遐蝶-创作.png` |
-| `cipher` | 07 | `12赛飞儿.jpg` | `12月-机缘月-赛飞儿.jpg` | `12赛飞儿.png` | `Vol.07_捷足的羁客_赛法利娅_12张.zip` | `赛飞儿-得手.png` |
-
-先完成构建，并确保 ImageMagick 的 `magick` 可执行文件在 PATH；随后显式指定与运行服务完全相同的 `dataDir`：
-
-```bash
-npm run build
-npm run derive -- --assets-root "<dir>" --data-dir "<DSH_HOME>/amphoreus"
-```
-
-当前 shell 的 `DSH_HOME` 未必与服务进程一致，因此不要省略 `--data-dir`。派生物写入 `<dataDir>/assets-cache/`；运行时优先使用 WebP，缺失时回退原图。缓存可重建；若要删除，请先停止服务，删除该精确目录后再启动，使文件清单重新扫描。
-
-也可以在 DSH 设置中进入：**翁法罗斯 → 视觉层 → 重新派生素材**。后台任务会显示进度、完成数量与最近结果。
-
-素材版权归《崩坏：星穹铁道》官方或相应二创作者所有，仅供本地私用，请勿随插件包分发。
-
-## 边界
-
-- 不内嵌技能内容；`skillRoots` 只是目录引用，运行时解析，对技能目录只读。
-- 不写自定义会话事件；自有数据落 storage-domain 与 `dataDir`。
-- 不夹带《崩坏：星穹铁道》原图；素材经 `assetsRoot` 指向用户本地目录。
+1. 当前兼容范围仅为 `dsh-v0.1.2-alpha.4`。
+2. 首帧 nonce 每个进程随机生成；宿主重启后需刷新工作台。
+3. 页面加载时的首个会话通常不受 `workbench.defaultView` 影响。
+4. “记住 Tab”在插件热重载或会话回到空白态时可能被误记为“对话”；下次进入工作台 Tab 后会自愈。
+5. 派生素材使用稳定 `.webp` URL 与一天私有缓存；强制重做后，已经打开的浏览器页可能需要刷新才能立即看见新图。
+6. DSH alpha.4 的空白会话不渲染会话视图；从对话 Tab 打开总览再进入“全体会议”或使用“去派发”时，总空间画布因此留在门户覆盖层内承载，不新建空白宿主会话。
 
 ## 致谢
 
 - 工作台画布、投影与桥接协议源自 [liangmianya/dsh-synapse](https://github.com/liangmianya/dsh-synapse) v0.4.1（MIT），本包为**改造版**，不宣称原创；改动摘要与原始许可见 [NOTICE](NOTICE)、[reference/SYNAPSE-LICENSE.txt](reference/SYNAPSE-LICENSE.txt)。
 - 技能套件 [xi-kari/amphoreus-skill-suite](https://github.com/xi-kari/amphoreus-skill-suite) 由运行时从 `skillRoots` 解析，不随包分发。
 - 本包基于 DeepSeek Harness 构建，非官方产品。
+
+## 声明与许可
+
+本项目采用 MIT License，详见 [LICENSE](LICENSE)。本项目基于 DeepSeek Harness 构建，不是 DeepSeek 官方产品，与深度求索公司无关联、无背书。项目命名遵循 DSH 品牌规范。
+
+《崩坏：星穹铁道》相关名称与美术归米哈游所有；本仓库和 npm 包不分发其图像，也不提供原图下载链接。
+
+## 相关文档
+
+- [建设交接](HANDOFF.md)
+- [历史审计](docs/AUDIT-2026-09-04.md)
+- [端到端验收清单](docs/E2E-CHECKLIST.md)
+
+设计底账另存，不随 npm 包分发。
