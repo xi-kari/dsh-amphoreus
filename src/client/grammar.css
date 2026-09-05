@@ -62,11 +62,15 @@
   background: transparent;
 }
 
-/* ---------- Corner language driven by the seat (clip-path seats replace rounding on their sheets) ---------- */
-[data-amph-grammar] [data-amph-sidebar],
-[data-amph-grammar] [data-phase='active'] [data-amph-header],
-[data-amph-grammar] [data-amph-inputbar]:has([data-amph-stats]),
-[data-amph-grammar] [data-amph-composer] {
+/* ---------- Corner language driven by the seat (clip-path seats replace rounding) ----------
+   clip-path, like backdrop-filter/transform, turns an element into the containing block of its
+   position:fixed descendants AND clips them — the settings dialog is portalled inside the sidebar
+   column, so clipping the column swallowed it (mydei/cipher could not open Settings). The cut
+   corners therefore live only on the glass sheet pseudo-elements and on bubbles, never on
+   containers that host popovers. */
+[data-amph-grammar] [data-amph-sidebar]::before,
+[data-amph-grammar] [data-amph-sidebar]::after,
+[data-amph-grammar] [data-amph-bubble] {
   clip-path: var(--amph-clip, none);
 }
 
