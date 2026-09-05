@@ -15,6 +15,8 @@ export type AmphoreusSettingsProps = PropsRuntime<'settings.section'> & PropsLoc
 
 type SettingsAction = 'reparse' | 'magazine-light' | 'magazine-full' | 'magazine-reset' | 'derive' | 'derive-force' | 'grammar' | 'wallpaper'
 // @anchor settings-actions
+// Seat preset panel (import kept beside its action so the pinned header above stays untouched; ESM hoists it).
+import { SeatPresetPanel } from './seat-preset-panel.tsx'
 
 export function AmphoreusSettings({ model, t }: AmphoreusSettingsProps) {
   const snapshot = useSyncExternalStore(model.subscribe, model.getSnapshot)
@@ -198,6 +200,14 @@ export function AmphoreusSettings({ model, t }: AmphoreusSettingsProps) {
             onPlacement={(heroId, patch) => { void run('wallpaper', () => model.setCustomWallpaperPlacement(heroId, patch)) }}
           />
           {/* @anchor settings-panels */}
+          <SeatPresetPanel
+            seats={state.seats}
+            seatNames={new Map(state.seats.map(seat => [seat.skillName, seat.userDisplayName ?? suite?.cards.find(card => card.name === seat.skillName)?.displayName ?? seat.displayName]))}
+            directory={model.presetDirectory}
+            busy={busy}
+            t={t}
+            onSave={(skillName, preset) => { void run('seat-preset' as SettingsAction, () => model.setSeatPreset(skillName, preset)) }}
+          />
 
           <section className={css.panel} aria-labelledby="amphoreus-workbench">
             <div className={css.sectionHeading}><h2 id="amphoreus-workbench">{t('settings.workbenchHeading')}</h2></div>

@@ -73,6 +73,16 @@ const PrefsInput = z.object({
 
 const DeriveInput = z.object({ force: z.boolean().optional() }).strict()
 // @anchor webapi-inputs
+/** PUT /amphoreus/api/seats/<skill>/preset body: three optional tiers, or `null` to clear. */
+const SeatPresetInput = z.object({
+  agentPreset: z.string().regex(/^[a-z0-9][a-z0-9-]*$/u).max(64).optional(),
+  model: z.object({
+    provider: z.string().min(1).max(128),
+    model: z.string().min(1).max(256),
+    reasoningEffort: z.string().min(1).max(64).optional(),
+  }).strict().optional(),
+  permission: z.string().min(1).max(64).optional(),
+}).strict().nullable()
 
 const ObservationCreateInput = z.object({
   sessionId: z.string().regex(SESSION_ID),
@@ -356,6 +366,10 @@ export class AmphoreusWebApi {
         return
       }
       // @anchor webapi-routes
+      if (path.startsWith('/amphoreus/api/seats/')) {
+        await this.#seatPresetRoute(request, response, decodeTail(path, '/amphoreus/api/seats/'))
+        return
+      }
       if (path === '/amphoreus/api/prefs') {
         if (request.method === 'GET') {
           json(response, 200, { prefs: this.#stores.main.global.get().prefs })
@@ -1069,6 +1083,39 @@ export class AmphoreusWebApi {
   }
 
   // @anchor webapi-methods
+
+  /** `<skill>/preset`: PUT stores or clears (`null`) the seat's default tiers; the seat itself stays suite-owned. */
+  async #seatPresetRoute(request: IncomingMessage, response: ServerResponse, tail: string | undefined): Promise<void> {
+    const separator = tail?.lastIndexOf('/') ?? -1
+    const skill = tail === undefined || separator < 0 ? undefined : tail.slice(0, separator)
+    const leaf = tail === undefined || separator < 0 ? undefined : tail.slice(separator + 1)
+    if (skill === undefined || leaf !== 'preset' || !SKILL_NAME.test(skill)) {
+      json(response, 404, { error: 'not found' })
+      return
+    }
+    const table = this.#stores.main.table('seats')
+    const seat = table.get(skill)
+    if (seat === undefined) {
+      json(response, 404, { error: 'seat not found' })
+      return
+    }
+    if (request.method === 'GET') {
+      json(response, 200, { preset: seat.preset ?? null })
+      return
+    }
+    if (!method(request, response, 'PUT')) return
+    const parsed = SeatPresetInput.safeParse(await readJson(request))
+    if (!parsed.success) {
+      json(response, 400, { error: zodError(parsed.error) })
+      return
+    }
+    const input = parsed.data
+    const empty = input === null || (input.agentPreset === undefined && input.model === undefined && input.permission === undefined)
+    const { preset: _previous, ...rest } = seat
+    const value: import('./store.ts').SeatRecord = empty ? rest : { ...rest, preset: input }
+    await table.put(skill, value)
+    json(response, 200, { preset: value.preset ?? null })
+  }
 
   #authorize(request: IncomingMessage, response: ServerResponse, write: boolean, binaryUpload = false): boolean {
     if (!trustedHost(request.headers.host, this.#config.trustedHosts)) {

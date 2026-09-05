@@ -41,6 +41,7 @@ import { createWorkspacesSource } from './workspaces-source.ts'
 import { currentOrdinaryWorkspace, orphanSeatWorkspacePath, syncWorkspaceSession, waitForReadySnapshot } from './workspace-routing.ts'
 import { heroVisualById } from '../shared/heroes.ts'
 // @anchor client-imports
+import { createSeatPresetApplier } from './seat-preset-apply.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -155,6 +156,37 @@ export function apply(ctx: ClientContext): void {
       binding: sessionId => sessionsFace.binding(sessionId),
     },
   }
+  // Seat presets: three independent tiers landed on a fresh blank seat session
+  // (agent preset / model / permission-on-host). Optional remote faces attach
+  // through inject scopes so a deployment without them degrades to "default".
+  const seatPresetApplier = createSeatPresetApplier({
+    presetOf: skillName => model.getSnapshot().state?.seats.find(seat => seat.skillName === skillName)?.preset,
+    selectModel: request => ctx.remote.session.selectModel({
+      sessionId: request.sessionId as SessionId,
+      provider: request.provider,
+      model: request.model,
+      ...(request.reasoningEffort === undefined ? {} : { reasoningEffort: request.reasoningEffort }),
+    }),
+    modelCatalog: () => ctx.remote.session.modelCatalog(),
+  })
+  seatDeps.applySeatPreset = (sessionId, skillName) => seatPresetApplier.apply(sessionId, skillName)
+  model.presetDirectory = seatPresetApplier
+  ctx.inject(['remote.agentPresets'], scope => {
+    scope.effect(() => seatPresetApplier.attach({
+      selectAgentPreset: (sessionId, agentPreset) => scope.remote.agentPresets.select(sessionId as SessionId, agentPreset),
+      listAgentPresets: () => scope.remote.agentPresets.list(),
+    }), 'amphoreus: seat preset roster')
+  })
+  ctx.inject(['remote.settings'], scope => {
+    scope.effect(() => seatPresetApplier.attach({
+      // selectModel also rewrites this namespace (core/agent-default-model saveSelection → settings.replace); write the prior default back.
+      restoreDefaultModel: selection => scope.remote.settings.replace('agent-default-model', {
+        provider: selection.provider,
+        model: selection.model,
+        ...(selection.reasoningEffort === undefined ? {} : { reasoningEffort: selection.reasoningEffort }),
+      }, undefined),
+    }), 'amphoreus: seat preset default-model restore')
+  })
   type SessionFeed = Exclude<ReturnType<WorkbenchViewInjected['sessionFace']>, undefined>
   const sessionAdapter = ctx.sessions as unknown as {
     binding(id: SessionId): { session: SessionFeed } | undefined
