@@ -137,6 +137,8 @@ test('new component styles use alias colors without hardcoded color or dark-them
     assert.doesNotMatch(source, /--dsw-(?!alias-)/u, name)
   }
   assert.match(dockCss, /\.dock\[data-magazine="full"\]/u)
+  assert.match(dockCss, /width: min\(100%, var\(--dsh-composer-card-max-width, 952px\)\)/u)
+  assert.match(dockCss, /margin-inline: auto/u)
   assert.match(dockCss, /var\(--dsw-alias-button-primary-fill\)/u)
   assert.match(badgeCss, /var\(--dsw-alias-label-primary-inverted\)/u)
 })

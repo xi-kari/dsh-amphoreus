@@ -1,8 +1,9 @@
 .dock {
   box-sizing: border-box;
   display: grid;
-  width: 100%;
+  width: min(100%, var(--dsh-composer-card-max-width, 952px));
   min-width: 0;
+  margin-inline: auto;
   grid-template-columns: 36px minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;

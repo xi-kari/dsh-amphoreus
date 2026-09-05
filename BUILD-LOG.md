@@ -1171,7 +1171,7 @@
 - 偏离与理由：无。
 - 遗留：无。
 ## TF9：tarball 用户形态与独立 demo profile — 2026-09-05 10:00
-- commit: PENDING-TASK
+- commit: 9b6fe14
 - 动手前核对：实际执行任务书 `sed -n '4913,4955p'`；确认 HEAD=`4701dc2`、3090 无监听、`amphdemo` 初始不存在、发布版本=`0.2.0`、主 web profile 为 link 安装且 3080 正在运行 PASS
 - 改动：新增可重复的 `scripts/path-b.sh`；为真正的官方 npm-ci 环境补齐三项仅开发期 runtime peer（`dsh-invariants/dsh-scope/dsh-storage`）并重生成锁；给 `conversation-feed.ts` 的 assistant blocks 加发布声明兼容类型锚点，不改变映射行为 PASS
 - 脚本验收：
@@ -1190,3 +1190,31 @@
 - 失败与修正：首次从 PowerShell 调用裸 `bash` 实际进入 WSL，`/c/tmp` 不存在；改用任务书规定的 Git Bash 后执行。首次重跑发现 dump 的已配置 profile 注释会变为 `patched by ...amphdemo/cordis.patch.yml`，脚本在安装前把脚本自有 profile patch 复位为 `[]`，随后再写目标配置，恢复重复运行一致性。首个 npm-ci 真机运行以 11 个测试文件失败，根因为 `legacy-peer-deps` 下直接 dev peer 的 runtime peer 未安装；只向 devDependencies 补 `dsh-storage/dsh-scope/dsh-invariants` 后全部通过。发布态 d.ts 又暴露 assistant blocks 的回调参数隐式 any；用 `readonly AssistantBlock[]` 明确既有上游合同后 npm-ci typecheck 通过，逻辑与测试未改。
 - 偏离与理由：任务书示例用简略文件列表作为 `git clone` 失败回退，会遗漏 verify-dist 所需发布文件；脚本固定采用完整 `git clone --no-hardlinks`，并仅把当前尚待同一 TF9 commit 的三份变更覆盖到 clone，确保验收的是当前工作树且不碰开发 junction。当前 dumper 以 `# == dsh-amphoreus` 标来源而非完整文件路径，按实际 alpha.4 输出锁定该来源行。
 - 遗留：TF9 自动脚本的摘要将在 TF11 按任务书写入 HANDOFF §8 F；npm 远程发布形态留 TF12。其余无。
+## TF10：A–E 发布门与端到端走查 — 2026-09-05 10:50
+- commit: PENDING-TASK
+- 动手前核对：实际执行任务书 `sed -n '4956,5010p'`；读取 A–E 最终完成定义区间 A=`864–918`、B=`1648–1668`、C=`2463–2494`、D=`3426–3450`、E=`4451–4487`，并先 `head -40 "$DSH_HOME/storages/amphoreus.json"` 核对 binding 真值位于 `tables.bindings` PASS
+- 文档：新增 `docs/E2E-CHECKLIST.md`，A/B/C/D/E 表行=`40/16/20/16/18`，跨章 X 行=`14`，手工步骤=`12`；每步均有操作/预期/记录字段，结果记录含日期、三份 lib 构建时间、DSH 版本与浏览器 PASS
+- 机器发布门：
+  - X-1 真实新会话后 `/amphoreus/workbench/api/index` → HTTP `200`；body 的 `system-reminder|skill_content|"text"`=`0` PASS
+  - X-2/3/4 → `workbench.json=absent`、DSW alias/specific refs=`400`、nonce header=`1` PASS
+  - X-5/6 → 本轮 parent binding=`amphoreus-anaxa/seat-new`；真实分支 binding=`amphoreus-anaxa/fork-inherit` 且注入理由=`inherited-from-parent` PASS
+  - X-7 → profile live 写 `workbench.enabled=false` 后刷新，官方 Tab 列表无「工作台」；恢复后 Tab 回归 PASS
+  - X-8 → reparse host/client=`1/3`、skillRoots=`2`、tracked 技能文件=`0`、pack SKILL.md=`0` PASS
+  - X-9/10/11/12 → suite 写盘调用=`0`、session append=`0`、TSX 非注释 ctx=`0`、CSS Modules hex=`0` PASS
+  - X-13 → `npm run verify:dist | tail -1` 为 `verify-dist: OK 377 checks` PASS
+  - X-14 → 代码与测试已证明例外边界，但任务书指定的 HANDOFF 明文落点属于后续 TF11；本次保留唯一一个表格 `☐`，TF11 写裁决后同提交改为 `✓`，未提前虚报
+- 真实浏览器 12 步：
+  - 门户/进席/建席 → 13 席与全体会议可见；那刻夏 token 到稳=`27 ms`、primary=`rgb(35, 102, 77)`；parent=`session-c9f752ec-1b5b-47ff-9017-96cb891d09d9`，binding source=`seat-new`、injection=`done` PASS
+  - 回执/投影/分支 → 纯「自我介绍」按当前外部 common.md 的陪聊合同免逐轮回执，页眉仍显示「已注入」；该首轮完成时工作台恰好 1 张问答卡且无注入文本。同会话随后为工作场回执／移交新增第二轮，最终权威 index cards=`2`、seq 对=`10:2949,2956:10151`，末行=`那刻夏卡｜读取：common.md、persona.md｜档位：标准`，receipt 与 handoff 同 seq=`10151`；归档确认选择取消未写 hidden；fork-inherit child 创建 PASS
+  - 派发 → 全体会议面板经显式选择白厄才发送；child=`session-7c325c21-57a4-4d45-ab0d-d636b82759ee`，binding=`amphoreus-phainon/dispatch`，observation payload 逐字相同，泳道与卡名牌均为白厄 PASS
+  - 移交 → 接受前 dock 可见、observation=open、handoff-fork=`0`、未切换/未发送；接受后 observation=accepted、child=`session-7f42802e-a1ee-41b4-bfa7-157923f81dd2`、binding=`amphoreus-phainon/handoff-fork`，最后 `session/end-seed` 后 user/assistant=`0/0`，跨席角标=`移交自 那刻夏` PASS
+  - 暗色 → body 暗标记存在，outer primary/base=`rgb(99,105,148)`/`rgba(19,22,43,0.4)`，iframe background 同 base；恢复「跟随系统」后暗标记移除、base 回亮值 PASS
+  - 换席 → 那刻夏/遐蝶/昔涟主色=`rgb(35,102,77)`/`rgb(134,135,182)`/全局 `rgb(138,104,28)`；昔涟撤销逐席覆盖，最终 lastSeat=`null` PASS
+  - 开关 → profile baseline SHA256=`DB10860ACCBAB96252A33C5F62106E7834D8102F8D2543B0BFB1837CB8F7C6BC`；关闭时设置区显示 `已在配置中关闭（workbench.enabled=false）`、API index=`503`；恢复原 bytes 后 hash 相同、state enabled=true、API index=`200` PASS
+  - 技能更新 → Anaxa description 别名变化后 runtime aliases 更新，binding `21→21`、memory hash 不变；恢复后 SHA256=`E6BBFDCFCB0BC17926555010FE16D07322EA5E31D0166565BCC1DCAF2551FBA2`、mtime 原样。Cipher 目录临时改名后 cards=`12`、seat=undeployed、既有 binding=`1`、UI 显式列「未部署席位（1）」；同一 PowerShell 原路恢复后 generation=`7`、cards=`13`、seat=deployed、level=L0 PASS
+- 接受按钮真机修复：首次普通点击被官方 ConversationRoot 的 40px 右宽度手柄截获；把 dock 从全列 `width:100%` 收到宿主已公开在祖先的 composer card 上限并居中，补 CSS 回归门。复测 bounding boxes：dock=`x420..1132`、button=`x1011..1061`、handle=`x1144..1184`、overlap=false；Playwright 普通 `click` 一次成功、唯一 handoff child 写入 PASS
+- 清理：原四会话加命中区复测两会话共 `6` 个全部经官方 Gateway archive；对应 bindings DELETE 均 `200`，总数峰值 `21` 回 baseline `17`；六份权威日志均保留。profile/skill hash、mtime、Cipher 目录、theme、lastSeat、memory 全恢复；observations `14→19` 因无公开 DELETE 路由保留为归档验收证据；3080 running/HTTP200、stderr=`0 bytes`、3090 listeners=`0`、浏览器与 11 份临时 cookie/backup/rollback 文件清理 PASS
+- 最终测试：`npm test` → `tests 326; pass 325; fail 0; skipped 1; duration_ms 2976.424`；`npm run build` → derive/client/host=`28.87/205.87/199.59 kB`；`npm run verify:dist` → `verify-dist: OK 377 checks`；`git diff --check` PASS（各 exit: `0`）
+- 任务书文档验收：file=`ok`、X=`14`、A/B/C/D/E=`40/16/20/16/18`、steps=`12`、`api/workspaces=0`、手工段「可选」=`0`、表格未勾=`1`（仅时序依赖 TF11 的 X-14） PASS
+- 偏离与理由：① B 章历史 404 探针若逐字写已删除 URL，会与本任务 `api/workspaces=0` 自验互相冲突；只把该历史命令的 route 字符串拆成 shell 等价拼接，语义与预期未改。② 当前技能 common.md 将纯自我介绍明确归陪聊场并免逐轮回执；不篡改外部技能，额外用同一会话的工作场评审验证真实 receipt。③ 稳定 HTML 壳按当前 webapi.ts 永远返回 200 并用 boot.disabled 自诊断；J-13 权威数据入口 `/api/index` 正确返回 503，按实际合同验收。④ 派发探针因模型把无语义标记当长任务，5 分钟仍运行；操作者经官方 cancel 结束，派发链本身此前已完整提交。⑤ TF10 原定只改文档，但真机发现移交按钮被宿主 resize hit area 截获；为使步骤 7 真正可由用户点击，连同回归测试在本任务修复并实测，未把程序化 DOM click 当最终通过。
+- 遗留：X-14 的 HANDOFF 明文裁决由紧随的 TF11 写入并把唯一 `☐` 改为 `✓`；远程发布留 TF12。其余无。
