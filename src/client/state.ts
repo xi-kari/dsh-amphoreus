@@ -1,4 +1,5 @@
-import type { AmphoreusState, AssetsCheckReport, CustomWallpaperPlacement, DeriveKind, DeriveProgress, GrammarPrefs } from '../shared/api.ts'
+import type { AmphoreusState, CustomWallpaperPlacement, DeriveKind, DeriveProgress, GrammarPrefs } from '../shared/api.ts'
+import type { AssetsCheckReport } from '../shared/api.ts'
 
 export interface AmphoreusClientSnapshot {
   readonly phase: 'loading' | 'ready' | 'error'

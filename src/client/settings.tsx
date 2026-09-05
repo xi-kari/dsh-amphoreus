@@ -3,7 +3,7 @@ import { useRef, useState, useSyncExternalStore, type CSSProperties } from 'reac
 import { GrammarPanel } from './grammar-panel.tsx'
 import { WallpaperPanel } from './wallpaper-panel.tsx'
 import { SetupPanel } from './setup-panel.tsx'
-import type { SetupStore } from './setup-store.ts'
+import { setupStoreOf } from './setup-store.ts'
 import { seatColorOf } from './seat-model.ts'
 import type { AmphoreusClientModel } from './state.ts'
 import css from './settings.module.css'
@@ -11,8 +11,6 @@ import css from './settings.module.css'
 export interface AmphoreusSettingsInjected {
   readonly model: AmphoreusClientModel
   // @anchor settings-injected
-  /** Setup wizard store (open from the assets panel); optional so older hosts render without it. */
-  readonly setup?: SetupStore
 }
 
 export type AmphoreusSettingsProps = PropsRuntime<'settings.section'> & PropsLocale<'amphoreus'> & AmphoreusSettingsInjected
@@ -20,7 +18,7 @@ export type AmphoreusSettingsProps = PropsRuntime<'settings.section'> & PropsLoc
 type SettingsAction = 'reparse' | 'magazine-light' | 'magazine-full' | 'magazine-reset' | 'derive' | 'derive-force' | 'grammar' | 'wallpaper'
 // @anchor settings-actions
 
-export function AmphoreusSettings({ model, t, setup }: AmphoreusSettingsProps) {
+export function AmphoreusSettings({ model, t }: AmphoreusSettingsProps) {
   const snapshot = useSyncExternalStore(model.subscribe, model.getSnapshot)
   const [actionError, setActionError] = useState<string>()
   const [activeAction, setActiveAction] = useState<SettingsAction>()
@@ -206,7 +204,7 @@ export function AmphoreusSettings({ model, t, setup }: AmphoreusSettingsProps) {
             assets={state.assets}
             busy={busy}
             t={t}
-            onOpenWizard={() => setup?.open('root')}
+            onOpenWizard={() => setupStoreOf(model)?.open('root')}
             onRecheck={async () => { await model.checkAssets() }}
             onResetRoot={() => model.setAssetsRoot(null)}
           />

@@ -60,7 +60,8 @@ export function SetupWizard({ setup, model, pickDirectory, listDirectory, t }: S
   const [report, setReport] = useState<AssetsCheckReport>()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
-  const [deriveStartedAt, setDeriveStartedAt] = useState<number>()
+  // Host-side lastDerive.at observed when the derive was requested; completion = a newer host timestamp (no client clock involved).
+  const [deriveBaseline, setDeriveBaseline] = useState<number>()
   const lock = useRef(false)
 
   const state = snapshot.state
@@ -74,15 +75,17 @@ export function SetupWizard({ setup, model, pickDirectory, listDirectory, t }: S
     setChooserNote(undefined)
     setReport(undefined)
     setError(undefined)
-    setDeriveStartedAt(undefined)
+    setDeriveBaseline(undefined)
     panelRef.current?.focus()
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key !== 'Escape') return
       event.preventDefault()
+      // Capture phase + stopPropagation: the wizard paints above other overlays, so Escape must close only it.
+      event.stopPropagation()
       setup.close()
     }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
+    window.addEventListener('keydown', onKeyDown, { capture: true })
+    return () => window.removeEventListener('keydown', onKeyDown, { capture: true })
     // Reset only when the dialog opens; the live root is read at that moment on purpose.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, setup])
@@ -136,7 +139,7 @@ export function SetupWizard({ setup, model, pickDirectory, listDirectory, t }: S
   })
 
   const derive = (): Promise<void> => run(async () => {
-    setDeriveStartedAt(Date.now())
+    setDeriveBaseline(model.getSnapshot().state?.assets.lastDerive?.at ?? -1)
     await model.deriveAssets(false)
   })
 
@@ -151,7 +154,7 @@ export function SetupWizard({ setup, model, pickDirectory, listDirectory, t }: S
   const digest = report === undefined ? undefined : digestCheck(report)
   const running = assets?.running === true
   const lastDerive = assets?.lastDerive ?? null
-  const deriveFinished = deriveStartedAt !== undefined && !running && lastDerive !== null && lastDerive.at >= deriveStartedAt
+  const deriveFinished = deriveBaseline !== undefined && !running && lastDerive !== null && lastDerive.at > deriveBaseline
   const magickMissing = assets !== undefined && assets.magick === null
   const progress = running ? snapshot.deriveProgress : undefined
   const stepIndex = STEPS.findIndex(item => item.id === step)

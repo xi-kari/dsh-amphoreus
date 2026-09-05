@@ -1,8 +1,8 @@
-import { checkAssets, summarizeAssetsCheck } from '../lib/derive.js'
+import { checkAssets, summarizeAssetsCheck } from '../src/host/assets-check.ts'
 
 const rootArgument = process.argv[2]
 if (typeof rootArgument !== 'string' || rootArgument.trim() === '') {
-  console.error('Usage: node scripts/check-assets.mjs "<assetsRoot>"  (run `npm run build` first; the inventory lives in lib/derive.js)')
+  console.error('Usage: node scripts/check-assets.mjs "<assetsRoot>"')
   process.exit(2)
 }
 

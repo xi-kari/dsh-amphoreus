@@ -5,7 +5,7 @@
  * and the CLI share one inventory. Reports carry statuses only — never file contents.
  */
 import { readdir, realpath, stat } from 'node:fs/promises'
-import { extname, isAbsolute, relative, resolve, sep } from 'node:path'
+import { basename, dirname, extname, isAbsolute, relative, resolve, sep } from 'node:path'
 import type { AssetsCheckHomeFolder, AssetsCheckItem, AssetsCheckReport } from '../shared/api.ts'
 import {
   BRAND_STICKER,
@@ -57,6 +57,39 @@ function contained(root: string, child: string): boolean {
   const target = fold(resolve(child))
   const rel = relative(base, target)
   return rel === '' || (!rel.startsWith(`..${sep}`) && rel !== '..' && !isAbsolute(rel))
+}
+
+/**
+ * Resolve `input` to its real path, tolerating a not-yet-existing tail (the derived cache
+ * is created lazily): the deepest existing ancestor is realpath'd and the missing suffix
+ * re-appended. Shared with deriveAssets so both containment checks agree.
+ */
+export async function canonicalizeForContainment(input: string): Promise<string> {
+  const absolute = resolve(input)
+  const suffix: string[] = []
+  let cursor = absolute
+  while (true) {
+    try {
+      return resolve(await realpath(cursor), ...suffix.reverse())
+    } catch (error) {
+      if (!isErrno(error, 'ENOENT') && !isErrno(error, 'ENOTDIR')) throw error
+      const parent = dirname(cursor)
+      if (parent === cursor) return absolute
+      suffix.push(basename(cursor))
+      cursor = parent
+    }
+  }
+}
+
+/**
+ * Minimal signal that a directory is (part of) an Amphoreus asset pack: at least one
+ * known file or one populated home-wallpaper folder. Guards PUT /api/assets/root so an
+ * arbitrary directory cannot be turned into the unauthenticated /amphoreus/assets/ root.
+ */
+export function looksLikeAssetPack(report: AssetsCheckReport): boolean {
+  if (report.error !== undefined) return false
+  const s = report.summary
+  return s.requiredOk > 0 || s.optionalOk > 0 || s.homePopulated > 0
 }
 
 async function isDirectory(path: string): Promise<boolean> {
@@ -166,15 +199,18 @@ export async function checkAssets(root: string, options: AssetsCheckOptions = {}
   const trimmed = root.trim()
   if (trimmed === '') return emptyReport(root, 'assetsRoot is empty')
   let canonical: string
+  let directory: boolean
   try {
     canonical = await realpath(resolve(trimmed))
+    directory = (await stat(canonical)).isDirectory()
   } catch (error) {
     if (isErrno(error, 'ENOENT') || isErrno(error, 'ENOTDIR')) return emptyReport(root, 'assetsRoot does not exist')
-    throw error
+    // EPERM / EACCES / EINVAL / ERR_INVALID_ARG_VALUE …: the root is user input, so report instead of throwing (→ 400, not 500).
+    return emptyReport(root, 'assetsRoot is not accessible')
   }
-  if (!(await stat(canonical)).isDirectory()) return emptyReport(root, 'assetsRoot is not a directory')
+  if (!directory) return emptyReport(root, 'assetsRoot is not a directory')
   if (options.cacheDir !== undefined) {
-    const cache = resolve(options.cacheDir)
+    const cache = await canonicalizeForContainment(options.cacheDir)
     if (contained(canonical, cache) || contained(cache, canonical)) {
       return { ...emptyReport(root, 'assetsRoot must not overlap the derived cache'), canonical }
     }

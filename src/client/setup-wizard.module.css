@@ -1,6 +1,7 @@
 .scrim {
   position: absolute;
   inset: 0;
+  z-index: 1; /* above sibling overlays (portal scrim has none) despite the earlier order -10 */
   display: grid;
   place-items: center;
   background: var(--dsw-alias-bg-mask-2);

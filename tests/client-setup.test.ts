@@ -169,6 +169,18 @@ test('wizard and panel are ctx-free dialogs registered inside the single shell.o
   assert.equal((clientSource.match(/name: 'shell\.overlay'/g) ?? []).length, 1)
   assert.equal((clientSource.match(/const setup = createSetupStore\(\)/g) ?? []).length, 1)
   assert.match(clientSource, /watchSetupAutoOpen\(model, setup\)/u)
+  // Settings reach the store through the model binding, not through a widened inject payload (hot-spot signature stays `{ model, t }`).
+  assert.match(clientSource, /bindSetupStore\(model, setup\)/u)
+  assert.match(settingsSource, /export function AmphoreusSettings\(\{ model, t \}: AmphoreusSettingsProps\)/u)
+  assert.match(settingsSource, /onOpenWizard=\{\(\) => setupStoreOf\(model\)\?\.open\('root'\)\}/u)
+  assert.doesNotMatch(settingsSource, /readonly setup\??:/u)
+  // Escape is handled in the capture phase and stopped so overlays underneath the wizard never see it.
+  assert.match(wizardSource, /window\.addEventListener\('keydown', onKeyDown, \{ capture: true \}\)/u)
+  assert.match(wizardSource, /event\.stopPropagation\(\)/u)
+  // Derive completion compares host timestamps only: baseline from the snapshot at click time, never the browser clock.
+  assert.doesNotMatch(wizardSource, /Date\.now\(\)/u)
+  assert.match(wizardSource, /setDeriveBaseline\(model\.getSnapshot\(\)\.state\?\.assets\.lastDerive\?\.at \?\? -1\)/u)
+  assert.match(wizardSource, /lastDerive\.at > deriveBaseline/u)
 
   const visual = settingsSource.indexOf('aria-labelledby="amphoreus-visual"')
   const workbench = settingsSource.indexOf('aria-labelledby="amphoreus-workbench"')
@@ -199,4 +211,6 @@ test('setup locale keys are balanced and the wizard CSS uses only DSW tokens', (
     assert.match(declaration[1]!, /var\(--dsw-|transparent|^0$/u, declaration[0])
   }
   assert.match(wizardCss, /\.scrim \{[^}]*position: absolute;[^}]*inset: 0;[^}]*pointer-events: auto;/su)
+  // Both scrims are absolute siblings inside shell.overlay; the wizard (order -10, painted first) needs z-index to sit above the portal scrim.
+  assert.match(wizardCss, /\.scrim \{[^}]*z-index: 1;/su)
 })

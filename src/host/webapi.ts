@@ -75,7 +75,7 @@ const PrefsInput = z.object({
 
 const DeriveInput = z.object({ force: z.boolean().optional() }).strict()
 // @anchor webapi-inputs
-import { checkAssets, type AssetsCheckOptions, type AssetsCheckReport } from './assets-check.ts'
+import { canonicalizeForContainment, checkAssets, looksLikeAssetPack, type AssetsCheckOptions, type AssetsCheckReport } from './assets-check.ts'
 const AssetsCheckInput = z.object({ root: z.string().max(4096).optional() }).strict()
 const AssetsRootInput = z.object({ root: z.string().max(4096).nullable() }).strict()
 
@@ -196,6 +196,8 @@ export class AmphoreusWebApi {
   readonly #assetsRoot: () => string
   readonly #checkAssets: (root: string, options?: AssetsCheckOptions) => Promise<AssetsCheckReport>
   #assetsCheck: AssetsCheckReport | undefined
+  /** Set when the effective root changed since the last derive: the cache holds another root's files, so the next derive must rewrite. */
+  #deriveForceNext = false
   readonly #sse = new SseHub()
   readonly #canvasRevisions = new Map<string, number>()
   #assetsCacheRealDir: string | undefined
@@ -848,9 +850,11 @@ export class AmphoreusWebApi {
     }
     this.#deriveRunning = true
     const generation = ++this.#deriveGeneration
+    const force = parsed.data.force === true || this.#deriveForceNext
+    this.#deriveForceNext = false
     this.#publishAssetState('put')
     json(response, 202, { started: true })
-    queueMicrotask(() => { void this.#runDerive(generation, assetsRoot, cacheDir, parsed.data.force === true) })
+    queueMicrotask(() => { void this.#runDerive(generation, assetsRoot, cacheDir, force) })
   }
 
   async #runDerive(generation: number, assetsRoot: string, cacheDir: string, force: boolean): Promise<void> {
@@ -1178,19 +1182,34 @@ export class AmphoreusWebApi {
       json(response, 400, { error: 'assetsRoot must not be empty (send null to clear)' })
       return
     }
+    if (this.#deriveRunning) {
+      json(response, 409, { error: 'asset derivation is running; wait for it to finish before changing assetsRoot' })
+      return
+    }
     if (next !== null) {
       const report = await this.#checkAssets(next, this.#assetsCheckOptions())
       if (report.error !== undefined) {
         json(response, 400, { error: report.error })
         return
       }
+      // An arbitrary directory must not become the (unauthenticated) /amphoreus/assets/ root: require a pack signal.
+      if (!looksLikeAssetPack(report)) {
+        json(response, 400, { error: 'assetsRoot does not look like an Amphoreus asset pack (no known files found)' })
+        return
+      }
     }
+    const previous = this.#assetsRoot()
     await updateAmphoreusGlobal(this.#stores.main, current => {
       const prefs = { ...current.prefs }
       if (next === null) delete prefs.assetsRoot
       else prefs.assetsRoot = next
       return { ...current, prefs }
     })
+    const effective = this.#assetsRoot()
+    if (!(await sameRoot(previous, effective))) {
+      // The derived cache (if any) was produced from another root and its files carry newer mtimes: force the next derive.
+      this.#deriveForceNext = true
+    }
     try {
       await this.#refreshAssetsCheck()
     } catch (error) {
@@ -1345,6 +1364,16 @@ function contained(root: string, child: string): boolean {
   const target = fold(resolve(child))
   const rel = relative(base, target)
   return rel === '' || (!rel.startsWith(`..${sep}`) && rel !== '..' && !isAbsolute(rel))
+}
+
+/** Same effective assets root after canonicalisation ('' equals only ''); realpath failures fall back to string comparison. */
+async function sameRoot(left: string, right: string): Promise<boolean> {
+  if (left === '' || right === '') return left === right
+  try {
+    return samePath(await canonicalizeForContainment(left), await canonicalizeForContainment(right))
+  } catch {
+    return samePath(left, right)
+  }
 }
 
 function samePath(left: string, right: string): boolean {

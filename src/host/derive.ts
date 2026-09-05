@@ -1,6 +1,6 @@
 import { spawn, spawnSync } from 'node:child_process'
 import { readdir, readFile, realpath, rename, rm, stat, writeFile, mkdir } from 'node:fs/promises'
-import { basename, dirname, extname, isAbsolute, relative, resolve, sep } from 'node:path'
+import { dirname, extname, isAbsolute, relative, resolve, sep } from 'node:path'
 import {
   BRAND_STICKER,
   CHIMERA_STICKERS,
@@ -14,9 +14,10 @@ import {
 } from '../shared/heroes.ts'
 import type { DeriveKind, DeriveProgress } from '../shared/api.ts'
 import { listZip, readZipEntry } from './zip.ts'
+import { canonicalizeForContainment } from './assets-check.ts'
 
 export type { DeriveKind, DeriveProgress } from '../shared/api.ts'
-export { ASSETS_LARGE_BYTES, assetsInventory, checkAssets, summarizeAssetsCheck, type AssetsCheckOptions, type AssetsCheckReport, type AssetsCheckItem, type AssetsCheckHomeFolder } from './assets-check.ts'
+export { ASSETS_LARGE_BYTES, assetsInventory, canonicalizeForContainment, checkAssets, looksLikeAssetPack, summarizeAssetsCheck, type AssetsCheckOptions, type AssetsCheckReport, type AssetsCheckItem, type AssetsCheckHomeFolder } from './assets-check.ts'
 
 export interface DeriveOptions {
   readonly assetsRoot: string
@@ -262,24 +263,6 @@ export function selectHomeWallpapers(
 
 function isErrno(error: unknown, code: string): boolean {
   return typeof error === 'object' && error !== null && 'code' in error && (error as NodeJS.ErrnoException).code === code
-}
-
-async function canonicalizeForContainment(input: string): Promise<string> {
-  const absolute = resolve(input)
-  const suffix: string[] = []
-  let cursor = absolute
-
-  while (true) {
-    try {
-      return resolve(await realpath(cursor), ...suffix.reverse())
-    } catch (error) {
-      if (!isErrno(error, 'ENOENT') && !isErrno(error, 'ENOTDIR')) throw error
-      const parent = dirname(cursor)
-      if (parent === cursor) return absolute
-      suffix.push(basename(cursor))
-      cursor = parent
-    }
-  }
 }
 
 async function sourceFile(root: string, ...segments: string[]): Promise<SourceFile> {

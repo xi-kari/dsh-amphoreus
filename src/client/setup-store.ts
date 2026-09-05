@@ -58,6 +58,17 @@ export function createSetupStore(): SetupStore {
   }
 }
 
+const STORES = new WeakMap<object, SetupStore>()
+
+/** Bind a setup store to its model so consumers that only receive the model (settings) can reopen the wizard. */
+export function bindSetupStore(model: object, store: SetupStore): void {
+  STORES.set(model, store)
+}
+
+export function setupStoreOf(model: object): SetupStore | undefined {
+  return STORES.get(model)
+}
+
 /** The wizard offers itself only on a ready state that still needs setup and was never dismissed. */
 export function shouldOfferSetup(snapshot: AmphoreusClientSnapshot): boolean {
   if (snapshot.phase !== 'ready' || snapshot.state === undefined) return false

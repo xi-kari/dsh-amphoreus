@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { test } from 'node:test'
-import { assetsInventory, checkAssets, summarizeAssetsCheck } from '../src/host/assets-check.ts'
+import { assetsInventory, canonicalizeForContainment, checkAssets, looksLikeAssetPack, summarizeAssetsCheck } from '../src/host/assets-check.ts'
 import { checkAssets as checkFromDerive } from '../src/host/derive.ts'
 import { BRAND_STICKER, GLOBAL_WALLPAPERS, HERO_VISUALS, HOME_WALLPAPER_ROOT } from '../src/shared/heroes.ts'
 
@@ -40,6 +40,10 @@ test('an empty, missing, or file root yields ok:false with an error and a full m
     const file = await checkAssets(join(root, 'file.txt'))
     assert.equal(file.error, 'assetsRoot is not a directory')
     assert.equal(file.canonical, undefined)
+    const bare = await checkAssets(root)
+    assert.equal(bare.error, undefined)
+    assert.equal(looksLikeAssetPack(bare), false, 'a directory with no known file is not a pack')
+    assert.equal(looksLikeAssetPack(file), false)
   } finally {
     await rm(root, { recursive: true, force: true })
   }
@@ -65,6 +69,7 @@ test('a populated root counts required/optional/home statuses, prefers the neste
 
     const report = await checkAssets(root)
     assert.equal(report.error, undefined)
+    assert.equal(looksLikeAssetPack(report), true)
     assert.equal(typeof report.canonical, 'string')
     assert.equal(report.ok, false)
     assert.equal(report.summary.requiredTotal, 58)
@@ -106,6 +111,36 @@ test('roots overlapping the derived cache are refused in both directions', async
     assert.equal(outer.error, 'assetsRoot must not overlap the derived cache')
     const sibling = await checkAssets(root, { cacheDir: join(root, '..', 'elsewhere-cache') })
     assert.equal(sibling.error, undefined)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('the cache-overlap guard canonicalises cacheDir (junction alias, missing tail) and inaccessible roots are reported, not thrown', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'amphoreus-check-canon-'))
+  try {
+    const cache = join(root, 'assets-cache')
+    await mkdir(cache, { recursive: true })
+    const alias = join(root, 'cache-alias')
+    let linked = true
+    try {
+      await symlink(cache, alias, 'junction')
+    } catch {
+      linked = false // no link privilege on this machine: skip only the alias half
+    }
+    if (linked) {
+      const viaAlias = await checkAssets(cache, { cacheDir: alias })
+      assert.equal(viaAlias.error, 'assetsRoot must not overlap the derived cache', 'an alias of the cache still overlaps after realpath')
+      const aliasAsRoot = await checkAssets(alias, { cacheDir: join(cache, 'not-yet-created') })
+      assert.equal(aliasAsRoot.error, 'assetsRoot must not overlap the derived cache', 'a not-yet-existing cache tail is canonicalised through its existing ancestor')
+    }
+    assert.equal(await canonicalizeForContainment(join(cache, 'missing', 'tail')), join(await realpath(cache), 'missing', 'tail'))
+
+    const invalid = await checkAssets(`${root}\u0000x`)
+    assert.equal(invalid.error, 'assetsRoot is not accessible')
+    assert.equal(invalid.ok, false)
+    assert.equal(invalid.canonical, undefined)
+    assert.equal(looksLikeAssetPack(invalid), false)
   } finally {
     await rm(root, { recursive: true, force: true })
   }
