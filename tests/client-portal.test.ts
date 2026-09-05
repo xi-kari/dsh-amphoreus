@@ -74,7 +74,9 @@ test('index assembles one shared portal before both overlay and Workbench regist
   assert.equal((clientSource.match(/const portal = createPortalStore\(\)/g) ?? []).length, 1)
   assert.equal((clientSource.match(/const enterSeatQueue = createEnterSeatQueue\(\)/g) ?? []).length, 1)
   assert.equal((clientSource.match(/name: 'sidebar\.footer\.action'/g) ?? []).length, 1)
-  assert.equal((clientSource.match(/name: 'shell\.overlay'/g) ?? []).length, 1)
+  // One shell.overlay declaration; every overlay entry (portal, suite notice) registers inside it.
+  assert.equal((clientSource.match(/ctx\.slots\.inject\('shell\.overlay'/g) ?? []).length, 1)
+  assert.equal((clientSource.match(/id: 'amphoreus-portal'/g) ?? []).length, 2)
   assert.match(clientSource, /id: 'amphoreus-portal',[\s\S]*order: 0/)
   assert.match(clientSource, /const openPortal = portal\.open/)
   assert.match(clientSource, /\n\s*openPortal,\n/)
@@ -95,7 +97,7 @@ test('index assembles one shared portal before both overlay and Workbench regist
 
 test('openSeat routes all through the mounted tab or keeps the portal frame, then preserves hero routing', () => {
   const start = clientSource.indexOf('const openSeat = async')
-  const end = clientSource.indexOf('\n  const bootWorkbench', start)
+  const end = clientSource.indexOf('\n  // @anchor client-services', start)
   assert.ok(start >= 0 && end > start)
   const action = clientSource.slice(start, end)
   const all = action.indexOf('if (heroId === null) {')
@@ -117,7 +119,7 @@ test('openSeat routes all through the mounted tab or keeps the portal frame, the
 
 test('openSeat reuses a mounted Workbench, leaves chat in the portal canvas, and preserves hero routing', async () => {
   const start = clientSource.indexOf('const openSeat = async')
-  const end = clientSource.indexOf('\n  const bootWorkbench', start)
+  const end = clientSource.indexOf('\n  // @anchor client-services', start)
   const source = clientSource.slice(start, end)
   const compiled = transpileModule(
     `${source}\nglobalThis.__openSeat = openSeat`,

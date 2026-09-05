@@ -154,6 +154,15 @@ export const zh = {
   'settings.credit': '工作台源自 dsh-synapse v0.4.1（MIT，liangmianya），经改造；原始许可见包内 NOTICE。',
   'view.workbench': '工作台',
   // @anchor zh-keys
+  'suite.updated': '技能套件已更新至 {label}，已重新解析',
+  'suite.sessionsStale': '已有 {n} 个会话在 /clear、恢复或新建后才会用到新卡',
+  'suite.degraded': '套件显式降级（{n} 条诊断）',
+  'suite.missing': '套件未识别',
+  'suite.recovered': '套件已恢复，当前 {label}',
+  'suite.restartHint': '启动时未找到技能根，恢复后需重启本地服务（web 进程）',
+  'suite.reparse': '重新解析',
+  'suite.reparsing': '解析中…',
+  'suite.dismiss': '关闭',
 } as const
 
 export type AmphoreusKey = keyof typeof zh
@@ -313,6 +322,15 @@ export const en: Record<AmphoreusKey, string> = {
   'settings.credit': 'The workbench derives from dsh-synapse v0.4.1 (MIT, liangmianya), adapted; original license in NOTICE.',
   'view.workbench': 'Workbench',
   // @anchor en-keys
+  'suite.updated': 'Skill suite updated to {label}; reparsed live',
+  'suite.sessionsStale': '{n} session(s) pick up the new card only after /clear, resume or a new session',
+  'suite.degraded': 'Suite explicitly degraded ({n} diagnostics)',
+  'suite.missing': 'Suite not recognised',
+  'suite.recovered': 'Suite recovered, now {label}',
+  'suite.restartHint': 'Skill root was missing at startup; restart the local web process after restoring it',
+  'suite.reparse': 'Reparse',
+  'suite.reparsing': 'Reparsing…',
+  'suite.dismiss': 'Dismiss',
 }
 
 export const NS = 'amphoreus'
