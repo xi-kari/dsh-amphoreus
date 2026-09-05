@@ -566,3 +566,10 @@ button.primary:hover { border-color: var(--dsw-alias-button-primary-hover, #000)
 .ledger-add input { min-width: 0; height: 26px; flex: 1; border: 1px solid var(--dsw-alias-border-l2, #d8e0e8); border-radius: 6px; background: var(--dsw-alias-bg-base, #fff); padding: 0 8px; color: var(--dsw-alias-label-primary, #1f2937); font-size: 12px; }
 .ledger-add button { height: 26px; min-height: 26px; border: 1px solid var(--dsw-alias-border-l2, #d8e0e8); border-radius: 6px; background: var(--dsw-alias-button-tool-bar-fill, #fff); padding: 0 8px; color: var(--dsw-alias-label-primary, #1f2937); font-size: 11px; }
 /* @e-end ledger */
+
+.audit-ledger { margin: 8px 0; border-top: 1px solid var(--dsw-alias-border-l2, #e5e7eb); color: var(--dsw-alias-label-secondary, #64748b); }
+.audit-ledger > summary { cursor: pointer; padding: 6px 0; font-size: .9em; }
+.audit-ledger > summary:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary, #8a681c); outline-offset: 2px; }
+.audit-ledger-body { padding: 2px 0 6px; overflow-wrap: anywhere; }
+.audit-ledger-body > :first-child { margin-top: 0; }
+.audit-ledger-body > :last-child { margin-bottom: 0; }

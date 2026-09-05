@@ -49,12 +49,14 @@ test('custom deployment persona remains intact and identity is added if the harn
 })
 
 test('seat references use explicit skill-root paths and a dispatch speaks only for its own seat', () => {
-  const references = { skill: '/skills/amphoreus-anaxa/SKILL.md', persona: '/skills/amphoreus-anaxa/persona.md', common: '/skills/amphoreus/references/common.md' }
+  const references = { skill: '/skills/amphoreus-anaxa/SKILL.md', persona: '/skills/amphoreus-anaxa/persona.md', common: '/skills/amphoreus/references/common.md', relations: '/skills/amphoreus/references/relations.md' }
   const changed = seatPromptAssembly(prompt(), { ...binding, source: 'dispatch' }, '那刻夏', references)
   const identity = changed.sections[0]!.text
   for (const path of Object.values(references)) assert.ok(identity.includes(path))
   assert.match(identity, /与当前工作目录是两个位置/)
   assert.match(identity, /不根据本会话只显示你一人而推断其他席位缺席/)
+  assert.match(identity, /各席独立作答/)
+  assert.match(identity, /涉及角色互称、关系或圆桌互动时/)
   assert.doesNotMatch(seatPromptAssembly(prompt(), binding, '那刻夏', references).sections[0]!.text, /独立派发会话/)
 })
 

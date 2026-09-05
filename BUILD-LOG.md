@@ -1363,3 +1363,13 @@
 - 0.2.1 发布完成：commit/tag=`144ada7c737c19d48d3771521fb84c2232d76eed`；GitHub main push、v0.2.1 与 Release 全部成功。CI run `33955526162` 的 Ubuntu／Windows 全步骤成功；release run `33955698415` 幂等检查成功，确认本机已发布后跳过重复 publish。
 - npm：非TTY初次publish遇EOTP、未发布；TTY重试经用户官方安全密钥验证，CLI字面`+ dsh-amphoreus@0.2.1`。npm dist-tag latest单独验证后字面`+latest: dsh-amphoreus@0.2.1`；registry查询latest=alpha=0.2.1、gitHead=144ada7c…、unpackedSize=1700941。74文件、426064bytes；远端tarball与本地验收包SHA512完全一致，integrity=`sha512-G8KotAJcvQHi+Sv2U2PbjvvIDeRzrewviwRYbD8tdC2ZbFPpkiNhtnk5pxwpee9zjLnhAHWU35hTxuARfrqpqA==`。原v0.2.0/tag/tarball保留。
 - 最终功能测试：父会话归档后子分支仍显示并能打开；6条展开全部并逐条归档；未绑定内部草稿与普通目录blank可打开/归档。清理基线之后新建的9个blank是新操作，保留未纳入旧171条清理集合。原生启动可能准备新blank且可管理，未虚报为永久零会话。
+
+## 0.2.2：套件 v1.6.0 接入与合同适配 — 2026-09-05
+- 上游固定为v1.6.0/fd01e56ce929fbad2d38011adab20df8a0234065；本机新增独立Git来源D:/DeepSeek Harness/skill-sources/amphoreus-skill-suite，仅检出skills/adapters/docs/tools，不复制图片进插件。原Claude/Codex两套根的44文件经换行归一化逐一比对均一致，未重写全局技能。
+- profile仅在skillRoots首位增加专用Git来源，保留原两条候选及free-search、dshmarket和SQLite设置。运行态L0、cards13、指纹fd01e56(v1.6.0)，上游工作树干净。
+- 台账只接受固定details/summary结构、默认折叠；任意HTML与属性保持转义，支持backtick/tilde代码围栏。observer去除台账外壳后再检查末行合同；独立审阅发现同一行summary+fence误登记，新增测试先复现4通过/1失败，再修复为全通过。
+- 角色system参考补relations.md绝对路径，全席征询显式各席独立作答；未重写技能正文、日志或角色声线。CI与release固定检出上游SHA，真实suite合同不再条件跳过。
+- 上游validator：amphoreus wave all: PASS；router_manifest=18/18；cards=13/13；evals=13 scenarios=65；encoding=UTF-8 line_endings=LF；behavior=not_run_by_static_validator，exit0。
+- npm run release:check（AMPHOREUS_REAL_SUITE指专用skills根）：tests401/pass401/fail0/skipped0，verify-dist: OK397 checks，exit0。
+- 实机SUITE-V160-ROUND-20260905：同文13/13、唯一技能13/13、typed/skill同首step13/13、skill先于回复13/13、completed13/13、单条角色回复13/13、generic0/doubleReply0，两句原生身份均消失13/13。浏览器字面13/13已回复·本轮结束；details13/open0，点击0→1→0。原始回复与会话记录保留供对照，未将台账长度算成角色正文篇幅失败，也未把独立征询称作互相交错对话。
+- 事务位于D:/DeepSeek Harness/.codex-transactions/2026-09-05-suite-v1.6。原app.js SHA256=010712952ec45c13eddb0e23202d5881124e16a91c74bc880190db678a359f9c；修改版=aecec66a414f18aefe993a7a0a497263cca54ae28edfbe2c78b06d7fd833d3b2。账本探针baseline exit1（ledger=false），modified exit0（ledger=true/collapsed=true）；ROLLBACK.sh只在独立copy恢复原hash与原行为，线上保留新版。

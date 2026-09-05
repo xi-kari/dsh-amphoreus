@@ -14,13 +14,25 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - name: checkout verified skill suite
+        uses: actions/checkout@v4
+        with:
+          repository: xi-kari/amphoreus-skill-suite
+          ref: fd01e56ce929fbad2d38011adab20df8a0234065
+          path: .suite-fixture
+          sparse-checkout: skills
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version-file: .node-version
           cache: npm
           registry-url: https://registry.npmjs.org
       - run: npm ci --ignore-scripts
+      - name: validate skill suite
+        run: python .suite-fixture/skills/amphoreus/scripts/validate.py --root .suite-fixture/skills --wave all
       - run: npm test
+        env:
+          AMPHOREUS_REAL_SUITE: ${{ github.workspace }}/.suite-fixture/skills
       - run: npm run build
       - run: npm run verify:dist
       - name: pack listing

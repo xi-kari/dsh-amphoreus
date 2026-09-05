@@ -842,14 +842,80 @@ function markdownBlock(text) {
 // re-parsed. Bounded: streaming partial texts churn keys, so evict oldest.
 const markdownCache = new Map()
 const MARKDOWN_CACHE_LIMIT = 5000
+function markdownFence(line) {
+  const match = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line)
+  return match === null ? null : { marker: match[1], suffix: match[2] }
+}
+
+function closesMarkdownFence(candidate, fence) {
+  return candidate !== null && candidate.marker[0] === fence.marker[0]
+    && candidate.marker.length >= fence.marker.length && candidate.suffix.trim() === ''
+}
+
+function auditLedgerAt(lines, start) {
+  let index = start
+  let opening = /^\s*<details>[ \t]*<summary>[ \t]*台账[ \t]*<\/summary>(.*)$/.exec(lines[index])
+  if (opening === null && /^\s*<details>\s*$/.test(lines[index])) {
+    do { index++ } while (index < lines.length && lines[index].trim() === '')
+    if (index < lines.length) opening = /^\s*<summary>[ \t]*台账[ \t]*<\/summary>(.*)$/.exec(lines[index])
+  }
+  if (opening === null) return null
+  const body = []
+  const bodyStart = index
+  let fence = null
+  for (; index < lines.length; index++) {
+    const value = index === bodyStart ? opening[1] : lines[index]
+    const marker = markdownFence(value)
+    if (fence !== null) {
+      if (closesMarkdownFence(marker, fence)) fence = null
+      body.push(value)
+      continue
+    }
+    if (marker !== null) { fence = marker; body.push(value); continue }
+    if (/<details\b/i.test(value)) return null
+    const close = /<\/details>[ \t]*$/.exec(value)
+    if (close !== null) {
+      body.push(value.slice(0, close.index))
+      return { body: body.join('\n'), end: index }
+    }
+    body.push(value)
+  }
+  return null
+}
+
+function renderMarkdownSections(text, ledgers = true) {
+  const lines = text.replace(/\r\n?/g, '\n').split('\n')
+  const output = []
+  let prose = []
+  const flush = () => {
+    if (prose.length > 0) output.push(markdownBlock(prose.join('\n')))
+    prose = []
+  }
+  for (let index = 0; index < lines.length; index++) {
+    const fence = markdownFence(lines[index])
+    if (fence !== null) {
+      flush()
+      const code = []
+      for (index++; index < lines.length && !closesMarkdownFence(markdownFence(lines[index]), fence); index++) code.push(lines[index])
+      output.push(`<pre><code>${escapeHtml(code.join('\n'))}</code></pre>`)
+      continue
+    }
+    const ledger = ledgers && /^\s*<details>/.test(lines[index]) ? auditLedgerAt(lines, index) : null
+    if (ledger !== null) {
+      flush()
+      output.push(`<details class="audit-ledger"><summary>台账</summary><div class="audit-ledger-body">${renderMarkdownSections(ledger.body, false)}</div></details>`)
+      index = ledger.end
+    } else prose.push(lines[index])
+  }
+  flush()
+  return output.join('')
+}
+
 function renderMarkdown(text) {
   const key = String(text)
   const cached = markdownCache.get(key)
   if (cached !== undefined) return cached
-  const parts = key.split(/```/)
-  const rendered = parts.map((part, index) => index % 2 === 1
-    ? `<pre><code>${escapeHtml(part.replace(/^\w*\n/, ''))}</code></pre>`
-    : markdownBlock(part)).join('')
+  const rendered = renderMarkdownSections(key)
   if (markdownCache.size >= MARKDOWN_CACHE_LIMIT) markdownCache.delete(markdownCache.keys().next().value)
   markdownCache.set(key, rendered)
   return rendered
@@ -1741,7 +1807,7 @@ function renderDispatchPanel() {
     <form class="dispatch-form" data-dispatch-form>
       <label class="dispatch-kicker">派发</label>
       <textarea maxlength="4000" rows="2" placeholder="一句话说明任务，可派给一席，也可征询全席…" data-dispatch-input${busy ? ' disabled' : ''}>${escapeHtml(state.dispatch.text)}</textarea>
-      <div class="conference-action"><button type="button" data-action="conference-start" ${deployedCount === 0 || state.dispatch.pending || conferenceActive() ? 'disabled' : ''}>${state.conference.starting ? '正在召集…' : `全席征询 · ${deployedCount} 席`}</button><small>同一句话分别发送给每个已部署席位，最多 3 席并行</small></div>
+      <div class="conference-action"><button type="button" data-action="conference-start" ${deployedCount === 0 || state.dispatch.pending || conferenceActive() ? 'disabled' : ''}>${state.conference.starting ? '正在召集…' : `全席征询 · ${deployedCount} 席`}</button><small>各席独立作答；同一句话分别发送给每个已部署席位，最多 3 席并行</small></div>
     </form>
     <div class="dispatch-suggest">${dispatchSuggestHtml()}</div>
     <div class="dispatch-lines">${pipelines.map(pipeline => `<div class="dispatch-line"><strong>${escapeHtml(pipeline.name)}</strong>${pipeline.stations.map(stationBadge).join('<i class="arrow" aria-hidden="true">→</i>')}<button type="button" class="dispatch-line-go" data-action="dispatch-pipeline" data-pipeline="${escapeHtml(pipeline.name)}" ${firstStationDeployed(pipeline) && !busy ? '' : 'disabled title="第一站未部署或派发正忙"'}>按线派发</button></div>`).join('')}</div>

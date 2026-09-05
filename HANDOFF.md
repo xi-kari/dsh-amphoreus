@@ -9,8 +9,7 @@
 
 ## 0. 一句话现状
 
-当前发布版本为 **dsh-amphoreus 0.2.1**（2026-09-05）；npm `latest`、`alpha` 均为 `0.2.1`，发布提交与 `v0.2.1` 均指 `144ada7c737c19d48d3771521fb84c2232d76eed`。GitHub Release 已发布；双系统 CI `33955526162` 与 release workflow `33955698415` 均 success。396 项测试／395 通过／0 失败／1 条件跳过，397 项产物检查，registry tarball 与本地验收包哈希完全一致。本机仍使用 link 源码，最终构建时间 `2026-09-05 16:33:28`。下列 0.2.0 发布记录保留为历史，当前功能说明见 README 和 `docs/RELEASE-0.2.1.md`。
-
+当前适配版本为 **dsh-amphoreus 0.2.2**（2026-09-05），适配外部套件 v1.6.0（`fd01e56ce929fbad2d38011adab20df8a0234065`）。本机 `skillRoots` 首选 `D:/DeepSeek Harness/skill-sources/amphoreus-skill-suite/skills`，运行态 L0、13卡、Git指纹已核对；原 Claude/Codex 的44份技能文件与上游正文一致，保持原样。插件新增折叠台账、末行回执兼容与 relations 绝对路径；全席征询明确各席独立作答。401项测试全部通过、0跳过，产物397项；实际13席均单次角色回复、13/13 completed、通用首答与双回复均0，浏览器13台账默认折叠且可开合。发布结果见 BUILD-LOG 最新记录，功能说明见 README 和 `docs/RELEASE-0.2.2.md`。
 
 ### 0.1 首发历史（0.2.0，2026-09-05）
 

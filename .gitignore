@@ -8,3 +8,4 @@ lib/
 *.tmp
 *.tgz
 .runtime/
+.suite-fixture/

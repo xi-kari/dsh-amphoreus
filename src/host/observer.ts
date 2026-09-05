@@ -236,7 +236,14 @@ function contractLines(text: string): string[] {
   const lines: string[] = []
 
   for (const raw of text.split(/\r?\n/u)) {
-    const line = raw.trim()
+    let line = raw.trim()
+    if (fence === undefined) {
+      line = line
+        .replace(/^<details>\s*(?:<summary>\s*台账\s*<\/summary>)?/u, '')
+        .replace(/^<summary>\s*台账\s*<\/summary>/u, '')
+        .replace(/<\/details>$/u, '')
+        .trim()
+    }
     const markerMatch = /^(`{3,}|~{3,})(.*)$/u.exec(line)
     const marker = markerMatch?.[1]
     if (marker !== undefined) {

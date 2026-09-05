@@ -16,6 +16,14 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v4
+      - name: checkout verified skill suite
+        uses: actions/checkout@v4
+        with:
+          repository: xi-kari/amphoreus-skill-suite
+          ref: fd01e56ce929fbad2d38011adab20df8a0234065
+          path: .suite-fixture
+          sparse-checkout: skills
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version-file: .node-version
@@ -23,6 +31,8 @@ jobs:
           registry-url: https://registry.npmjs.org
       - run: npm ci --ignore-scripts
       - run: npm run release:check
+        env:
+          AMPHOREUS_REAL_SUITE: ${{ github.workspace }}/.suite-fixture/skills
       - name: tag matches package.json
         run: node -e "const v=require('./package.json').version; if ('v'+v!==process.env.GITHUB_REF_NAME) { console.error('tag',process.env.GITHUB_REF_NAME,'!= v'+v); process.exit(1) }"
       - name: choose publish mode

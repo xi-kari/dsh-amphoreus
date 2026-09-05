@@ -201,6 +201,7 @@ export function apply(ctx: Context, config: AmphoreusConfig): void {
       stores,
       current: () => bridge.resolver.current(),
       commonPath: config.commonPath,
+      relationsPath: config.relationsPath,
     })
     const disposeFirstFrame = registerFirstFrame(ctx, {
       config,

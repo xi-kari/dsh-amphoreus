@@ -24,7 +24,7 @@
 npx @deepseek-ai/dsh@0.1.2-alpha.4 web
 ```
 
-安装本插件时请显式使用 `dsh-amphoreus@alpha` 或精确版本 `dsh-amphoreus@0.2.1`，不要依赖 `latest`。
+安装本插件时请显式使用 `dsh-amphoreus@alpha` 或精确版本 `dsh-amphoreus@0.2.2`，不要依赖 `latest`。
 
 ## 安装
 
@@ -35,14 +35,14 @@ npx @deepseek-ai/dsh@0.1.2-alpha.4 web
 ```bash
 dsh plugin --profile web add dsh-amphoreus@alpha
 # 或钉定版本
-dsh plugin --profile web add dsh-amphoreus@0.2.1
+dsh plugin --profile web add dsh-amphoreus@0.2.2
 ```
 
 ### tarball
 
 ```bash
-npm pack dsh-amphoreus@0.2.1 --registry https://registry.npmjs.org
-dsh plugin --profile web add ./dsh-amphoreus-0.2.1.tgz
+npm pack dsh-amphoreus@0.2.2 --registry https://registry.npmjs.org
+dsh plugin --profile web add ./dsh-amphoreus-0.2.2.tgz
 ```
 
 ### GitHub
@@ -230,6 +230,11 @@ Windows 用户需确认当前 shell 如何展开 `~`。更新有两种方式：
 
 解析失败时界面明确显示「套件格式未识别，已降级」，不会静默沿用旧结果；新加入的技能卡自动出席，移除的技能卡变为「未部署」且保留已有会话。
 
+
+本插件的兼容性验收固定到套件 **v1.6.0**（`fd01e56ce929fbad2d38011adab20df8a0234065`）。建议让 `skillRoots` 的首项直接指向套件 Git 工作树的 `skills/`，这样更新时可执行 `git pull --ff-only`，并在设置中核对 tag／commit 指纹；同名技能由首个有效根提供。套件正文和图片仍不进入 npm 包。
+
+运行真实套件测试时，将 `AMPHOREUS_REAL_SUITE` 设为该 `skills/` 目录，再执行 `npm test`。CI 会读取固定提交并运行上游静态校验与插件的真实解析合同。
+
 ## 十三席一览
 
 | 席序 | heroId | skill | 杂志册 | 母题 | 常用名 |
@@ -250,9 +255,9 @@ Windows 用户需确认当前 shell 如何展开 `~`。更新有两种方式：
 
 显示名与职责在运行时来自技能卡 description 与分派表；这里的常用名只帮助读者识别视觉席位。
 
-## 现状（0.2.1）
+## 现状（0.2.2）
 
-`0.2.1` 包含席内直聊、首请求角色注入、全席征询与会话归档修复。完整变更与验证摘要见 [0.2.1 发布说明](docs/RELEASE-0.2.1.md)。
+`0.2.2` 已核验 amphoreus-skill-suite `v1.6.0`，支持圆桌与陪聊的折叠台账、台账内回执识别和关系文件定位，同时保留席内直聊、全席征询与会话归档。完整变更见 [0.2.2 发布说明](docs/RELEASE-0.2.2.md)。
 
 完整工作流是：打开十三席门户 → 进席 → 在当前 DSH 工作区中建立该席会话 → 首个模型请求内自动注入当前技能卡 → 识别回执 → 在总览画布单席派发、全席征询或移交。未经明确点击，移交不会接受或切换，移交物也不会自动发送；技能卡缺席时不代演，界面显示套件提供的缺席标准行。
 
@@ -275,12 +280,14 @@ Windows 用户需确认当前 shell 如何展开 `~`。更新有两种方式：
 iframe 画布基于 dsh-synapse 的 MIT 实现改造，完整署名与改动边界见致谢和 NOTICE。
 
 - 全体会议 chip 进入总空间；单席派发按技能套件的词面匹配给出建议承办席，派发泳道展示已经创建的下游会话。
-- “全席征询”把同一句问题分别发给每个已部署席位，最多 3 席并行；会议页逐席读取官方会话日志，以完整回复和真实结束状态汇总排队、运行、完成与失败，不自动切换当前会话。
+- “全席征询”采用各席独立作答，把同一句问题分别发给每个已部署席位，最多 3 席并行；会议页逐席读取官方会话日志，以完整回复和真实结束状态汇总排队、运行、完成与失败，不自动切换当前会话。
 - 移交坞只在存在待处理移交时出现；用户明确点击接受后才切换到下游，未点击时不接受、不切换，也不自动发送移交内容。
 - 会话头的站位轨来自运行时流水线，可从已部署站位继续派发；详情末尾的接通中卡展示当前待处理移交。
 - 侧栏台账跟随画布当前选中的线程，集中展示运行时解析出的记录，并提供席位记忆便签与“插入到输入框”操作。
 - 同一画布内的移交关系以虚线连接；多数移交边跨席，主要看角标。
 - 宿主已归档会话不再计入门户会话数、工作台线程树或派发泳道；本轮会议汇总保留已收到的回复，归档席卡标为“会话已归档”并移除打开入口。
+
+圆桌与陪聊回复中的 `<details><summary>台账</summary>` 会默认折叠，点击“台账”展开读取清单、引证和回执。只识别该固定外壳，其他 HTML 保持转义；代码示例里的台账不会成为真实折叠块。工作台、详情与会议卡共用这一呈现方式。
 
 ### 数据
 
@@ -340,6 +347,7 @@ npm run assets:check -- "<assetsRoot>"
 
 ## 相关文档
 
+- [0.2.2 发布说明](docs/RELEASE-0.2.2.md)
 - [0.2.1 发布说明](docs/RELEASE-0.2.1.md)
 - [建设交接](HANDOFF.md)
 - [历史审计](docs/AUDIT-2026-09-04.md)

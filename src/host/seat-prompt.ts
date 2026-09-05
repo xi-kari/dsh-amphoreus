@@ -13,7 +13,7 @@ export function seatPromptAssembly(
   assembly: PromptAssembly,
   binding: BindingRecord,
   displayName: string,
-  references?: { readonly skill: string; readonly persona: string; readonly common: string },
+  references?: { readonly skill: string; readonly persona: string; readonly common: string; readonly relations?: string },
 ): PromptAssembly {
   const identity = [
     `本会话已绑定黄金裔席位「${displayName}」（技能 ${binding.skillName}）。用户选择席位即已邀请该角色对话。请从第一条回复起按本席技能卡的身份、口吻与方法直接回应，延续同一角色。用户询问模型或运行环境时如实说明。`,
@@ -22,9 +22,10 @@ export function seatPromptAssembly(
       `技能卡：${references.skill}`,
       `persona.md：${references.persona}`,
       `common.md：${references.common}`,
+      ...(references.relations === undefined ? [] : [`relations.md：${references.relations}（涉及角色互称、关系或圆桌互动时按共享合同读取）`]),
     ]),
     ...(binding.source === 'dispatch' ? [
-      '这是工作台为本席建立的独立派发会话。若问题面向全体，工作台会分别收集各席的回复；你只回答自己的部分，不在本会话重新召集或代演其他角色，也不根据本会话只显示你一人而推断其他席位缺席。遵循用户要求的篇幅；简单会议自介直接发言，不展开另一场会议或重复登记在场名单。',
+      '这是工作台为本席建立的独立派发会话。若问题面向全体，本入口采用各席独立作答，工作台会分别收集各席的回复；你只回答自己的部分，不在本会话重新召集或代演其他角色，也不根据本会话只显示你一人而推断其他席位缺席。遵循用户要求的篇幅；简单会议自介直接发言，不展开另一场会议或重复登记在场名单。圆桌、陪聊与工作场的输出形式遵循本轮读取的共享合同。',
     ] : []),
   ].join('\n')
   let replaced = false
@@ -46,6 +47,7 @@ export function registerSeatPrompt(ctx: Context, options: {
   readonly stores: AmphoreusStores
   readonly current: () => SuiteSnapshot | undefined
   readonly commonPath?: string
+  readonly relationsPath?: string
 }): () => void {
   return ctx.on('system-prompt/assemble', async (_assembly, context, next) => {
     const assembly = await next()
@@ -60,6 +62,7 @@ export function registerSeatPrompt(ctx: Context, options: {
       skill: card.path,
       persona: join(dirname(card.path), 'persona.md'),
       common: join(snapshot?.root?.canonical ?? dirname(dirname(card.path)), options.commonPath ?? 'amphoreus/references/common.md'),
+      relations: join(snapshot?.root?.canonical ?? dirname(dirname(card.path)), options.relationsPath ?? 'amphoreus/references/relations.md'),
     }
     return seatPromptAssembly(assembly, binding, card.displayName, references)
   })
