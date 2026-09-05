@@ -1,4 +1,4 @@
-import type { ChatSnapshot, ToolResultNode } from '@deepseek-ai/dsh-client-ui-chat/client'
+import type { AssistantBlock, ChatSnapshot, ToolResultNode } from '@deepseek-ai/dsh-client-ui-chat/client'
 
 export interface FeedProcess {
   callId: string
@@ -88,7 +88,8 @@ export function feedFromChat(
         })
         break
       case 'assistant': {
-        const process = node.blocks.flatMap((block): FeedProcess[] => block.kind === 'tool-call'
+        const blocks: readonly AssistantBlock[] = node.blocks
+        const process = blocks.flatMap((block): FeedProcess[] => block.kind === 'tool-call'
           ? [{
               callId: block.callId,
               name: block.name,
@@ -100,7 +101,7 @@ export function feedFromChat(
         messages.push({
           seq: node.seq,
           kind: 'assistant',
-          text: bounded(node.blocks
+          text: bounded(blocks
             .filter(block => block.kind === 'text')
             .map(block => block.text)
             .join('\n')),

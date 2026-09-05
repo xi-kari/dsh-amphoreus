@@ -1155,7 +1155,7 @@
 - 偏离与理由：无。
 - 遗留：无。
 ## TF8：发布署名与 vendoring 归属核对 — 2026-09-05 09:34
-- commit: PENDING-TASK
+- commit: 4701dc2
 - 动手前核对：实际执行任务书 `sed -n '4884,4912p'`；确认 `settings.credit=2`、设置区仓库链接=`1`、`app.js` 的消息名字面量 `'synapse:`=`0`、宿主 `workbench.json|node:fs`=`0`、DSH 色彩 token 引用=`400`、handoff connector=`1`，三处历史条件与 A/B/D/E 章节前置均成立 PASS
 - 改动：仅在 NOTICE 的 Changes 段末尾、`Original license text follows.` 之前追加任务书指定的 `mark.svg` 原创替换句；未改 MIT 原文、版权行、既有 Changes 措辞、设置区 DOM/locales/CSS 或 vendoring 文件头 PASS
 - 验收：
@@ -1170,3 +1170,23 @@
 - 人工断言：✓ 署名只存在于设置页、README、NOTICE 的发布归属位置；✓ 对话气泡与名牌未新增署名；✓ 原 upstream MIT 正文未改。
 - 偏离与理由：无。
 - 遗留：无。
+## TF9：tarball 用户形态与独立 demo profile — 2026-09-05 10:00
+- commit: PENDING-TASK
+- 动手前核对：实际执行任务书 `sed -n '4913,4955p'`；确认 HEAD=`4701dc2`、3090 无监听、`amphdemo` 初始不存在、发布版本=`0.2.0`、主 web profile 为 link 安装且 3080 正在运行 PASS
+- 改动：新增可重复的 `scripts/path-b.sh`；为真正的官方 npm-ci 环境补齐三项仅开发期 runtime peer（`dsh-invariants/dsh-scope/dsh-storage`）并重生成锁；给 `conversation-feed.ts` 的 assistant blocks 加发布声明兼容类型锚点，不改变映射行为 PASS
+- 脚本验收：
+  - `bash -n scripts/path-b.sh` PASS；`grep -c "trap '" scripts/path-b.sh` → `1`；`rm -rf`=`0`；末行实测 `path-b: OK`（exit: `0`）
+  - `npm run release:check` → 全量测试 `tests 326; pass 325; fail 0; skipped 1`、本地 build derive/client/host=`28.87/205.80/199.59 kB`、`verify-dist: OK 377 checks` PASS
+  - 实包 → `dsh-amphoreus-0.2.0.tgz`，70 files、package size=`393.7 kB`、unpacked `< 2 MB`；tarball 复制到无空格 `/c/tmp/dsh-amphoreus-path-b.*` 后安装 PASS
+  - reconcile → `@deepseek-ai/dsh-base -> @deepseek-ai/dsh-web-app -> dsh-amphoreus`；profile-local 仅有 direct `yaml/zod/dsh-amphoreus`，六项 peer 未重复安装；实际启动后六项均从 `$DSH_HOME/profiles/node_modules` fallback 解析 PASS
+  - dump-config → `526:# == dsh-amphoreus`、`527:- id: amphoreus`、`533: dataDir: !!js dshHomePath('amphoreus')` PASS
+  - 3090 启动 stderr bytes=`0`；禁词 `run pnpm run build/ERR_MODULE_NOT_FOUND/loaded without registering`=`0` PASS
+  - HTTP → auth=`303`、首帧 `__AMPHOREUS_BOOT__=2`、state=`L0 13 true`、bundle 前缀=`window.__ModuleLoader__.load({`、mark.svg=`200` PASS
+  - 独立 npm-ci clone → installed `dsh-client-web` 的 `lib/types/platform.d.ts=true`、`src/platform.ts=false`；最终复跑 `tests 326; pass 325; fail 0; skipped 1; duration_ms 3237.9023`；npm-ci build derive/client/host=`28.90/205.60/199.69 kB`；`verify-dist: OK 377 checks` PASS
+  - 锁文件 → SHA256=`C091DE8BD25D8A17BDA0F86CB6558E4FE8E7E59F472D68300F580353F79B5BA2`、`registry.npmmirror.com=0`、`0.1.2-rc=0`、dsh-client-web 官方 registry resolved=`1`；dependencies 仍精确 `yaml,zod`、peers=`6`、overrides=`6` PASS
+- 真实浏览器第 1–5 步：✓ 3090 令牌登录；✓ 总览门户显示全体会议与 13 席；✓ 进入那刻夏并从席位创建新会话；✓ 首轮投递完成，页眉显示「那刻夏 · 代码 / 已注入」，助手逐字回复 `TF9-PATH-B-OK`；✓ 切换「工作台」，iframe 显示该会话卡、名牌、第一轮正文与完整会话操作 PASS
+- 清理与恢复：测试会话经官方 `workspace/archiveSession` 返回 `ok=true`，binding DELETE=`200` 且 remains=`0`；会话日志目录保留；3090 listeners=`0`；amphdemo 依赖为空且 bundles 保留 base/web-app；脚本实测主 web manifest/patch hash 前后相同；主 3080 最终恢复 `STATUS=running/HTTP_STATUS=200` PASS
+- 敏感临时材料：独立复核指出临时 stdout 含一次性启动令牌、cookie jar 可跨重启；EXIT trap 已扩为 `stop_server; cleanup_sensitive`，成功/失败均删除 `$OUT` 与 `$JAR`，且只在路径属于本次 `$TMP_ROOT/` 时删除。现存 path-b 临时目录逐个验证位于 `C:/tmp/dsh-amphoreus-path-b.*` 后清除这两类文件；继承环境反向测试令 `OUT/JAR` 指向两个 `KEEP-*` 哨兵并用 3090 占用触发早退，脚本 exit=`1`、两个哨兵均原样保留；随后完整复跑 exit=`0`、末行 `path-b: OK`、最新 temp 的 OUT/JAR=`false/false`，主 3080 在脚本退出后仍为 `STATUS=running/HTTP_STATUS=200` PASS
+- 失败与修正：首次从 PowerShell 调用裸 `bash` 实际进入 WSL，`/c/tmp` 不存在；改用任务书规定的 Git Bash 后执行。首次重跑发现 dump 的已配置 profile 注释会变为 `patched by ...amphdemo/cordis.patch.yml`，脚本在安装前把脚本自有 profile patch 复位为 `[]`，随后再写目标配置，恢复重复运行一致性。首个 npm-ci 真机运行以 11 个测试文件失败，根因为 `legacy-peer-deps` 下直接 dev peer 的 runtime peer 未安装；只向 devDependencies 补 `dsh-storage/dsh-scope/dsh-invariants` 后全部通过。发布态 d.ts 又暴露 assistant blocks 的回调参数隐式 any；用 `readonly AssistantBlock[]` 明确既有上游合同后 npm-ci typecheck 通过，逻辑与测试未改。
+- 偏离与理由：任务书示例用简略文件列表作为 `git clone` 失败回退，会遗漏 verify-dist 所需发布文件；脚本固定采用完整 `git clone --no-hardlinks`，并仅把当前尚待同一 TF9 commit 的三份变更覆盖到 clone，确保验收的是当前工作树且不碰开发 junction。当前 dumper 以 `# == dsh-amphoreus` 标来源而非完整文件路径，按实际 alpha.4 输出锁定该来源行。
+- 遗留：TF9 自动脚本的摘要将在 TF11 按任务书写入 HANDOFF §8 F；npm 远程发布形态留 TF12。其余无。
