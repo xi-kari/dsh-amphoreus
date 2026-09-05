@@ -40,6 +40,13 @@ test('the seven dimensions spread: radii, ambients, edge signatures and style na
   assert.ok(all.some(g => g.glass.rimStyle === 'dashed') && all.some(g => g.glass.rimStyle === 'double') && all.some(g => g.glass.rimStyle === 'none'))
   assert.equal(all.filter(g => g.feather).length, 1)
   assert.equal(all.filter(g => g.clip !== undefined).length, 2)
+  for (const g of all) {
+    assert.match(g.ink.light, /^#[0-9a-f]{6}$/u)
+    assert.match(g.ink.dark, /^#[0-9a-f]{6}$/u)
+    assert.notEqual(g.ink.light, g.ink.dark)
+    assert.notEqual(g.composer.tintLight, g.composer.tintDark)
+  }
+  assert.equal(new Set(all.map(g => g.composer.tintLight)).size, all.length, 'composer paper differs per seat')
 })
 
 test('grammar variables are all --amph-*, scheme-aware, and the layer scales them by prefs with a frost floor', () => {

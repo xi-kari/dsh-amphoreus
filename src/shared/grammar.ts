@@ -68,6 +68,10 @@ export interface SeatGrammar {
     readonly dim: number
     readonly saturate: number
   }
+  /** Body ink for the transcript and composer (light/dark scheme); blended 80/20 with the audited label token. */
+  readonly ink: { readonly light: string; readonly dark: string }
+  /** Composer (text box) tint, distinct from the pane glass so the input reads as paper on glass. */
+  readonly composer: { readonly tintLight: string; readonly tintDark: string }
   /** Masthead badge text riding the header card's top edge (`CHRYSOS · No.NN`); empty hides it. */
   readonly masthead: string
   /** Feather the sidebar glass sheet into the page (castorice's frameless page). */
@@ -102,6 +106,8 @@ export const GLOBAL_GRAMMAR: SeatGrammar = {
   motif: { sizePx: 96, opacity: 0.08, placement: 'stage' },
   ambient: 'ripple',
   wallpaper: { blurPx: 0, position: 'center 42%', dim: 0, saturate: 1 },
+  ink: { light: '#3b2f5c', dark: '#f3ecf8' },
+  composer: { tintLight: '#fdf8fe', tintDark: '#2b2340' },
   masthead: 'CHRYSOS · No.13',
   feather: false,
   signature: '涟漪波纹页脚；期号下多一行「终刊号」',
@@ -129,6 +135,8 @@ export const SEAT_GRAMMARS: Readonly<Partial<Record<HeroId, SeatGrammar>>> = Obj
     motif: { sizePx: 48, opacity: 0.14, placement: 'sidebar' },
     ambient: 'star-blink',
     wallpaper: { blurPx: 0, position: 'center 30%', dim: 0.06, saturate: 0.96 },
+    ink: { light: '#3a1d16', dark: '#f8ebdd' },
+    composer: { tintLight: '#fdf6ea', tintDark: '#33201b' },
     masthead: 'CHRYSOS · No.02',
     feather: false,
     signature: '砂金虚线相框；星星贴纸只在侧栏右上闪',
@@ -154,6 +162,8 @@ export const SEAT_GRAMMARS: Readonly<Partial<Record<HeroId, SeatGrammar>>> = Obj
     motif: { sizePx: 16, opacity: 0.06, placement: 'header' },
     ambient: 'binary-ticker',
     wallpaper: { blurPx: 0, position: 'center 24%', dim: 0.1, saturate: 0.94 },
+    ink: { light: '#12183a', dark: '#e8edff' },
+    composer: { tintLight: '#f5f7ff', tintDark: '#1b2140' },
     masthead: 'CHRYSOS · No.10',
     feather: false,
     signature: '侧栏左缘 6px 棋盘带；金色 0101 刻度带走马',
@@ -179,6 +189,8 @@ export const SEAT_GRAMMARS: Readonly<Partial<Record<HeroId, SeatGrammar>>> = Obj
     motif: { sizePx: 64, opacity: 0.07, placement: 'sidebar' },
     ambient: 'shard-drift',
     wallpaper: { blurPx: 0, position: 'center 28%', dim: 0.1, saturate: 0.86 },
+    ink: { light: '#221429', dark: '#f1e6f2' },
+    composer: { tintLight: '#f7f1f8', tintDark: '#251a2c' },
     masthead: 'CHRYSOS · No.11',
     feather: false,
     signature: '红丝线外缝；胶片带贴侧栏右缘',
@@ -204,6 +216,8 @@ export const SEAT_GRAMMARS: Readonly<Partial<Record<HeroId, SeatGrammar>>> = Obj
     motif: { sizePx: 72, opacity: 0.09, placement: 'header' },
     ambient: 'ink-cloud',
     wallpaper: { blurPx: 0, position: 'center 30%', dim: 0.06, saturate: 0.92 },
+    ink: { light: '#1f2a24', dark: '#ece9dd' },
+    composer: { tintLight: '#f8f5ec', tintDark: '#22271f' },
     masthead: 'CHRYSOS · No.12',
     feather: false,
     signature: '墨绿绢边金角；页码作竖印',
@@ -229,6 +243,8 @@ export const SEAT_GRAMMARS: Readonly<Partial<Record<HeroId, SeatGrammar>>> = Obj
     motif: { sizePx: 96, opacity: 0.1, placement: 'stage' },
     ambient: 'tide',
     wallpaper: { blurPx: 0, position: 'center 22%', dim: 0.12, saturate: 0.95 },
+    ink: { light: '#171a3e', dark: '#e6e9fb' },
+    composer: { tintLight: '#f2f3fc', tintDark: '#1d2044' },
     masthead: 'CHRYSOS · No.09',
     feather: false,
     signature: '靛紫水下辉光；波浪扇边页脚',
@@ -254,6 +270,8 @@ export const SEAT_GRAMMARS: Readonly<Partial<Record<HeroId, SeatGrammar>>> = Obj
     motif: { sizePx: 96, opacity: 0.12, placement: 'sidebar' },
     ambient: 'bubble-rise',
     wallpaper: { blurPx: 0, position: 'center 26%', dim: 0.04, saturate: 1 },
+    ink: { light: '#3a2530', dark: '#fbeaf3' },
+    composer: { tintLight: '#fff7fb', tintDark: '#34242f' },
     masthead: 'CHRYSOS · No.06',
     feather: false,
     signature: '唯一 2px 粗描边 + 顶部彩虹带；控件全药丸',
@@ -279,6 +297,8 @@ export const SEAT_GRAMMARS: Readonly<Partial<Record<HeroId, SeatGrammar>>> = Obj
     motif: { sizePx: 120, opacity: 0.08, placement: 'sidebar' },
     ambient: 'prism-sweep',
     wallpaper: { blurPx: 0, position: 'center 22%', dim: 0.04, saturate: 0.95 },
+    ink: { light: '#101740', dark: '#eef0fa' },
+    composer: { tintLight: '#fefefe', tintDark: '#1a1f3a' },
     masthead: 'CHRYSOS · No.08',
     feather: false,
     signature: '侧栏玻璃片顶部半圆拱（唯一非矩形侧栏）',
@@ -304,6 +324,8 @@ export const SEAT_GRAMMARS: Readonly<Partial<Record<HeroId, SeatGrammar>>> = Obj
     motif: { sizePx: 160, opacity: 0.1, placement: 'stage' },
     ambient: 'astrolabe-spin',
     wallpaper: { blurPx: 0, position: 'center 26%', dim: 0.1, saturate: 0.9 },
+    ink: { light: '#14251f', dark: '#e4efe8' },
+    composer: { tintLight: '#f4f8f5', tintDark: '#1a2823' },
     masthead: 'CHRYSOS · No.05',
     feather: false,
     signature: '羊皮纸双线框；星盘大环慢转 120s/圈',
@@ -329,6 +351,8 @@ export const SEAT_GRAMMARS: Readonly<Partial<Record<HeroId, SeatGrammar>>> = Obj
     motif: { sizePx: 64, opacity: 0.1, placement: 'sidebar' },
     ambient: 'gold-thread',
     wallpaper: { blurPx: 0, position: 'center 30%', dim: 0.05, saturate: 0.98 },
+    ink: { light: '#2b2113', dark: '#f6ecd8' },
+    composer: { tintLight: '#fefaf0', tintDark: '#2a2216' },
     masthead: 'CHRYSOS · No.01',
     feather: false,
     signature: '金色边缘光；页脚手写签名',
@@ -355,6 +379,8 @@ export const SEAT_GRAMMARS: Readonly<Partial<Record<HeroId, SeatGrammar>>> = Obj
     motif: { sizePx: 96, opacity: 0.07, placement: 'sidebar' },
     ambient: 'ember',
     wallpaper: { blurPx: 0, position: 'center 24%', dim: 0.08, saturate: 1.02 },
+    ink: { light: '#2a1611', dark: '#f3e5dd' },
+    composer: { tintLight: '#faf1ea', tintDark: '#2b1a16' },
     masthead: 'CHRYSOS · No.03',
     feather: false,
     signature: '八边形切角代替圆角；虚线相框；哑光无高光',
@@ -380,6 +406,8 @@ export const SEAT_GRAMMARS: Readonly<Partial<Record<HeroId, SeatGrammar>>> = Obj
     motif: { sizePx: 96, opacity: 0.1, placement: 'both' },
     ambient: 'butterfly',
     wallpaper: { blurPx: 0, position: 'center 26%', dim: 0.12, saturate: 0.92 },
+    ink: { light: '#231e42', dark: '#eeebfa' },
+    composer: { tintLight: '#f6f4fd', tintDark: '#24203f' },
     masthead: 'CHRYSOS · No.04',
     feather: true,
     signature: '无描边席，侧栏玻璃片羽化溶进页面',
@@ -406,6 +434,8 @@ export const SEAT_GRAMMARS: Readonly<Partial<Record<HeroId, SeatGrammar>>> = Obj
     motif: { sizePx: 64, opacity: 0.1, placement: 'stage' },
     ambient: 'coin-glint',
     wallpaper: { blurPx: 0, position: 'center 24%', dim: 0.12, saturate: 0.96 },
+    ink: { light: '#0f1533', dark: '#e9edfb' },
+    composer: { tintLight: '#f3f5fd', tintDark: '#171d36' },
     masthead: 'CHRYSOS · No.07',
     feather: false,
     signature: '价签切角（仅左上/右下）；金属贝维尔玻璃',
@@ -450,6 +480,8 @@ export function grammarVariables(grammar: SeatGrammar, dark: boolean, accent: st
     '--amph-wp-dim': String(grammar.wallpaper.dim),
     '--amph-wp-saturate': String(grammar.wallpaper.saturate),
     '--amph-masthead': JSON.stringify(grammar.masthead),
+    '--amph-ink': dark ? grammar.ink.dark : grammar.ink.light,
+    '--amph-composer': dark ? grammar.composer.tintDark : grammar.composer.tintLight,
   }
 }
 

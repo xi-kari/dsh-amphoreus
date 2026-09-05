@@ -70,7 +70,7 @@ export function AmphoreusSettings({ model, t }: AmphoreusSettingsProps) {
   const deriveDisabled = busy || state.assets.running || state.assets.root === '' || state.assets.magick === null
 
   return (
-    <section className={css.page}>
+    <section className={css.page} data-amph-console="">
       <header className={css.hero} data-level={level}>
         <div className={css.heroCopy}>
           <p className={css.eyebrow}>{t('settings.eyebrow')}</p>
@@ -84,7 +84,6 @@ export function AmphoreusSettings({ model, t }: AmphoreusSettingsProps) {
           <button className={css.primaryButton} type="button" disabled={busy} onClick={() => { void run('reparse', () => model.reparse()) }}>
             {activeAction === 'reparse' ? t('settings.reparsing') : t('settings.reparse')}
           </button>
-          {wb.enabled ? <a className={css.secondaryButton} href="/amphoreus/workbench/" target="_blank" rel="noreferrer">{t('settings.openWorkbench')}</a> : null}
         </div>
         {actionError === undefined ? null : <p className={css.actionError} role="alert">{actionError}</p>}
       </header>

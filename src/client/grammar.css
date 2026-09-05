@@ -19,6 +19,12 @@
   --amph-ease: cubic-bezier(.16, 1, .3, 1);
 }
 
+/* Dark scheme: lift the tint a step toward light so glass reads smoked, never black. */
+[data-amph-grammar='dark'] body {
+  --amph-glass-card: color-mix(in srgb, color-mix(in srgb, var(--dsw-alias-bg-layer-1) 55%, color-mix(in srgb, var(--amph-glass-tint) 84%, white)) calc(var(--amph-glass-frost, .78) * 100%), transparent);
+  --amph-glass-raised: color-mix(in srgb, color-mix(in srgb, var(--dsw-alias-bg-layer-2) 55%, color-mix(in srgb, var(--amph-glass-tint) 80%, white)) calc(min(1, var(--amph-glass-frost, .78) + .12) * 100%), transparent);
+}
+
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   [data-amph-grammar] body {
     --amph-glass-card: color-mix(in srgb, var(--dsw-alias-bg-layer-1) 96%, var(--amph-glass-tint));
@@ -255,6 +261,23 @@
   box-shadow: none;
 }
 
+/* ---------- Seat ink & composer paper: text and the text box are designed per seat ---------- */
+[data-amph-grammar] [data-conversation-scroll],
+[data-amph-grammar] [data-amph-composer] textarea,
+[data-amph-grammar] [data-amph-composer] [contenteditable] {
+  color: color-mix(in srgb, var(--amph-ink) 80%, var(--dsw-alias-label-primary));
+  caret-color: var(--amph-accent);
+}
+[data-amph-grammar] [data-conversation-scroll] ::selection,
+[data-amph-grammar] [data-amph-composer] ::selection {
+  background: color-mix(in srgb, var(--amph-accent) 28%, transparent);
+}
+[data-amph-grammar] [data-amph-composer],
+[data-amph-grammar] [data-amph-inputbar]:has([data-amph-stats]) {
+  --dsw-specific-input-major: var(--amph-composer);
+  background: color-mix(in srgb, var(--amph-composer) calc(min(1, var(--amph-glass-frost, .78) + .14) * 100%), transparent);
+}
+
 /* ---------- Bubbles, menus, trajectory, details ---------- */
 [data-amph-grammar] [data-amph-bubble] {
   border: var(--amph-rim-width, 1px) var(--amph-rim-style, solid) color-mix(in srgb, var(--amph-glass-rim) 70%, transparent);
@@ -285,17 +308,50 @@
 [data-amph-grammar] [data-amph-trajectory] section[aria-label='Trajectory timeline'] {
   background: transparent;
 }
+/* ---------- Settings window: one GLOBAL translucent recipe (not the seat's frost), so the
+   dialog reads as light smoked glass over the wallpaper in every seat and both schemes.
+   The modal mask behind it is thinned to a veil; the left nav is its own lighter strip. ---------- */
+[data-amph-grammar] body {
+  --amph-settings-glass: color-mix(in srgb, color-mix(in srgb, var(--amph-glass-tint) 80%, white) 62%, transparent);
+  --amph-settings-nav: color-mix(in srgb, white 34%, transparent);
+  --amph-settings-inner: color-mix(in srgb, white 42%, transparent);
+  --amph-settings-mask: color-mix(in srgb, var(--amph-glass-tint) 22%, transparent);
+}
+[data-amph-grammar='dark'] body {
+  /* Lift the dark tint toward grey-violet and keep the fill airy: this is what stops the window reading black. */
+  --amph-settings-glass: color-mix(in srgb, color-mix(in srgb, var(--amph-glass-tint) 78%, white) 54%, transparent);
+  --amph-settings-nav: color-mix(in srgb, white 7%, transparent);
+  --amph-settings-inner: color-mix(in srgb, white 6%, transparent);
+  --amph-settings-mask: rgba(8, 6, 16, .28);
+}
+[data-amph-grammar] [class*='overlay']:has(> [data-amph-settings]) > [class*='mask'] {
+  background: var(--amph-settings-mask);
+  backdrop-filter: blur(3px);
+}
 [data-amph-grammar] [data-amph-settings] {
-  --dsw-alias-bg-layer-1: var(--amph-glass-card);
-  --dsw-alias-bg-layer-2: var(--amph-glass-raised);
+  --dsw-alias-bg-layer-1: var(--amph-settings-inner);
+  --dsw-alias-bg-layer-2: var(--amph-settings-glass);
   --dsw-alias-bg-layer-3: var(--amph-glass-hover);
   --dsw-specific-sidebar-nav-item-active: color-mix(in srgb, var(--amph-accent) 22%, transparent);
   --dsw-specific-sidebar-nav-item-hover: color-mix(in srgb, var(--amph-accent) 12%, transparent);
   --dsw-alias-brand-primary: var(--amph-accent);
+  background: var(--amph-settings-glass);
   border: 1px solid var(--amph-glass-rim);
   border-radius: calc(var(--amph-radius) + 8px);
   box-shadow: var(--amph-edge);
-  backdrop-filter: var(--amph-glass-filter);
+  backdrop-filter: blur(24px) saturate(1.2);
+}
+[data-amph-grammar] [data-amph-settings] > [class*='nav'] {
+  background: var(--amph-settings-nav);
+  border-right: 1px solid color-mix(in srgb, var(--amph-glass-rim) 70%, transparent);
+}
+/* δ-me13 console inside the window: its cards become thin inner glass instead of stacking a second opaque layer. */
+[data-amph-grammar] [data-amph-console] [class*='_hero'],
+[data-amph-grammar] [data-amph-console] [class*='_panel'],
+[data-amph-grammar] [data-amph-console] [class*='_metric'] {
+  background: var(--amph-settings-inner);
+  border-color: color-mix(in srgb, var(--amph-glass-rim) 80%, transparent);
+  border-radius: var(--amph-radius-sm);
 }
 [data-amph-grammar] [role='treeitem'][aria-selected='true'] {
   box-shadow:
