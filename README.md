@@ -13,7 +13,7 @@
 - 提供工作台 Tab；其中 iframe 承载由 dsh-synapse 改造的 vendored 画布。会话结构由冷重放与实时事件共同维护，卡片正文只由当前浏览器会话控制器喂入。
 - 提供 13 席 light/dark token、共享 SVG 纹样、`light`/`full` 杂志版式，以及可重建的本地 WebP 派生缓存；视觉层设置可即时切档并显示后台派生进度。
 
-`M3` 总空间派发、移交与台账现已完成；尚待 F 章的发布包装与独立路径终验。历史审计基线见 [AUDIT-2026-09-04.md](AUDIT-2026-09-04.md)。
+`M3` 总空间派发、移交与台账现已完成；尚待 F 章的发布包装与独立路径终验。历史审计基线见 [AUDIT-2026-09-04.md](docs/AUDIT-2026-09-04.md)。
 
 - 正文与会话列表不经宿主路由，宿主只保留 seq 索引（B 章）。
 
@@ -82,7 +82,7 @@ npm test
 在 profile 目录执行（路径含空格时不要用 `dsh plugin add <path>`）：
 
 ```bash
-pnpm add "link:D:/DeepSeek Harness/deepseek插件开发/dsh-amphoreus"
+pnpm add "link:D:/<你的目录>/dsh-amphoreus"
 ```
 
 再运行 `dsh plugin --profile web install` 让 launcher 把本包 reconcile 进 `dsh.profile.bundles`，然后重启 `dsh web`。

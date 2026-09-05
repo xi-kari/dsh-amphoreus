@@ -5,3 +5,5 @@ lib/
 .tmp/
 .pack-dry-run.json
 *.tmp
+*.tgz
+.runtime/

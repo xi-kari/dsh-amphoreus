@@ -1014,7 +1014,7 @@
 - 偏离与理由：任务书假定 parse.ts 已正确提供 20 词，真实验收证明只有 17 词；若不修解析器，静态门会系统性漏扫回执/档位/读取：三词，故本任务连带修复 parser 并补最小回归。任务书只列 locales `*Tip` 豁免，但现有 TD11 的两个档位文案确属设置区；采用两个精确键白名单而非放行整个 settings namespace。
 - 遗留：无。
 ## E 章完成定义：派发、移交、站位轨与台账 — 2026-09-05 09:11
-- commit: PENDING-CHAPTER；tag: `chapter-E`
+- commit: 0486490；tag: `chapter-E`
 - 范围：TE1–TE10 共 `10` 项均已有独立提交；因依赖环采用书内允许的 `TE2→TE3→TE1→TE4→…→TE10` 落地顺序，A→B→D→C→E 章节顺序与既有四章标签保持不变。
 - 最终测试与构建：
   - `node --test tests/*.test.ts` → `tests 326; pass 325; fail 0; skipped 1; duration_ms 2793.9244` PASS（exit: `0`）；唯一 skip 是未设真实套件环境变量时的预期集成门
@@ -1044,3 +1044,19 @@
 - 恢复状态：Anaxa memory notes=`0`、门户临时文本与宿主草稿均清空；五个 E 章专用 binding 均 DELETE HTTP=`200`，五个专用会话以官方 gateway envelope `client-request → workspace/archiveSession({request})` 得 HTTP=`200/result.ok=true/archivedMatches=1`，对应权威 session 目录仍=`5/5`；首次只发 `{sessionId}` 虽 HTTP 200 但 result.ok=false，未误计成功，随后已用正确 envelope 完成。
 - 偏离与理由：① matcher 书面 11 与唯一词累计实算 13 冲突，按真实三词命中；② alpha.4 blank session 不渲染 conversation.view，portal fallback 保持覆盖层同一 all 画布；③ TE8 修复同步 current-session 竞态；④ fork 日志零消息按 end-seed 自有事件边界判定；其余偏离逐项见 TE1–TE10。
 - 遗留：无。E 章代码、运行态、浏览器与恢复门全部闭合；下一章为 F 发布包装、独立路径验收与实际发布。
+## TF1：仓库卫生、品牌素材替换与 LF 基线 — 2026-09-05 09:27
+- commit: PENDING-TASK
+- 动手前核对：实际执行任务书 `sed -n '4536,4577p'`；确认 package 根已是 main git 仓、现有 `.gitignore` 七行、pack 临时 JSON 不存在、AUDIT 已跟踪、官方 glyph 路径与 webapi 白名单引用仍在 PASS
+- 验收：
+  - `.gitignore` 只追加 `*.tgz` 与 `.runtime/`；四个 A/F 必需模式计数=`4`，旧 `*.tmp` 保留且无重复 PASS
+  - `.gitattributes` 逐字=`* text=auto eol=lf`；`.node-version` 逐字=`24` PASS
+  - `git mv AUDIT-2026-09-04.md docs/AUDIT-2026-09-04.md` 为 `R100`；根旧链接=`0`、新 `docs/` Markdown 链接=`3`，README/HANDOFF 可达 PASS
+  - mark → `M23.0584=0`、首行 plugin mark=`1`、第二行 dsh-synapse attribution=`1`、DeepSeek=`0`；图形仅三同心圆、自有 Vol.13 ripple，不携带上游品牌 glyph PASS
+  - `git status --short` 的 node_modules/未跟踪 lib=`0`；tracked media png/jpg/zip=`0`、tracked lib/node_modules=`0`、`.npmignore=absent` PASS
+  - 品牌允许项过滤后异常=`0`；README 唯一本机 link 示例已替换为 `link:D:/<你的目录>/dsh-amphoreus` PASS
+  - webapi 静态白名单未改；包内无新增图片、压缩包或技能正文 PASS
+  - `npm test` → `tests 326; pass 325; fail 0; skipped 1; duration_ms 2750.4839` PASS（exit: `0`）
+  - `npm run build` → derive/client/host=`28.87/205.78/199.59 kB` PASS（exit: `0`）；`git diff --check` PASS（exit: `0`）
+- 人工断言：✓ 审计正文只移动不改写；✓ HANDOFF 留在仓根；✓ reference/SYNAPSE-LICENSE 保留；✓ 官方素材从发布源码中移除但稳定 URL/白名单不变。
+- 偏离与理由：任务书改动文件未列 README/HANDOFF，但 AUDIT 物理迁移后旧相对链接会断；同步只改五处引用（其中三个 Markdown href）并把 README 本机 link 示例占位化，属于 TF1 明示验收所必需。
+- 遗留：无。
