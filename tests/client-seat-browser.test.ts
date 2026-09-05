@@ -21,6 +21,9 @@ function harness(options: {
   start?: (skill: string) => Promise<string>
   open?: (id: string, skill?: string) => Promise<void>
   archive?: (id: string) => Promise<void>
+  remove?: (workspaceId: string) => Promise<void>
+  /** Put the bound seat sessions into the directory workspace too (what a conference does). */
+  directoryHoldsSeats?: boolean
 } = {}) {
   const state: unknown[] = []
   let cursor = 0
@@ -33,7 +36,7 @@ function harness(options: {
   const workspaces = {
     archivedSessionIds: [] as string[],
     items: [
-      ...(options.directoryBlank ? [{ workspaceId: 'directory', title: 'Directory', path: 'D:/directory', sessionIds: ['blank'] }] : []),
+      ...(options.directoryBlank ? [{ workspaceId: 'directory', title: 'Directory', path: 'D:/directory', sessionIds: ['blank', ...(options.directoryHoldsSeats ? Object.keys(sessions).filter(id => id.startsWith('seat-')) : [])] }] : []),
       ...(options.internalUnbound ? [{ workspaceId: 'internal', title: 'Cyrene', path: 'D:/seat-cyrene', sessionIds: ['internal-blank', ...Object.keys(sessions).filter(id => id.startsWith('seat-'))] }] : []),
     ],
   }
@@ -84,6 +87,7 @@ function harness(options: {
     model: { subscribe: () => () => {}, getSnapshot: () => snapshot },
     openSession: options.open ?? (async () => {}), startSeatSession: options.start ?? (async () => 'new'), startDirectorySession: () => {},
     createDirectoryWorkspace: async () => {},
+    removeDirectoryWorkspace: options.remove ?? (async () => {}),
     archiveSession: options.archive ?? (async () => {}),
     t: (key: keyof typeof zh) => zh[key],
   }
@@ -238,4 +242,48 @@ test('unbound internal drafts are visible and open without a role, while bound a
   app.workspaces.archivedSessionIds.push('internal-blank')
   tree = app.render()
   assert.equal(elements(tree).some(item => item.props['data-group'] === 'unbound-sessions'), false)
+})
+
+test('directory workspaces list only plain conversations; seat-bound sessions stay under their seats with a count note', () => {
+  const app = harness({ seats: 3, directoryBlank: true, directoryHoldsSeats: true })
+  const tree = app.render()
+  const directories = elements(tree).find(item => item.props['data-group'] === 'directories')!
+  const rows = elements(directories).filter(item => item.type === 'button' && String(item.props['aria-label']).startsWith('归档会话：'))
+  assert.equal(rows.length, 1, 'only the blank plain conversation is archivable inside the directory')
+  assert.match(text(directories), /3 段黄金裔会话已归入席位/u)
+  const seats = elements(tree).find(item => item.props['data-group'] === 'seats')
+  assert.ok(seats === undefined || elements(tree).some(item => item.type === 'button' && text(item.props.children).startsWith('昔涟')))
+})
+
+test('a directory workspace can be removed after confirmation through the official delete, once per click burst', async () => {
+  let calls = 0
+  let complete!: () => void
+  const app = harness({ directoryBlank: true, remove: async id => {
+    assert.equal(id, 'directory')
+    calls += 1
+    await new Promise<void>(resolve => { complete = resolve })
+  } })
+  button(app.render(), '移除目录工作区：Directory').props.onClick()
+  button(app.render(), '取消').props.onClick()
+  assert.equal(calls, 0)
+  button(app.render(), '移除目录工作区：Directory').props.onClick()
+  const confirm = button(app.render(), '确认移除')
+  confirm.props.onClick()
+  confirm.props.onClick()
+  await settle()
+  assert.equal(calls, 1)
+  assert.equal(button(app.render(), '移除目录工作区：Directory').props.disabled, true)
+  complete()
+  await settle()
+  assert.equal(button(app.render(), '移除目录工作区：Directory').props.disabled, false)
+})
+
+test('directory removal failure surfaces the error and keeps the directory listed', async () => {
+  const app = harness({ directoryBlank: true, remove: async () => { throw new Error('workspace busy') } })
+  button(app.render(), '移除目录工作区：Directory').props.onClick()
+  button(app.render(), '确认移除').props.onClick()
+  await settle()
+  const tree = app.render()
+  assert.match(text(tree), /workspace busy/u)
+  assert.ok(button(tree, '移除目录工作区：Directory'))
 })

@@ -309,6 +309,12 @@ export function apply(ctx: ClientContext): void {
         return sessionId
       },
       startDirectorySession: workspaceId => ctx.uiWorkspace.startSession(workspaceId as WorkspaceId),
+      removeDirectoryWorkspace: async workspaceId => {
+        const result = await (ctx.workspaces as unknown as {
+          delete(id: WorkspaceId): Promise<{ ok: boolean; error?: { message?: string } }>
+        }).delete(workspaceId as WorkspaceId)
+        if (!result.ok) throw new Error(result.error?.message ?? '移除目录工作区失败')
+      },
       createDirectoryWorkspace: async fallbackPrompt => {
         let path: string | null
         try {

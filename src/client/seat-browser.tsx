@@ -22,6 +22,8 @@ export interface SeatBrowserInjected {
   readonly startSeatSession: (skillName: string) => Promise<string>
   readonly startDirectorySession: (workspaceId: string) => void
   readonly createDirectoryWorkspace: (fallbackPrompt: () => string | null) => Promise<void>
+  /** Remove a directory workspace from the registry (official delete; sessions and files are untouched). */
+  readonly removeDirectoryWorkspace: (workspaceId: string) => Promise<void>
 }
 
 export type SeatBrowserProps =
@@ -45,6 +47,7 @@ export function SeatBrowser({
   startSeatSession,
   startDirectorySession,
   createDirectoryWorkspace,
+  removeDirectoryWorkspace,
   t,
 }: SeatBrowserProps) {
   const snap = useSyncExternalStore(model.subscribe, model.getSnapshot)
@@ -60,6 +63,9 @@ export function SeatBrowser({
   const [archiving, setArchiving] = useState<ReadonlySet<string>>(() => new Set())
   const archivingIds = useRef(new Set<string>())
   const [archiveRetry, setArchiveRetry] = useState<string>()
+  const [removeConfirm, setRemoveConfirm] = useState<string>()
+  const [removing, setRemoving] = useState<ReadonlySet<string>>(() => new Set())
+  const removingIds = useRef(new Set<string>())
   const [error, setError] = useState<string>()
 
   const views = seatViewsFrom(snap, list as unknown as Parameters<typeof seatViewsFrom>[1], workspaces)
@@ -124,6 +130,21 @@ export function SeatBrowser({
 
   const promptForDirectory = (): string | null => window.prompt(t('seats.newDirectoryPrompt'))
   const createDirectory = (): void => run(() => createDirectoryWorkspace(promptForDirectory))
+
+  const removeDirectory = (workspaceId: string): void => {
+    if (removingIds.current.has(workspaceId)) return
+    removingIds.current.add(workspaceId)
+    setRemoving(new Set(removingIds.current))
+    setError(undefined)
+    void Promise.resolve().then(() => removeDirectoryWorkspace(workspaceId)).then(() => {
+      setRemoveConfirm(current => current === workspaceId ? undefined : current)
+    }).catch(cause => {
+      setError(cause instanceof Error ? cause.message : String(cause))
+    }).finally(() => {
+      removingIds.current.delete(workspaceId)
+      setRemoving(new Set(removingIds.current))
+    })
+  }
 
   const archive = (sessionId: string): void => {
     if (archivingIds.current.has(sessionId)) return
@@ -333,25 +354,57 @@ export function SeatBrowser({
         </header>
         {directoriesExpanded && (
           <div className={css.directoryList}>
-            {directoryWorkspaces.map(workspace => (
-              <div key={workspace.workspaceId} className={css.dir}>
-                <button
-                  className={css.dirHead}
-                  type="button"
-                  title={workspace.path}
-                  onClick={() => startDirectorySession(workspace.workspaceId)}
-                >
-                  {workspace.title}
-                </button>
-                <ul className={css.sessionList}>
-                  {workspace.sessionIds.map(sessionId => {
-                    const session = list.byId[sessionId]
-                    if (archived.has(sessionId) || session === undefined) return null
-                    return sessionEntry(sessionId)
-                  })}
-                </ul>
-              </div>
-            ))}
+            {directoryWorkspaces.map(workspace => {
+              const seatBound = workspace.sessionIds.filter(sessionId =>
+                bindings.has(sessionId) && !archived.has(sessionId) && list.byId[sessionId as SessionId] !== undefined)
+              const pending = removing.has(workspace.workspaceId)
+              return (
+                <div key={workspace.workspaceId} className={css.dir}>
+                  <div className={css.dirRow}>
+                    <button
+                      className={css.dirHead}
+                      type="button"
+                      title={workspace.path}
+                      onClick={() => startDirectorySession(workspace.workspaceId)}
+                    >
+                      {workspace.title}
+                    </button>
+                    <button
+                      className={css.archive}
+                      type="button"
+                      aria-label={t('seats.removeDirectoryNamed').replace('{title}', workspace.title)}
+                      aria-expanded={removeConfirm === workspace.workspaceId}
+                      disabled={pending}
+                      onClick={() => setRemoveConfirm(workspace.workspaceId)}
+                    >
+                      {pending ? t('seats.removing') : t('seats.removeDirectory')}
+                    </button>
+                  </div>
+                  {removeConfirm === workspace.workspaceId && (
+                    <div className={css.archiveConfirm}>
+                      <p>{t('seats.removeDirectoryConfirm')}</p>
+                      <button className={css.archive} type="button" disabled={pending} onClick={() => removeDirectory(workspace.workspaceId)}>
+                        {pending ? t('seats.removing') : t('seats.removeDirectoryAction')}
+                      </button>
+                      <button className={css.archive} type="button" disabled={pending} onClick={() => setRemoveConfirm(undefined)}>
+                        {t('seats.archiveCancel')}
+                      </button>
+                    </div>
+                  )}
+                  <ul className={css.sessionList}>
+                    {workspace.sessionIds.map(sessionId => {
+                      const session = list.byId[sessionId as SessionId]
+                      // Seat-bound sessions are listed under 黄金裔席位; a directory shows only its plain conversations.
+                      if (archived.has(sessionId) || session === undefined || bindings.has(sessionId)) return null
+                      return sessionEntry(sessionId)
+                    })}
+                  </ul>
+                  {seatBound.length > 0 && (
+                    <p className={css.dirNote}>{t('seats.directorySeatSessions').replace('{n}', String(seatBound.length))}</p>
+                  )}
+                </div>
+              )
+            })}
           </div>
         )}
       </section>

@@ -253,6 +253,25 @@
   min-width: 0;
 }
 
+.dirRow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.dirRow .dirHead {
+  flex: 1;
+  min-width: 0;
+}
+
+.dirNote {
+  margin: 0;
+  padding: 2px 6px 4px;
+  color: var(--dsw-alias-label-caption);
+  font-size: 10px;
+}
+
 .dirLabel {
   overflow: hidden;
   padding: 4px 6px;
