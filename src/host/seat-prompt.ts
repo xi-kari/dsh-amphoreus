@@ -1,5 +1,6 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-agent'
+import type {} from '@deepseek-ai/dsh-system-prompt'
 import { dirname, join } from 'node:path'
 import type { AmphoreusStores, BindingRecord } from './store.ts'
 import type { SuiteSnapshot } from './suite/types.ts'

@@ -1346,3 +1346,4 @@
 - 最终自动验收：`npm run release:check` → `tests 377; pass 376; fail 0; skipped 1; duration_ms 2783.2196`，build derive/client/host=`29.34/227.54/206.50 kB`，`verify-dist: OK 392 checks`，exit 0；lib 最终 mtime `2026-09-05 15:21:29`。唯一 skip 为未设置 AMPHOREUS_REAL_SUITE 的既有环境合同，另有上述真实模型验收。
 - 最终打包：`npm pack --dry-run --json --ignore-scripts` → 420297 bytes / unpacked 1670249 bytes / 73 files / raster images 0，exit 0。运行 PID=81588、HTTP=200、stderr=0。
 - 精确清理：两轮 final 会议 26 个 Session、参考路径对照 4 个 Session、baseline Anaxa 与 blank Cipher 各 1，共 32 个已官方 archive，binding absent=32/32，画布隐藏=32/32，权威 zstd 日志保留=32/32；最终 Cipher 展示会话保留。外部技能、主项目文件与用户既有 Workspace 未替换；初始化生成的有效 seat Workspace 保留以支持直聊。npm 0.2.0 未重发，发布 tag 不动。
+- 干净环境 CI：首个修复提交 `a4db4d1` 的 run `33952603414` 在 Ubuntu／Windows 都完成测试，但 build 发现缺少 `system-prompt/assemble` 类型声明。已显式添加 `@deepseek-ai/dsh-system-prompt@0.1.2-alpha.4` devDependency 与 type-only import，锁文件仅增该包条目；本地 typecheck exit 0，远程复跑以随后 CI 为准。此项不改变已验证的运行代码。
