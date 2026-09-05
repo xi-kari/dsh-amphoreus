@@ -1,0 +1,107 @@
+.banner {
+  box-sizing: border-box;
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  z-index: 5;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  width: min(640px, calc(100vw - 32px));
+  padding: 10px 14px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-left: 3px solid var(--dsw-alias-brand-primary);
+  border-radius: 12px;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  transform: translateX(-50%);
+  pointer-events: auto;
+}
+
+.banner[data-kind='degraded'] {
+  border-left-color: var(--dsw-alias-state-warn-primary);
+}
+
+.banner[data-kind='missing'] {
+  border-left-color: var(--dsw-alias-state-error-primary);
+}
+
+.banner[data-kind='recovered'] {
+  border-left-color: var(--dsw-alias-state-success-primary);
+}
+
+.copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.copy strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.hint {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+}
+
+.restart {
+  color: var(--dsw-alias-state-warn-label);
+  font-size: 12px;
+}
+
+.error {
+  color: var(--dsw-alias-state-error-primary);
+  font-size: 12px;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.actions button {
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 14px;
+  background: var(--dsw-alias-button-tool-bar-fill);
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.actions button:hover:not(:disabled) {
+  background: var(--dsw-alias-button-tool-bar-hover);
+}
+
+.actions button:focus-visible {
+  outline: 2px solid var(--dsw-alias-brand-primary);
+  outline-offset: 2px;
+}
+
+.actions button:disabled {
+  cursor: wait;
+  opacity: .55;
+}
+
+.actions .primary {
+  border-color: transparent;
+  background: var(--dsw-alias-button-primary-fill);
+  color: var(--dsw-alias-label-primary-inverted);
+}
+
+.actions .primary:hover:not(:disabled) {
+  background: var(--dsw-alias-button-primary-hover);
+}
+
+@media (max-width: 560px) {
+  .banner {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

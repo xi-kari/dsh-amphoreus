@@ -162,6 +162,15 @@ export const zh = {
   'settings.schemeImporting': '正在导入…',
   'settings.schemeExported': '视觉方案已导出。',
   'settings.schemeImported': '视觉方案已导入。',
+  'suite.updated': '技能套件已更新至 {label}，已重新解析',
+  'suite.sessionsStale': '已有 {n} 个会话在 /clear、恢复或新建后才会用到新卡',
+  'suite.degraded': '套件显式降级（{n} 条诊断）',
+  'suite.missing': '套件未识别',
+  'suite.recovered': '套件已恢复，当前 {label}',
+  'suite.restartHint': '启动时未找到技能根，恢复后需重启本地服务（web 进程）',
+  'suite.reparse': '重新解析',
+  'suite.reparsing': '解析中…',
+  'suite.dismiss': '关闭',
 } as const
 
 export type AmphoreusKey = keyof typeof zh
@@ -329,6 +338,15 @@ export const en: Record<AmphoreusKey, string> = {
   'settings.schemeImporting': 'Importing…',
   'settings.schemeExported': 'Visual scheme exported.',
   'settings.schemeImported': 'Visual scheme imported.',
+  'suite.updated': 'Skill suite updated to {label}; reparsed live',
+  'suite.sessionsStale': '{n} session(s) pick up the new card only after /clear, resume or a new session',
+  'suite.degraded': 'Suite explicitly degraded ({n} diagnostics)',
+  'suite.missing': 'Suite not recognised',
+  'suite.recovered': 'Suite recovered, now {label}',
+  'suite.restartHint': 'Skill root was missing at startup; restart the local web process after restoring it',
+  'suite.reparse': 'Reparse',
+  'suite.reparsing': 'Reparsing…',
+  'suite.dismiss': 'Dismiss',
 }
 
 export const NS = 'amphoreus'

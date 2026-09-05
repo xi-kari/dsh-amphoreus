@@ -41,6 +41,8 @@ import { createWorkspacesSource } from './workspaces-source.ts'
 import { currentOrdinaryWorkspace, orphanSeatWorkspacePath, syncWorkspaceSession, waitForReadySnapshot } from './workspace-routing.ts'
 import { heroVisualById } from '../shared/heroes.ts'
 // @anchor client-imports
+import { createSuiteNoticeStore, safeSessionStorage } from './suite-notice-store.ts'
+import { SuiteNoticeBanner, type SuiteNoticeInjected } from './suite-notice.tsx'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -240,6 +242,14 @@ export function apply(ctx: ClientContext): void {
     return true
   }
   // @anchor client-services
+  // Suite-change notices derive from the single model channel (no second EventSource).
+  const suiteNotice = createSuiteNoticeStore({
+    model,
+    boot: window.__AMPHOREUS_BOOT__,
+    storage: safeSessionStorage(),
+    archivedSessionIds: () => ctx.workspaces.list.getSnapshot().archivedSessionIds,
+  })
+  ctx.effect(() => () => suiteNotice.dispose(), 'amphoreus: suite notice')
   const bootWorkbench = window.__AMPHOREUS_BOOT__?.workbench
   const workbenchEnabled = bootWorkbench?.enabled ?? true
   ctx.effect(async () => {
@@ -385,6 +395,18 @@ export function apply(ctx: ClientContext): void {
     }),
   }, PortalOverlay),
   // @anchor shell-overlay-entries
+  ctx.slots.register({
+    name: 'shell.overlay',
+    id: 'amphoreus-suite-notice',
+    order: 10,
+    locale: NS,
+    inject: (): SuiteNoticeInjected => ({
+      store: suiteNotice,
+      model,
+      portalOpen: () => portal.getSnapshot().open,
+      subscribePortal: portal.subscribe,
+    }),
+  }, SuiteNoticeBanner),
   ])
 
   if (workbenchEnabled) {
