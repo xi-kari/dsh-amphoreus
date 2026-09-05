@@ -1045,7 +1045,7 @@
 - 偏离与理由：① matcher 书面 11 与唯一词累计实算 13 冲突，按真实三词命中；② alpha.4 blank session 不渲染 conversation.view，portal fallback 保持覆盖层同一 all 画布；③ TE8 修复同步 current-session 竞态；④ fork 日志零消息按 end-seed 自有事件边界判定；其余偏离逐项见 TE1–TE10。
 - 遗留：无。E 章代码、运行态、浏览器与恢复门全部闭合；下一章为 F 发布包装、独立路径验收与实际发布。
 ## TF1：仓库卫生、品牌素材替换与 LF 基线 — 2026-09-05 09:27
-- commit: PENDING-TASK
+- commit: 1aa5252
 - 动手前核对：实际执行任务书 `sed -n '4536,4577p'`；确认 package 根已是 main git 仓、现有 `.gitignore` 七行、pack 临时 JSON 不存在、AUDIT 已跟踪、官方 glyph 路径与 webapi 白名单引用仍在 PASS
 - 验收：
   - `.gitignore` 只追加 `*.tgz` 与 `.runtime/`；四个 A/F 必需模式计数=`4`，旧 `*.tmp` 保留且无重复 PASS
@@ -1060,3 +1060,18 @@
 - 人工断言：✓ 审计正文只移动不改写；✓ HANDOFF 留在仓根；✓ reference/SYNAPSE-LICENSE 保留；✓ 官方素材从发布源码中移除但稳定 URL/白名单不变。
 - 偏离与理由：任务书改动文件未列 README/HANDOFF，但 AUDIT 物理迁移后旧相对链接会断；同步只改五处引用（其中三个 Markdown href）并把 README 本机 link 示例占位化，属于 TF1 明示验收所必需。
 - 遗留：无。
+## TF2：发布字段、依赖归位与 npm 锁 — 2026-09-05 09:56
+- commit: PENDING-TASK
+- 动手前核对：实际执行任务书 `sed -n '4578,4636p'`，并确认 HEAD=`1aa5252`、工作树 clean；实时 GitHub REST/GraphQL viewer 的 canonical login=`xi-kari`、databaseId=`107102048`，`xixilove486` 公共用户查询=`404`，故任务书 `xi-kari/dsh-amphoreus` 三个 URL 与当前认证身份一致；两个候选远程仓均不存在且本地无 remote；npm 默认 registry=`https://registry.npmmirror.com`，显式 npmjs 查询 `dsh-amphoreus`=`404`，TF2 全部直接依赖及六个 override 的目标版本均存在 PASS
+- 验收：
+  - manifest 字面断言 → `0.2.0 alpha https://registry.npmjs.org yaml,zod 6 6` PASS（exit: `0`）；`.npmrc` 逐字=`legacy-peer-deps=true\n`、22 bytes、唯一匹配行=`1` PASS
+  - 保持项 → `files` 完整数组与 HEAD 相等且仍为 `13` 项；`engines=^22.19.0 || >=24`、`dsh.client.inject` 十二项、`prepare=npm run build:types && npm run build:js` 均与 HEAD 相等；新增 `verify:dist`/`assets:check`/`release:check` 三脚本 PASS
+  - 原地运行任务书锁命令时，npm `idealTree` 扫描 junction 化的现有 `node_modules`，约 `266 s` 后输出 `FATAL ERROR: Ineffective mark-compacts near heap limit Allocation failed - JavaScript heap out of memory`，exit=`134`，且未生成锁；没有重启同一进程，也未重铺或移动 junction
+  - 修正为工作区隔离目录复制 `package.json`/`.npmrc` 后运行同一条 `npm install --package-lock-only --ignore-scripts --no-audit --no-fund --registry https://registry.npmjs.org` → `up to date in 43s` PASS（exit: `0`）；锁根=`dsh-amphoreus@0.2.0`、lockfileVersion=`3`、packages=`259`、bytes=`150451`
+  - 包根与临时锁 SHA-256 均=`fc30c108eec2d4e4b7e94919d8611af249c5f0916b893151d9a4bf7540a887fb`；`dsh-client-web` npmjs resolved=`1`，npmmirror/`0.1.2-rc`/`0.1.2-alpha.5`=`0/0/0`，全部 `@deepseek-ai/dsh-*` 非 `0.1.2-alpha.4` 条目=`0`；六个 peer 均有 dev 副本 PASS
+  - 隔离 `npm ci --dry-run --ignore-scripts --no-audit --no-fund --registry https://registry.npmjs.org` → `added 212 packages in 828ms` PASS（exit: `0`）；两次临时目录均先以 `Resolve-Path` 验证严格位于包根 `.tmp/tf2-*` 后清理，最终 `.tmp` 与辅助脚本均不存在
+  - `npm run build` → derive/client/host=`28.87/205.78/199.59 kB` PASS（exit: `0`）；`grep -o 'from "@deepseek-ai/[^"]*"' lib/index.js | sort -u | wc -l` → `5`，精确为 home-paths/llm/skill/storage-domain/schemastery PASS
+  - 全量 `npm test` → `tests 326; pass 325; fail 0; skipped 1; duration_ms 2826.3982` PASS（exit: `0`）；唯一 skip 为未设置真实套件环境变量的既有集成门；`git diff --check` PASS（exit: `0`）
+- 人工断言：✓ 未执行登录、发布、建仓或 remote 写入；✓ 未写 token/registry 到 `.npmrc`；✓ 未改变 `files`、`engines`、inject、prepare；✓ 未对当前 junction `node_modules` 执行非 dry-run `npm ci`。
+- 偏离与理由：任务书锁命令在包根因 npm 11 对现有大规模 junction idealTree 的内存占用退出 `134`；为同时保留原命令参数与“不碰 junction”边界，在包根 `.tmp` 下隔离生成并按哈希复制唯一锁文件，随后以受界路径检查清理，产物内容满足全部原验收断言。
+- 遗留：远程仓与 npm 包尚未创建/发布，按任务书留给 TF12；TF9 路径 B 若实测 fallback 缺宿主 peer，再按任务书回退四个 DSH 包并记录。
