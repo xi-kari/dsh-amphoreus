@@ -814,12 +814,30 @@ const isTableDelimiter = line => {
   return cells.length > 0 && cells.every(cell => /^:?-+:?$/.test(cell))
 }
 
+function dialogueSticker(line) {
+  const image = /^\s*!\[([^\]\n]*)\]\((?:<([^<>\n]+)>|([^\s()]+))\)\s*$/.exec(line)
+  if (image === null) return null
+  let path = image[2] ?? image[3]
+  if (!path.startsWith('/')) {
+    try {
+      const url = new URL(path)
+      if (typeof location === 'undefined' || url.origin !== location.origin
+        || url.username || url.password || url.search || url.hash) return escapeHtml(image[1])
+      path = url.pathname
+    } catch { return escapeHtml(image[1]) }
+  }
+  if (!/^\/amphoreus\/stickers\/[a-z0-9]+(?:-[a-z0-9]+)*\.webp$/.test(path)) return escapeHtml(image[1])
+  return `<img class="dialogue-sticker" src="${path}" alt="${escapeHtml(image[1])}" width="128" height="128" loading="lazy" decoding="async" referrerpolicy="no-referrer">`
+}
+
 function markdownBlock(text) {
   const lines = text.split('\n')
   const output = []
   for (let index = 0; index < lines.length;) {
     const line = lines[index]
     if (line.trim() === '') { index++; continue }
+    const sticker = dialogueSticker(line)
+    if (sticker !== null) { output.push(sticker); index++; continue }
     const heading = /^(#{1,3})\s+(.+)$/.exec(line)
     if (heading !== null) {
       const level = heading[1].length
@@ -855,7 +873,7 @@ function markdownBlock(text) {
       continue
     }
     const paragraph = []
-    while (index < lines.length && lines[index].trim() !== '' && !/^(#{1,3})\s+/.test(lines[index]) && !/^[-*+]\s+/.test(lines[index]) && !/^\d+[.)]\s+/.test(lines[index])) paragraph.push(lines[index++])
+    while (index < lines.length && lines[index].trim() !== '' && dialogueSticker(lines[index]) === null && !/^(#{1,3})\s+/.test(lines[index]) && !/^[-*+]\s+/.test(lines[index]) && !/^\d+[.)]\s+/.test(lines[index])) paragraph.push(lines[index++])
     // A marker-only line such as PowerShell's "+ " diagnostic is neither a
     // list item nor paragraph content under the rules above. Consume it so
     // the parser always makes progress.

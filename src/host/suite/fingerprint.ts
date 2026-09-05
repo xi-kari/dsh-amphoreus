@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { execFile } from 'node:child_process'
-import { readdir, readFile, stat } from 'node:fs/promises'
-import { join, relative, resolve, sep } from 'node:path'
+import { readdir, readFile, realpath, stat } from 'node:fs/promises'
+import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { promisify } from 'node:util'
 import { CARD_NAME, type SuiteFingerprint } from './types.ts'
 
@@ -121,6 +121,28 @@ export async function suiteManifestPaths(root: string): Promise<readonly string[
     'amphoreus/scripts/validate.py',
   ])
 
+  for (const rel of ['amphoreus/scripts/stickers.py', 'amphoreus/assets/stickers/manifest.json']) {
+    try {
+      const path = join(root, ...rel.split('/'))
+      if (await insideRoot(root, path) && (await stat(path)).isFile()) result.add(rel)
+    } catch (error) {
+      if (!isMissing(error)) throw error
+    }
+  }
+  try {
+    const directory = join(root, 'amphoreus', 'assets', 'stickers')
+    if (await insideRoot(root, directory)) {
+      for (const entry of await readdir(directory, { withFileTypes: true })) {
+        if ((entry.isFile() || entry.isSymbolicLink()) && /^[a-z0-9]+(?:-[a-z0-9]+)*\.webp$/u.test(entry.name)
+          && await insideRoot(directory, join(directory, entry.name))) {
+          result.add(`amphoreus/assets/stickers/${entry.name}`)
+        }
+      }
+    }
+  } catch (error) {
+    if (!isMissing(error)) throw error
+  }
+
   try {
     for (const entry of await readdir(join(root, 'amphoreus', 'references'), { withFileTypes: true })) {
       if (entry.isFile() && entry.name.endsWith('.md')) result.add(`amphoreus/references/${entry.name}`)
@@ -149,6 +171,12 @@ export async function suiteManifestPaths(root: string): Promise<readonly string[
   }
 
   return [...result].sort(codePointCompare)
+}
+
+async function insideRoot(root: string, child: string): Promise<boolean> {
+  const fold = (value: string): string => process.platform === 'win32' ? value.toLowerCase() : value
+  const rel = relative(fold(await realpath(root)), fold(await realpath(child)))
+  return rel !== '' && rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel)
 }
 
 /** True only for paths whose first segment belongs to this suite. */

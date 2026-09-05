@@ -9,7 +9,7 @@ import { registerFirstFrame } from './host/firstframe.ts'
 import { registerInjector } from './host/injector.ts'
 import { migrateSynapse } from './host/migrate-synapse.ts'
 import { registerObserver } from './host/observer.ts'
-import { registerSeatPrompt } from './host/seat-prompt.ts'
+import { registerSeatPrompt, stickerWebOrigin } from './host/seat-prompt.ts'
 import { ensureSeatDirs, type EnsureSeatDirsResult } from './host/seatdirs.ts'
 import { reconcileSeats } from './host/seats.ts'
 import { openAmphoreusStores, updateAmphoreusGlobal, type AmphoreusStores } from './host/store.ts'
@@ -203,6 +203,7 @@ export function apply(ctx: Context, config: AmphoreusConfig): void {
       current: () => bridge.resolver.current(),
       commonPath: config.commonPath,
       relationsPath: config.relationsPath,
+      stickerOrigin: () => webApi === undefined ? undefined : stickerWebOrigin(ctx.webServer),
     })
     const disposeFirstFrame = registerFirstFrame(ctx, {
       config,

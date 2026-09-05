@@ -577,6 +577,8 @@ button.primary:hover { border-color: var(--dsw-alias-button-primary-hover, #000)
 .audit-ledger-body > :first-child { margin-top: 0; }
 .audit-ledger-body > :last-child { margin-bottom: 0; }
 
+.dialogue-sticker { display: block; width: 128px; max-width: 100%; height: 128px; object-fit: contain; margin: 8px 0; }
+
 /* ── Seat visual grammar mirror (host pushes `amphoreus:grammar`; variables land on <html>) ──
    Every rule is gated on html[data-amph-grammar] so the canvas keeps its stock look when the
    shell grammar is off. Only --amph-* / --dsw-* variables appear here; no seat colours. */

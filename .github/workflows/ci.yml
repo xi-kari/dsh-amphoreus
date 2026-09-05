@@ -17,8 +17,8 @@ jobs:
       - name: checkout verified skill suite
         uses: actions/checkout@v4
         with:
-          repository: xi-kari/amphoreus-skill-suite
-          ref: fd01e56ce929fbad2d38011adab20df8a0234065
+          repository: xi-kari/delta-me13-skill
+          ref: 6e4f4746f824d656b8bbd9ad7275566e78fd7753
           path: .suite-fixture
           sparse-checkout: skills
           persist-credentials: false

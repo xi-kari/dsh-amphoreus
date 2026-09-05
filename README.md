@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/xi-kari/dsh-amphoreus/actions/workflows/ci.yml/badge.svg)](https://github.com/xi-kari/dsh-amphoreus/actions/workflows/ci.yml) [![npm version](https://img.shields.io/npm/v/dsh-amphoreus/alpha)](https://www.npmjs.com/package/dsh-amphoreus)
 
-翁法罗斯 × DSH：为 amphoreus-skill-suite 的 13 张黄金裔技能卡各建一席专属工作区（专属配色、壁纸与首轮自动注入），并用一张总览画布调控与派发任务。它是基于 DeepSeek Harness 构建的第三方插件，属于非官方产品。
+δ-me13 × DSH：为 [δ-me13 skill](https://github.com/xi-kari/delta-me13-skill) 的 13 张黄金裔技能卡提供专属席位、逐席配色与壁纸、首轮技能注入和对话表情，并用总览画布派发任务、征询各席、接续移交。它是基于 DeepSeek Harness 构建的非官方插件；npm 包名保持 `dsh-amphoreus`。
 
 ## 截图
 
@@ -14,17 +14,17 @@
 
 ![翁法罗斯设置区](docs/screenshots/settings.png)
 
-以上四张截图均由本地 `dsh-v0.1.2-alpha.4` 实机界面于 2026-09-05 重新启动后截取；它们只展示运行效果，不提供可复用的原图素材。文件尺寸、脱敏与复核信息见 [`docs/screenshots/README.md`](docs/screenshots/README.md)。npm README 会把这些相对路径解析到 GitHub `HEAD` 的 raw 文件，因此 GitHub main 推送后两处共用同一组图片。
+以上为 `dsh-v0.1.2-alpha.4` 上的界面截图，展示门户、席位和工作台的基本布局；具体配色与设置以当前版本为准。截图只展示运行效果，不提供可复用原图。
 
 ## 兼容性
 
-本版本只承诺兼容 **dsh-v0.1.2-alpha.4**。`@deepseek-ai/dsh` 的 npm `latest`／`next` 为 `0.1.2-rc.1`，`alpha` 已到 `0.1.2-alpha.5`；运行 DSH 本体时请钉定：
+本版本兼容基线为 **dsh-v0.1.2-alpha.4**，Node.js 要求为 **22.19+ 或 24+**。运行 DSH 本体时请钉定版本：
 
 ```bash
 npx @deepseek-ai/dsh@0.1.2-alpha.4 web
 ```
 
-安装本插件时请显式使用 `dsh-amphoreus@alpha` 或精确版本 `dsh-amphoreus@0.2.2`，不要依赖 `latest`。
+安装本插件时可使用 `dsh-amphoreus@alpha`，或精确版本 `dsh-amphoreus@0.3.0`。宿主与插件的 npm 标签分别管理，升级 DSH 本体前请确认兼容范围。
 
 ## 安装
 
@@ -35,14 +35,14 @@ npx @deepseek-ai/dsh@0.1.2-alpha.4 web
 ```bash
 dsh plugin --profile web add dsh-amphoreus@alpha
 # 或钉定版本
-dsh plugin --profile web add dsh-amphoreus@0.2.2
+dsh plugin --profile web add dsh-amphoreus@0.3.0
 ```
 
 ### tarball
 
 ```bash
-npm pack dsh-amphoreus@0.2.2 --registry https://registry.npmjs.org
-dsh plugin --profile web add ./dsh-amphoreus-0.2.2.tgz
+npm pack dsh-amphoreus@0.3.0 --registry https://registry.npmjs.org
+dsh plugin --profile web add ./dsh-amphoreus-0.3.0.tgz
 ```
 
 ### GitHub
@@ -211,30 +211,44 @@ npm run derive -- --assets-root "<dir>" --data-dir "<DSH_HOME>/amphoreus"
 
 当前 shell 的 `DSH_HOME` 未必与服务进程一致，因此不要省略 `--data-dir`。派生物写入 `<dataDir>/assets-cache/`；运行时优先使用 WebP，缺失时回退原图。缓存可重建；若要清理，先停止服务，只删除该精确缓存目录，再启动服务让文件清单重新扫描。
 
-也可以在 DSH 设置中进入：**翁法罗斯 → 视觉层 → 重新派生素材**。后台任务会显示进度、完成数量与最近结果。
+也可以在 DSH 设置中进入：**δ-me13 → 视觉层 → 重新派生素材**。后台任务会显示进度、完成数量与最近结果。
 
 ## 技能套件：获取与更新
 
 插件不内嵌任何 `SKILL.md`、`persona.md`、`common.md` 或 `relations.md`。席位、分派表、流水线与回执格式全部在运行时从 `skillRoots` 解析，绑定键等于 skill name。
 
-获取 amphoreus-skill-suite：
+获取技能套件，并让 `skillRoots` 指向克隆目录中的 `skills/`：
 
 ```bash
-git clone https://github.com/xi-kari/amphoreus-skill-suite.git
-cp -r amphoreus-skill-suite/skills/* ~/.claude/skills/
+git clone https://github.com/xi-kari/delta-me13-skill.git
 ```
 
-Windows 用户需确认当前 shell 如何展开 `~`。更新有两种方式：
+例如，在 profile 的插件配置中设置：
 
-1. 在套件仓库执行 `git pull`，再重新 `cp -r`；也可以让 `skillRoots` 直接指向克隆目录的 `skills/`，此时 `git pull` 后即可重新解析。
-2. 在 DSH 设置中打开「翁法罗斯」，点击「重新解析套件」。
+```yaml
+- id: amphoreus
+  config:
+    skillRoots: ['D:/我的技能/delta-me13-skill/skills']
+    dataDir: !!js dshHomePath('amphoreus')
+    assetsRoot: 'D:/我的素材/翁法罗斯'
+```
+
+请替换为自己的绝对路径。套件目录仍使用 `amphoreus`、`amphoreus-*`，已有 skill name 与席位绑定继续有效。也可以把整个 `skills/` 内的目录复制到已有技能根；复制时保留 `amphoreus/assets/` 和 `amphoreus/references/`，不能只复制 `SKILL.md`。
+
+更新方式：
+
+1. 在套件仓库执行 `git pull --ff-only`；使用复制安装时，同步整个技能目录。
+2. 在 DSH 设置中打开「δ-me13」，点击「重新解析套件」，核对当前目录和 Git 指纹。
 
 解析失败时界面明确显示「套件格式未识别，已降级」，不会静默沿用旧结果；新加入的技能卡自动出席，移除的技能卡变为「未部署」且保留已有会话。
 
+同名技能由首个有效根提供。CI 与发布质量门使用 [δ-me13 skill 的固定提交](https://github.com/xi-kari/delta-me13-skill/tree/6e4f4746f824d656b8bbd9ad7275566e78fd7753)（`6e4f4746f824d656b8bbd9ad7275566e78fd7753`），执行上游静态校验与插件的真实套件合同测试。运行本地套件测试时，将 `AMPHOREUS_REAL_SUITE` 设为实际 `skills/` 目录，再执行 `npm test`；本地未提交修改只由该本地测试覆盖，不属于固定提交的 CI 结果。
 
-本插件的兼容性验收固定到套件 **v1.6.0**（`fd01e56ce929fbad2d38011adab20df8a0234065`）。建议让 `skillRoots` 的首项直接指向套件 Git 工作树的 `skills/`，这样更新时可执行 `git pull --ff-only`，并在设置中核对 tag／commit 指纹；同名技能由首个有效根提供。套件正文和图片仍不进入 npm 包。
+### 对话表情
 
-运行真实套件测试时，将 `AMPHOREUS_REAL_SUITE` 设为该 `skills/` 目录，再执行 `npm test`。CI 会读取固定提交并运行上游静态校验与插件的真实解析合同。
+对话表情依赖外部套件的 `amphoreus/references/stickers.md`、`amphoreus/assets/stickers/manifest.json` 及同目录的 WebP 小图。插件从当前有效技能根只读加载这些文件，通过当前 DSH 服务的 `/amphoreus/stickers/<key>.webp` 提供浏览器可访问的图片；原生对话使用包含当前服务地址的绝对 HTTP(S) URL，工作台也支持同源图片地址。无需新增配置键，技能正文、索引与图片均不进入插件 npm 包。
+
+角色按外部技能合同选择自己的表情；可在对话中说“关表情”或“不要图片”，之后用“开表情”恢复。静音、缺席角色、缺少素材或资源不可访问时照常完成文字回复。表情数量和选图由技能及实际模型输出决定，插件不会自动替每条回复添加图片。
 
 ## 十三席一览
 
@@ -256,9 +270,9 @@ Windows 用户需确认当前 shell 如何展开 `~`。更新有两种方式：
 
 显示名与职责在运行时来自技能卡 description 与分派表；这里的常用名只帮助读者识别视觉席位。
 
-## 现状（0.2.2）
+## 功能
 
-`0.2.2` 已核验 amphoreus-skill-suite `v1.6.0`，支持圆桌与陪聊的折叠台账、台账内回执识别和关系文件定位，同时保留席内直聊、全席征询与会话归档。完整变更见 [0.2.2 发布说明](docs/RELEASE-0.2.2.md)。
+十三席共用同一套会话与任务流程，每席拥有独立的配色、玻璃质感、纹样、壁纸和角色问候。外部技能决定角色身份、工作方法、表情与回执格式；插件负责席位绑定、浏览器呈现和工作台交互。
 
 完整工作流是：打开十三席门户 → 进席 → 在当前 DSH 工作区中建立该席会话 → 首个模型请求内自动注入当前技能卡 → 识别回执 → 在总览画布单席派发、全席征询或移交。未经明确点击，移交不会接受或切换，移交物也不会自动发送；技能卡缺席时不代演，界面显示套件提供的缺席标准行。
 
@@ -271,16 +285,14 @@ Windows 用户需确认当前 shell 如何展开 `~`。更新有两种方式：
 - 提供 `/amphoreus/*` Web API，并以进程级 nonce 与 Host 门保护写请求。
 - 提供首帧壁纸层、全局昔涟主题层、品牌三槽和设置区。
 - 提供 13 席 light/dark token、共享 SVG 纹样、`light`／`full` 杂志版式，以及可重建的本地 WebP 派生缓存；视觉层设置可即时切换并显示后台派生进度。
-- **席位视觉语法**（0.3）：进入某席后整个壳层切换为该席专有的一套语法——圆角尺度（白厄 0 → 风堇 28）、玻璃配方（tint／磨砂／模糊／rim 线型）、边缘签名、纹样落点、排版气质、专属贴纸吉祥物与一段只在壁纸层运动的 CSS 环境动效；刊头 `CHRYSOS · No.NN` 胶囊挂在顶栏卡上缘。全部规则门控于 `html[data-amph-grammar]`，只用 `--dsw-*` 与 `--amph-*` 变量，关闭后零残留；气泡不做 backdrop-filter。设置区「席位视觉语法」提供总开关与模糊／磨砂／壁纸加压／纹样／吉祥物／动效旋钮，持久化在插件 storage domain 的 `prefs.grammar`。终稿依据 `../设计文档/08_十三席视觉语法_评审终稿.json`。
-- **主页壁纸**：`13黄金裔壁纸/<角色>壁纸/` 任意文件名的图片经 `--only home` 派生为 `<heroId>/home-NN.webp`，进席时按会话稳定选一张；`HOME_WALLPAPER_PARKED`（当前：赛飞儿／万敌／白厄）暂停使用主页壁纸、回退杂志封面。
-- **品牌**：壳层品牌字样、浏览器标签标题、favicon 与 manifest 均为 `δ-me13`（原创图形，无宿主厂商残留，卸载即恢复）；空态问候按当前席位角色口吻书写，图标换成该席贴纸。
-- **逐席代码配色与开拓者气泡**：进席时叠第二层 token（`dsh-amphoreus/seat-code`）——九个 `--shiki-token-*` 由席位色派生并按该席代码块底色校验（正文 ≥4.5:1、注释 ≥3.5:1），用户（开拓者）气泡 `--dsw-specific-bubble` 取该席次色的浅洗色。
-- **称呼**：席位系统提示明确对话另一方是「开拓者」（或该卡 persona 登记的专属称呼，如「救世主」「灰子」），台词里不出现「用户」。
-- **自定义席位壁纸**（设置 → δ-me13 → 席位壁纸）：每席可上传任意分辨率／大小的图片或视频（PNG／JPG／WebP／GIF／AVIF／MP4／WebM），存于 `<dataDir>/custom-wallpapers/<heroId>/`，经 `/amphoreus/custom-wallpaper/…` 以 Range 流式下发；可调适配／位置／缩放，视频可调速度、播放、循环、声音；上传后优先于派生主页壁纸，移除即回退。
+- **席位视觉语法**：逐席设置圆角、玻璃质感、边缘样式、纹样、排版、吉祥物和环境动效，顶栏显示对应杂志刊头。设置区提供总开关，以及模糊、磨砂、壁纸遮罩、纹样、吉祥物和动效调节；关闭后保留基础配色与壁纸，偏好在重启后保留。
+- **主页壁纸**：从 `13黄金裔壁纸/<角色>壁纸/` 读取图片并生成 WebP，优先选择横版，进席时按会话稳定选图。赛飞儿、万敌和白厄的默认主页使用杂志封面；所有席位均可用自定义上传覆盖。
+- **品牌与问候**：界面品牌、浏览器标题和图标使用 `δ-me13`；空态问候与贴纸跟随当前席位。
+- **逐席代码配色与气泡**：代码高亮与输入者气泡跟随席位色板，深浅主题分别校验文字对比度。
+- **称呼**：角色按技能卡使用“开拓者”或专属称呼，技术正文与台账保留准确术语。
+- **自定义席位壁纸**：在“设置 → δ-me13 → 席位壁纸”上传 PNG、JPEG、WebP、GIF、AVIF、APNG 图片或 MP4、WebM 视频，可调适配方式、位置、缩放以及视频速度、播放、循环和声音。每席保留一份文件，重新上传会替换；移除后恢复默认壁纸。文件存于 `<dataDir>/custom-wallpapers/<heroId>/`。
 
-`M3` 总空间派发、全席征询、移交与台账现已完成。实机验证覆盖十三席首问、全员同题回复、席位直聊、空白会话管理与归档后的跨界面更新；当前使用边界见下方“已知限制”。
-
-- 正文与会话列表不经宿主路由，宿主只保留 seq 索引（B 章）。
+`M3` 总空间派发、全席征询、移交与台账现已完成，使用方式见下方“工作台”。
 
 ### 工作台
 
@@ -314,6 +326,8 @@ iframe 发给宿主页的新消息包括 `amphoreus:dispatch`、`amphoreus:broad
 
 DSH 启动时可能在最近工作区准备一个空白草稿。若它位于内部席位目录且尚无角色绑定，侧栏会在“未绑定角色的对话”中显示它；打开这一组的会话保持普通对话身份。角色身份由席位绑定决定，目录位置不会触发自动绑定或技能注入。
 
+可按需搭配独立安装的 DSH-better-sidebar；本插件的圆角样式跳过它标记的侧栏区域。它的安装、配置与功能由其自身插件管理。
+
 ## 开发
 
 ```bash
@@ -326,7 +340,7 @@ npm run assets:check -- "<assetsRoot>"
 
 `npm run dev:link` 在 Windows 上以 junction 链接本地 DSH 依赖。改宿主代码后重启 `dsh web`；改浏览器代码后先 build，再刷新页面。含空格的本地 link 安装仍使用“安装”一节中的 profile 内 `pnpm add` 方法。
 
-维护者发布必须显式执行 `npm publish --tag alpha --access public --registry https://registry.npmjs.org`，发布前 dry-run 也必须带 `--tag alpha`。npm `11.11.0` 实测裸 `npm publish` 仍选择 `latest`，不能把 `publishConfig.tag` 当作执行保证；首发由注册表自动出现 `latest` 时只记录事实，不另做 `dist-tag add` 或 `dist-tag rm`。
+维护者先运行 `npm run release:check`，再用 `npm publish --dry-run --tag alpha --access public --registry https://registry.npmjs.org` 核对发布内容。正式发布必须显式指定 `--tag alpha --access public --registry https://registry.npmjs.org`。未配置 CI 发布凭据时，先在本机完成 npm 发布，再推送与版本一致的 Git tag；发布 workflow 会校验 registry 的版本、`gitHead` 与 `alpha` 指向。
 
 ## 已知限制
 
@@ -339,11 +353,12 @@ npm run assets:check -- "<assetsRoot>"
 7. 全席征询的 13 席汇总是页面内存态；刷新、关闭总览或离开承载该工作台的视图会结束本轮未派出的调度，已经被 DSH 接受的独立会话则按各自的 turn 继续收口。
 8. DSH 原生启动导航可能准备一个新的空白草稿；它可在普通目录或“未绑定角色的对话”中打开、归档。归档保留原始日志，重新启动后出现的新草稿不代表旧聊天恢复。
 9. 外部技能卡可能要求角色开场、回执或多段输出；全席征询会保留模型的完整回复，不能保证每席严格只写一句话。
+10. 对话表情需要完整的外部技能资源；只安装插件或只复制技能正文无法提供图片。通过其他设备访问 DSH 时，模型输出的图片服务地址也必须能从该设备访问。
 
 ## 致谢
 
 - 工作台画布、投影与桥接协议源自 [liangmianya/dsh-synapse](https://github.com/liangmianya/dsh-synapse) v0.4.1（MIT），本包为**改造版**，不宣称原创；改动摘要与原始许可见 [NOTICE](NOTICE)、[reference/SYNAPSE-LICENSE.txt](reference/SYNAPSE-LICENSE.txt)。
-- 技能套件 [xi-kari/amphoreus-skill-suite](https://github.com/xi-kari/amphoreus-skill-suite) 由运行时从 `skillRoots` 解析，不随包分发。
+- 技能套件 [xi-kari/delta-me13-skill](https://github.com/xi-kari/delta-me13-skill) 由运行时从 `skillRoots` 解析，不随包分发。
 - 本包基于 DeepSeek Harness 构建，非官方产品。
 
 ## 声明与许可

@@ -1,6 +1,6 @@
 {
   "name": "dsh-amphoreus",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "翁法罗斯 × DSH：黄金裔席位工作区、技能无损桥接与画布工作台（基于 DeepSeek Harness 构建，非官方）",
   "repository": {
     "type": "git",

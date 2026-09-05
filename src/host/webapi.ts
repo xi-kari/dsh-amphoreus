@@ -17,6 +17,7 @@ import type { SuiteResolver } from './bridge.ts'
 import type { SuiteSnapshot } from './suite/types.ts'
 import { InputError, NotFoundError, type ProjectionIndex } from './workbench.ts'
 import type { SeatDirRecord } from './seatdirs.ts'
+import { readSticker } from './stickers.ts'
 
 const MAX_BODY_BYTES = 4 * 1024
 const MAX_CANVAS_BODY_BYTES = 64 * 1024
@@ -281,7 +282,7 @@ export class AmphoreusWebApi {
     try {
       const url = new URL(request.url ?? '/', 'http://localhost')
       const path = url.pathname
-      const derivedAssetRequest = path.startsWith('/amphoreus/derived/') || path.startsWith('/amphoreus/custom-wallpaper/')
+      const derivedAssetRequest = path.startsWith('/amphoreus/derived/') || path.startsWith('/amphoreus/custom-wallpaper/') || path.startsWith('/amphoreus/stickers/')
       const write = request.method !== 'GET' && request.method !== 'HEAD' && !derivedAssetRequest
       const binaryUpload = path.startsWith('/amphoreus/api/custom-wallpaper/') && request.method === 'PUT'
       if (!this.#authorize(request, response, write, binaryUpload)) return
@@ -412,6 +413,19 @@ export class AmphoreusWebApi {
       }
       if (path.startsWith('/amphoreus/derived/')) {
         await this.#derivedRoute(request, response, decodeTail(path, '/amphoreus/derived/'))
+        return
+      }
+      if (path.startsWith('/amphoreus/stickers/')) {
+        if (!method(request, response, 'GET')) return
+        const tail = decodeTail(path, '/amphoreus/stickers/')
+        const match = tail === undefined ? null : /^([a-z0-9]+(?:-[a-z0-9]+)*)\.webp$/u.exec(tail)
+        const root = this.#resolver.current()?.root?.canonical
+        const body = root === undefined || match === null ? undefined : await readSticker(root, match[1]!)
+        if (body === undefined || this.#resolver.current()?.root?.canonical !== root) {
+          json(response, 404, { error: 'sticker not found' })
+          return
+        }
+        send(response, 200, 'image/webp', body, { 'content-length': String(body.length) })
         return
       }
       if (path.startsWith('/amphoreus/assets/')) {
