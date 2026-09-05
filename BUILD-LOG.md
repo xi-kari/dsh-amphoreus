@@ -1093,7 +1093,7 @@
 - 偏离与理由：任务书按单行字面量检查 footer，但当前 tsdown 0.22.2 将同一 footer 格式化为多行；先删除 sourcemap、再归一空白后检查任务书完整语义，既接受格式化差异，也不放宽 `return module.exports` 或双层闭合要求。Windows 任务书示例的 `shell:true` 会在 Node 24 打 DEP0190；改为显式执行 `ComSpec` 与常量命令，保留 npm.cmd 兼容且无动态 shell 输入。
 - 遗留：无。
 ## TF4：平台模块防漂移测试优先读取发布声明 — 2026-09-05 09:13
-- commit: PENDING-TASK
+- commit: 0ed840e
 - 动手前核对：实际执行任务书 `sed -n '4667,4700p'`；确认旧测试只读 junction 的 `src/platform.ts`，而发布包 files 不含 src、但 `lib/types/platform.d.ts` 存在且含同一八项；本机两候选同时存在 PASS
 - 验收：
   - 候选探针 → `.d.ts/.ts=true/true`，实际首选路径=`node_modules/@deepseek-ai/dsh-client-web/lib/types/platform.d.ts` PASS
@@ -1105,3 +1105,17 @@
 - 人工断言：✓ 不移动/删除 junction 的 src 做模拟；✓ 发布态只有 d.ts 的独立 npm-ci 复核留 TF9；✓ 不删除测试、不放宽 PLATFORM_MODULES。
 - 偏离与理由：无。
 - 遗留：发布物无 src 的真实文件系统形态由 TF9 独立 npm-ci 克隆复核。
+## TF5：GitHub Actions 双系统 CI 与 alpha 发布流 — 2026-09-05 09:18
+- commit: PENDING-TASK
+- 动手前核对：实际执行任务书 `sed -n '4701,4767p'`；确认 `.node-version=24`、npm lock/.npmrc/verify-dist/发布字段均已由 TF1–TF4 提交，`.github/workflows` 尚不存在，当前无 remote/远程仓且 npmjs 未登录 PASS
+- 验收：
+  - `yaml.parse` 同时解析 `ci.yml` 与 `release.yml` → 两行 `yaml-ok`；结构脚本 → `workflow-structure-ok` PASS（exit: `0`）
+  - CI matrix 精确=`ubuntu-latest,windows-latest`、fail-fast=false；步骤顺序为 checkout/setup-node → npm ci --ignore-scripts → test → build → verify:dist → pack dry-run；仅 Ubuntu 上传 lib、retention=`7` PASS
+  - release 仅监听 `v*`；Ubuntu job permissions contents/id-token=`read/write`；依次 npm ci、release:check、tag/package version 等值门、`npm publish --provenance`，认证只引用 `secrets.NPM_TOKEN` PASS
+  - 两工作流均使用 `.node-version` 与 npm cache/npmjs registry；`continue-on-error/pnpm/npm config set legacy-peer-deps`=`0/0/0` PASS
+  - 全量 `npm test` → `tests 326; pass 325; fail 0; skipped 1; duration_ms 2827.0688` PASS（exit: `0`）
+  - `npm run build` → derive/client/host=`28.87/205.78/199.59 kB`；`npm run verify:dist` → `verify-dist: OK 377 checks` PASS（各 exit: `0`）
+  - `git diff --check` → 无空白错误 PASS（exit: `0`）
+- 人工断言：✓ 不写任何 token；✓ 不运行真实技能根 CI；✓ 不把任一 OS 标为可失败；✓ release 的 alpha/public/npmjs 由 publishConfig 单源约束。
+- 偏离与理由：无。
+- 遗留：远程尚未创建，故 `gh run` 的 Ubuntu/Windows 实际结论留 TF12 创建仓库并 push 后回填；若 Windows Node 24 暴露 glob 问题，按任务书只修 test script 并保留 Windows job。
