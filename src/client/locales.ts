@@ -154,6 +154,14 @@ export const zh = {
   'settings.credit': '工作台源自 dsh-synapse v0.4.1（MIT，liangmianya），经改造；原始许可见包内 NOTICE。',
   'view.workbench': '工作台',
   // @anchor zh-keys
+  'settings.schemeHeading': '视觉方案',
+  'settings.schemeHint': '把杂志模式、席位视觉语法与壁纸位置导出为一个 JSON 文件，或从文件恢复；不含壁纸文件本体。导入会整体替换这三项，其余设置不受影响。',
+  'settings.schemeExport': '导出视觉方案',
+  'settings.schemeExporting': '正在导出…',
+  'settings.schemeImport': '导入视觉方案',
+  'settings.schemeImporting': '正在导入…',
+  'settings.schemeExported': '视觉方案已导出。',
+  'settings.schemeImported': '视觉方案已导入。',
 } as const
 
 export type AmphoreusKey = keyof typeof zh
@@ -313,6 +321,14 @@ export const en: Record<AmphoreusKey, string> = {
   'settings.credit': 'The workbench derives from dsh-synapse v0.4.1 (MIT, liangmianya), adapted; original license in NOTICE.',
   'view.workbench': 'Workbench',
   // @anchor en-keys
+  'settings.schemeHeading': 'Visual scheme',
+  'settings.schemeHint': 'Export magazine mode, seat visual grammar and wallpaper placement as one JSON file, or restore from one; wallpaper files themselves are not included. Import replaces these three settings and leaves everything else alone.',
+  'settings.schemeExport': 'Export visual scheme',
+  'settings.schemeExporting': 'Exporting…',
+  'settings.schemeImport': 'Import visual scheme',
+  'settings.schemeImporting': 'Importing…',
+  'settings.schemeExported': 'Visual scheme exported.',
+  'settings.schemeImported': 'Visual scheme imported.',
 }
 
 export const NS = 'amphoreus'

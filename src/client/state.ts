@@ -198,6 +198,49 @@ export class AmphoreusClientModel {
 
   // @anchor client-model-methods
 
+  /** Download the stored visual prefs (magazine mode, grammar, wallpaper placements) as a JSON file. */
+  async exportVisualScheme(): Promise<void> {
+    const response = await fetch('/amphoreus/api/prefs/visual-scheme', { credentials: 'include', cache: 'no-store' })
+    if (!response.ok) throw new Error(`视觉方案导出失败（HTTP ${response.status}）`)
+    const blob = await response.blob()
+    const url = URL.createObjectURL(blob)
+    try {
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = 'amphoreus-visual-scheme.json'
+      anchor.rel = 'noopener'
+      anchor.click()
+    } finally {
+      URL.revokeObjectURL(url)
+    }
+  }
+
+  /** Restore a visual scheme file: replaces the three visual prefs, leaves everything else alone. */
+  async importVisualScheme(file: File): Promise<void> {
+    const nonce = this.#snapshot.state?.nonce ?? window.__AMPHOREUS_BOOT__?.nonce
+    if (nonce === undefined) throw new Error('首帧 nonce 尚未就绪')
+    const text = await file.text()
+    let scheme: unknown
+    try {
+      scheme = JSON.parse(text)
+    } catch {
+      throw new Error('视觉方案文件不是有效 JSON')
+    }
+    const response = await fetch('/amphoreus/api/prefs/visual-scheme', {
+      method: 'PUT',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json', 'x-amphoreus-nonce': nonce },
+      body: JSON.stringify(scheme),
+    })
+    if (response.status === 400) {
+      const detail = await response.json().then(value => (value as { error?: unknown }).error, () => undefined)
+      throw new Error(`视觉方案文件无效：${typeof detail === 'string' ? detail : '格式不符'}`)
+    }
+    if (response.status === 413) throw new Error('视觉方案文件过大（上限 64 KiB）')
+    if (!response.ok) throw new Error(`视觉方案导入失败（HTTP ${response.status}）`)
+    await this.refresh()
+  }
+
   close(): void {
     this.#closed = true
     this.#abort.abort()
