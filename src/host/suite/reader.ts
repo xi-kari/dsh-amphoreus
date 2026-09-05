@@ -145,7 +145,18 @@ export class SuiteReader {
   }
 
   async readSkillPath(absolutePath: string, signal?: AbortSignal): Promise<FreshSkillFile | undefined> {
-    const rel = relative(this.root, resolve(absolutePath)).split(sep).join('/')
+    throwIfAborted(signal)
+    const requested = resolve(absolutePath)
+    let canonical: string
+    try {
+      canonical = await realpath(requested)
+    } catch (error) {
+      if (isMissing(error)) return undefined
+      this.#diagnostics.push({ code: 'io-error', severity: 'warn', path: requested, detail: String(error) })
+      return undefined
+    }
+    throwIfAborted(signal)
+    const rel = relative(this.root, canonical).split(sep).join('/')
     const path = await this.guardPath(rel)
     if (path === undefined) return undefined
     const content = await this.readText(rel, MAX_BYTES, signal)

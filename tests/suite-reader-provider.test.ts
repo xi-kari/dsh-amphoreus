@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, realpath, rm, symlink, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { test } from 'node:test'
@@ -103,6 +103,14 @@ test('SuiteReader loads only direct fictional suite cards and rejects lexical tr
   const fresh = await reader.readSkillPath(skillPath)
   assert.equal(fresh?.frontmatter.name, 'amphoreus-testcard-a')
   assert.equal(fresh?.body, '# fictional body')
+  assert.equal(fresh?.path, await realpath(skillPath))
+
+  const linkedRoot = `${root}-link`
+  await symlink(root, linkedRoot, process.platform === 'win32' ? 'junction' : 'dir')
+  t.after(async () => unlink(linkedRoot))
+  const linkedFresh = await reader.readSkillPath(join(linkedRoot, 'amphoreus-testcard-a', 'SKILL.md'))
+  assert.equal(linkedFresh?.frontmatter.name, 'amphoreus-testcard-a')
+  assert.equal(linkedFresh?.path, await realpath(skillPath))
 })
 
 function minimalSnapshot(): SuiteSnapshot {

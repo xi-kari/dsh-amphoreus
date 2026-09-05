@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
-import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { test } from 'node:test'
@@ -285,6 +285,25 @@ test('overlapping cache roots and missing ImageMagick fail before any output', a
   } finally {
     await rm(root, { recursive: true, force: true })
   }
+})
+
+test('overlap checks canonicalize a missing cache directory through its linked parent', async t => {
+  const root = await temporary()
+  const assetsRoot = join(root, 'assets')
+  const linkedRoot = join(root, 'assets-link')
+  t.after(async () => rm(root, { recursive: true, force: true }))
+  await mkdir(assetsRoot, { recursive: true })
+  await symlink(assetsRoot, linkedRoot, process.platform === 'win32' ? 'junction' : 'dir')
+  t.after(async () => unlink(linkedRoot).catch(() => {}))
+
+  await assert.rejects(
+    deriveAssets(
+      { assetsRoot: linkedRoot, cacheDir: join(linkedRoot, 'assets-cache'), magick: 'synthetic-magick', only: ['chronicle'] },
+      fakeRuntime([]),
+    ),
+    /must not overlap assetsRoot/,
+  )
+  await assert.rejects(stat(join(assetsRoot, 'assets-cache')), { code: 'ENOENT' })
 })
 
 test('production converter uses bounded async spawn pipes without a shell', async () => {

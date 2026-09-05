@@ -44,12 +44,26 @@ test('expandRootPath: $DSH_HOME / ${DSH_HOME} / %DSH_HOME% use the resolved home
 })
 
 test('expandRootPath: %VAR% and $VAR from env; USERPROFILE/HOME fall back to homedir', () => {
-  const withVar = expandRootPath('%MY_ROOT%\\skills', fakeEnv({ MY_ROOT: 'D:\\roots' }))
-  assert.equal(withVar.kind, 'ok')
-  if (withVar.kind === 'ok') assert.equal(withVar.expanded, 'D:\\roots\\skills')
-  const profile = expandRootPath('%USERPROFILE%\\.codex\\skills', fakeEnv())
+  const envRoot = process.platform === 'win32' ? 'D:\\roots' : '/roots'
+  const expectedSkills = join(envRoot, 'skills')
+  for (const configured of [
+    `%MY_ROOT%${sep}skills`,
+    `$MY_ROOT${sep}skills`,
+    '${MY_ROOT}' + sep + 'skills',
+  ]) {
+    const result = expandRootPath(configured, fakeEnv({ MY_ROOT: envRoot }))
+    assert.equal(result.kind, 'ok')
+    if (result.kind === 'ok') assert.equal(result.expanded, expectedSkills)
+  }
+  if (process.platform === 'win32') assert.equal(expectedSkills, 'D:\\roots\\skills')
+
+  const profile = expandRootPath(`%USERPROFILE%${sep}.codex${sep}skills`, fakeEnv())
   assert.equal(profile.kind, 'ok')
-  if (profile.kind === 'ok') assert.equal(profile.expanded, join(FAKE_HOME, '.codex\\skills'))
+  if (profile.kind === 'ok') assert.equal(profile.expanded, join(FAKE_HOME, '.codex', 'skills'))
+
+  const home = expandRootPath(`$HOME${sep}.claude${sep}skills`, fakeEnv())
+  assert.equal(home.kind, 'ok')
+  if (home.kind === 'ok') assert.equal(home.expanded, join(FAKE_HOME, '.claude', 'skills'))
 })
 
 test('expandRootPath: unset variable and empty entry are rejected', () => {

@@ -1,6 +1,6 @@
 import { spawn, spawnSync } from 'node:child_process'
 import { readFile, realpath, rename, rm, stat, writeFile, mkdir } from 'node:fs/promises'
-import { dirname, isAbsolute, relative, resolve, sep } from 'node:path'
+import { basename, dirname, isAbsolute, relative, resolve, sep } from 'node:path'
 import {
   BRAND_STICKER,
   CHIMERA_STICKERS,
@@ -179,6 +179,24 @@ function isErrno(error: unknown, code: string): boolean {
   return typeof error === 'object' && error !== null && 'code' in error && (error as NodeJS.ErrnoException).code === code
 }
 
+async function canonicalizeForContainment(input: string): Promise<string> {
+  const absolute = resolve(input)
+  const suffix: string[] = []
+  let cursor = absolute
+
+  while (true) {
+    try {
+      return resolve(await realpath(cursor), ...suffix.reverse())
+    } catch (error) {
+      if (!isErrno(error, 'ENOENT') && !isErrno(error, 'ENOTDIR')) throw error
+      const parent = dirname(cursor)
+      if (parent === cursor) return absolute
+      suffix.push(basename(cursor))
+      cursor = parent
+    }
+  }
+}
+
 async function sourceFile(root: string, ...segments: string[]): Promise<SourceFile> {
   const candidate = resolve(root, ...segments)
   if (!contained(root, candidate)) throw new Error('source path escapes assets root')
@@ -235,7 +253,7 @@ export async function deriveAssets(options: DeriveOptions, runtime: DeriveRuntim
   const assetsRoot = await realpath(resolve(options.assetsRoot))
   const rootInfo = await stat(assetsRoot)
   if (!rootInfo.isDirectory()) throw new Error('assetsRoot is not a directory')
-  const cacheDir = resolve(options.cacheDir)
+  const cacheDir = await canonicalizeForContainment(options.cacheDir)
   if (contained(assetsRoot, cacheDir) || contained(cacheDir, assetsRoot)) {
     throw new Error('cacheDir must not overlap assetsRoot')
   }

@@ -4,7 +4,7 @@
 
 ## 前置条件
 
-- 已通过 `Start-DeepSeekHarness.ps1` 启动服务；令牌 URL 从 `.runtime/deepseek-harness.url` 读取，不写入本文件。
+- 已通过本机部署启动脚本启动服务；令牌 URL 从 `.runtime/deepseek-harness.url` 读取，不写入本文件。
 - 3080 使用当前 web profile；TF9 的 3090 隔离 profile 使用 `/c/tmp/jar`，下文 `jar` 指对应端口的 cookie jar。
 - `assetsRoot` 已配置，技能根实际解析出 13 张卡；本机兼容基线为 `dsh-v0.1.2-alpha.4`。
 - 写操作前记录原 profile、主题、席位、技能文件哈希与相关会话状态；结束时逐项恢复。
@@ -85,7 +85,7 @@
 | C-12 | C · 章末 DoD | `grep -nE "#[0-9a-fA-F]{3,8}\b" src/client/seat-browser.module.css src/client/nameplate.module.css src/client/portal.module.css` 输出为空；`grep -nE "rgba?\(" src/client/seat-browser.module.css src/client/nameplate.module.css` 输出为空（`portal.module.css` 仅允许 `.panel` 的 `box-shadow` 一处 `rgba(0,0,0,.28)`）。 | 原文内联预期 | ✓ |
 | C-13 | C · 章末 DoD | `node -e "const {zh,en}=await import('./src/client/locales.ts');process.exit(JSON.stringify(Object.keys(zh).sort())===JSON.stringify(Object.keys(en).sort())?0:1)" --input-type=module` 退出码 0，且 `grep -c "'seats.portal'" src/client/locales.ts` = 2。 | 原文内联预期 | ✓ |
 | C-14 | C · 章末 DoD | `grep -c "'uiWorkspace'" src/client/index.ts` ≥ 1；`grep -c "席位与目录" README.md` ≥ 1；`grep -c "CSSProperties" src/client/seat-browser.tsx src/client/nameplate.tsx \| awk -F: '{s+=$2} END {print s}'` ≥ 2。 | 原文内联预期 | ✓ |
-| C-15 | C · 章末 DoD | 运行态（服务重启后）：`curl -s --noproxy '*' -b "D:/DeepSeek Harness/.runtime/amph.jar" http://127.0.0.1:3080/amphoreus/api/state \| grep -c '"seatDirs"'` = 1；`curl -s --noproxy '*' -b "D:/DeepSeek Harness/.runtime/amph.jar" -o /dev/null -w "%{http_code}" -X DELETE -H "x-amphoreus-nonce: <state.nonce>" http://127.0.0.1:3080/amphoreus/api/bindings/session-00000000-0000-0000-0000-000000000000` = 404。 | 原文内联预期 | ✓ |
+| C-15 | C · 章末 DoD | 运行态（服务重启后）：`curl -s --noproxy '*' -b /c/tmp/amph.jar http://127.0.0.1:3080/amphoreus/api/state \| grep -c '"seatDirs"'` = 1；`curl -s --noproxy '*' -b /c/tmp/amph.jar -o /dev/null -w "%{http_code}" -X DELETE -H "x-amphoreus-nonce: <state.nonce>" http://127.0.0.1:3080/amphoreus/api/bindings/session-00000000-0000-0000-0000-000000000000` = 404。 | 原文内联预期 | ✓ |
 | C-M1 | C · 人工验收 | 在任一非昔涟席新建会话并发一句后，`GET /amphoreus/api/bindings` 含该 id 且 `"source":"seat-new"`、`"injection":{"state":"done"…}`；对其 fork 后出现 `"source":"fork-inherit"` 记录；重启后打开旧的无绑定子会话不新增记录。 | 按原文人工确认 | ✓ |
 | C-M2 | C · 人工验收 | 进该席时 `document.body.dataset.amphoreusSeat` 等于其 heroId、`.amphoreus-seat-layer[data-active]` 存在；离席后两者消失；进昔涟席时 dataset 为 `undefined` 且 `--dsw-alias-brand-primary` 为 `rgb(138, 104, 28)`；流式回复期间不反复淡入。 | 按原文人工确认 | ✓ |
 | C-M3 | C · 人工验收 | 侧栏：官方 `[data-slot="sidebar.workspaces"] [role="tree"]` 为 `null`，`[data-amphoreus-seat-browser]` 存在；名牌出现在有绑定会话头且在 agent-preset 之前。 | 按原文人工确认 | ✓ |
