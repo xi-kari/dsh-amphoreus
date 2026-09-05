@@ -12,7 +12,7 @@
 
 ![总览工作台](docs/screenshots/workbench.png)
 
-![翁法罗斯设置区](docs/screenshots/settings.png)
+![δ-me13 控制台](docs/screenshots/settings.png)
 
 以上为 `dsh-v0.1.2-alpha.4` 上的界面截图，展示门户、席位和工作台的基本布局；具体配色与设置以当前版本为准。截图只展示运行效果，不提供可复用原图。
 
@@ -96,7 +96,7 @@ profile 的 `cordis.patch.yml` 按 id 整体替换该插件的 config，而不�
     assetsRoot: 'D:/我的素材/翁法罗斯'
 ```
 
-`dataDir` 留空时，插件回退到 `$DSH_HOME/amphoreus`。`skillRoots` 只是运行时解析的只读目录引用；`assetsRoot` 指向用户自己的本地素材根，留空时视觉层使用抽象回退，不读取原图。
+`dataDir` 留空时，插件回退到 `$DSH_HOME/amphoreus`。`skillRoots` 只是运行时解析的只读目录引用；`assetsRoot` 指向用户自己的本地素材根，留空时视觉层使用抽象回退，不读取原图。首次运行向导保存的素材目录写入插件自有偏好 `prefs.assetsRoot`，**优先于**这里的 `assetsRoot`；补丁值作为底层默认保留，在设置中清除向导目录后立即回退到它。
 
 下表逐项对应当前 `src/host/config.ts`；嵌套对象的每个子键单独列出：
 
@@ -151,10 +151,17 @@ profile 的 `cordis.patch.yml` 按 id 整体替换该插件的 config，而不�
 | `sync` | `ref` | `string` | `main` | 预留的套件引用。 |
 | `sync` | `keepBackups` | `number` | `3` | 预留的备份数量。 |
 | 顶层 | `trustedHosts` | `string[]` | `[]` | Host 门额外允许的主机。 |
+| `memory` | `memory` | `object` | 见下列子键 | 席位记忆设置；每席可在设置中单独覆盖。 |
+| `memory` | `inject` | `boolean` | `true` | 是否把席位记忆注入席位提示词。 |
+| `memory` | `autoNote` | `boolean` | `true` | 是否提示角色在回合末留下「留言：」并捕获。 |
+| `memory` | `injectLimit` | `number` | `8` | 注入条数上限（最新在后），允许 0–50。 |
+| `memory` | `command` | `string` | `remember` | 用户留言的斜杠命令名；非法或重名时只告警、不注册。 |
 
 ## 素材包
 
 素材为《崩坏：星穹铁道》官方图或相应二创；本仓库与 npm 包**不包含、不下载**任何原图。用户把自己持有的文件按下表命名并放入 `assetsRoot`。缺少素材不会让插件伪造角色内容，而会进入对应的抽象视觉回退。
+
+首次进入页面若尚无生效的素材目录或派生缓存为空，会弹出**首次运行向导**：选择素材文件夹 → 服务端自检（必需／可选／壁纸夹计数与缺失清单）→ 保存并一键派生。向导保存的目录写入 `prefs.assetsRoot`，不再需要手工编辑 `cordis.patch.yml`；目录必须至少命中一个已知文件或非空壁纸夹，否则拒绝保存。
 
 | 目录 | 文件名规则与张数 | 用途 | 缺失时表现 |
 |---|---|---|---|
@@ -173,7 +180,7 @@ profile 的 `cordis.patch.yml` 按 id 整体替换该插件的 config，而不�
 npm run assets:check -- "<assetsRoot>"
 ```
 
-`check-assets.mjs` 依赖仓库中的 `src/shared/heroes.ts`，因此不随 npm 包发布；npm／tarball 用户按下表核对即可。
+该命令直接读取源码，无需先 `npm run build`。`check-assets.mjs` 依赖仓库中的 `src/shared/heroes.ts`，因此不随 npm 包发布；npm／tarball 用户按下表核对，或直接使用设置中的向导自检。
 
 全局壁纸文件名：
 
@@ -291,6 +298,13 @@ git clone https://github.com/xi-kari/delta-me13-skill.git
 - **逐席代码配色与气泡**：代码高亮与输入者气泡跟随席位色板，深浅主题分别校验文字对比度。
 - **称呼**：角色按技能卡使用“开拓者”或专属称呼，技术正文与台账保留准确术语。
 - **自定义席位壁纸**：在“设置 → δ-me13 → 席位壁纸”上传 PNG、JPEG、WebP、GIF、AVIF、APNG 图片或 MP4、WebM 视频，可调适配方式、位置、缩放以及视频速度、播放、循环和声音。每席保留一份文件，重新上传会替换；移除后恢复默认壁纸。文件存于 `<dataDir>/custom-wallpapers/<heroId>/`。
+- **首次运行向导**：没有生效素材目录或派生缓存为空时，在页面上引导选择素材文件夹、服务端自检并一键派生；保存的目录（`prefs.assetsRoot`）优先于补丁中的 `assetsRoot`，可随时跳过或在设置中重开。
+- **席位预设**：为每席绑定新会话默认的智能体预设、模型（含推理强度）与权限档位，席内新建会话时自动应用；未设置即沿用部署默认，权限只对全新会话生效。
+- **席位记忆**：开拓者手记与角色回合末的「留言：」行按席存入插件存储域，下次开席时以明确标注为非事实层的上下文注入席位提示词；`/remember <文字>` 直接为当前席位记一条，设置中可逐席开关、限制条数、删除。
+- **视觉方案导出／导入**：把语法、壁纸位置与自定义壁纸元数据导出为 JSON（`GET /amphoreus/api/prefs/visual-scheme`），导入时整体替换这三个视觉键，其他偏好不动；不打包壁纸二进制。
+- **席位切换**：`Alt+1`…`Alt+9` 按侧栏顺序进入第 N 席，`Alt+0` 开关总览；输入框 `/seat <名字>` 按显示名、别名、skill 名或 heroId 进席，`/seat all` 打开总览。
+- **套件更新提示**：技能套件改动、降级或目录缺失时在页面顶部显示真实状态横幅，可一键重新解析；只有启动时技能根就不存在的情形才需要重启。
+- **席位音效**：用户自备的入席问候与发送提示音按席上传（mp3/ogg/wav/webm/m4a/aac/flac，单文件 20 MiB），存于 `<dataDir>/seat-sounds/<heroId>/`，可逐席逐槽开关与调音量；插件不附带任何音频。
 
 `M3` 总空间派发、全席征询、移交与台账现已完成，使用方式见下方“工作台”。
 
@@ -369,10 +383,12 @@ npm run assets:check -- "<assetsRoot>"
 
 ## 相关文档
 
+- [0.3.0 发布说明](docs/RELEASE-0.3.0.md)
 - [0.2.2 发布说明](docs/RELEASE-0.2.2.md)
 - [0.2.1 发布说明](docs/RELEASE-0.2.1.md)
 - [建设交接](HANDOFF.md)
 - [历史审计](docs/AUDIT-2026-09-04.md)
 - [端到端验收清单](docs/E2E-CHECKLIST.md)
+- 功能说明 `docs/features/`：[首次运行向导](docs/features/setup-wizard.md)、[席位预设](docs/features/seat-presets.md)、[席位记忆](docs/features/seat-memory.md)、[视觉方案导出／导入](docs/features/visual-scheme.md)、[席位切换](docs/features/seat-switch.md)、[套件更新提示](docs/features/suite-notice.md)、[席位音效](docs/features/seat-sounds.md)
 
 设计底账另存，不随 npm 包分发。

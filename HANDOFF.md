@@ -1,6 +1,6 @@
 # dsh-amphoreus 建设交接（2026-09-03）
 
-> **2026-09-04 更新**：§0「一句话现状」、§4「已落盘的代码」、§5「下一步」已过时——现状见 `README.md`「现状」与 `AUDIT-2026-09-04.md`；建设任务书见 `../设计文档/07_建设计划_分章草稿/`。§1 用户裁决、§2 平台事实、§6 注意事项仍有效。§7 为 M1 原样接入事后核对记录。
+> **2026-09-04 更新**：§0「一句话现状」、§4「已落盘的代码」、§5「下一步」已过时——现状见 `README.md`「功能」与 `AUDIT-2026-09-04.md`；建设任务书见 `../设计文档/07_建设计划_分章草稿/`。§1 用户裁决、§2 平台事实、§6 注意事项仍有效。§7 为 M1 原样接入事后核对记录。
 
 > 给接手建设的 AI（Fable 5 等）。本文是**唯一交接入口**：先读本文，再按需读 `../设计底账/`（事实）与 `../设计文档/01_技能桥接与无损更新.md`（技能桥接规范）。工作区总入口 `D:\DeepSeek Harness\AGENTS.md`，插件通用规范 `D:\DeepSeek Harness\DSH插件开发指南.md`。
 > 标注：**[实测]** 本机跑过；**[源码]** 读 alpha.4 源码得出；**[未核实]** 动手前须验证。
@@ -8,6 +8,14 @@
 > **2026-09-04 更新**：差距审计见 `docs/AUDIT-2026-09-04.md`；**完整建设任务书见 `../设计文档/07_建设者任务书（Codex一口气版）.md`**（66 任务 TA1–TF12，含总纲、G1–G21 映射、章间裁决 J-1…J-16、完成定义）。接手建设者从该任务书 §0 开工，本文 §5「下一步」已被其取代；§1 裁决与 §2 平台事实仍有效。
 
 ## 0. 一句话现状
+
+当前版本为 **dsh-amphoreus 0.3.0**（`package.json` 已置 0.3.0；npm／tag 在发布前仍是 0.2.2，发布后回填 `docs/RELEASE-0.3.0.md` 与 BUILD-LOG）。外部套件为 [xi-kari/delta-me13-skill](https://github.com/xi-kari/delta-me13-skill)（CI 钉 `6e4f4746`），`sync.source` 默认同源。当前门：`npm test` 590 项／589 通过／1 跳过（`AMPHOREUS_REAL_SUITE` 环境门），`npm run verify:dist` OK；HEAD `7fd2ed8` 为合并后审计修复。
+
+自 0.2.2 起新增子系统：席位视觉语法层与主页壁纸、δ-me13 品牌、逐席代码配色、自定义席位壁纸、贴纸运行时 `/amphoreus/stickers/`，以及七项并行建设的功能——首次运行向导（`setup-wizard`）、席位预设（`seat-presets`）、席位记忆（`seat-memory`，含 `/remember`）、视觉方案导出／导入（`visual-scheme`）、席位切换（`seat-switch`，Alt+数字／`/seat`）、套件更新提示（`suite-notice`）、席位音效（`seat-sounds`）。逐项行为以 `docs/features/*.md` 为权威，发布说明见 `docs/RELEASE-0.3.0.md`。
+
+**锚点约定**：共享热点文件（`src/client/index.ts`、`locales.ts`、`settings.tsx`、`state.ts`、`src/host/config.ts`、`store.ts`、`webapi.ts`、`seats.ts`）以 `// @anchor <name>` 注释标出扩展点；功能分支只在锚点之后追加，不改锚点上方的既有行。多个分支在同一锚点追加时，用 `deepseek插件开发/scripts/merge-union.mjs` 做并集解决冲突（保留双方追加块，不手工挑边）。合并顺序与审计见 BUILD-LOG「0.3.0」段。
+
+### 0.2.2 历史
 
 当前发布版本为 **dsh-amphoreus 0.2.2**（2026-09-05），适配外部套件 v1.6.0（`fd01e56ce929fbad2d38011adab20df8a0234065`）。本机 `skillRoots` 首选 `D:/DeepSeek Harness/skill-sources/amphoreus-skill-suite/skills`，运行态 L0、13卡、Git指纹已核对；原 Claude/Codex 的44份技能文件与上游正文一致，保持原样。插件新增折叠台账、末行回执兼容与 relations 绝对路径；全席征询明确各席独立作答。401项测试全部通过、0跳过，产物397项；实际13席均单次角色回复、13/13 completed、通用首答与双回复均0，浏览器13台账默认折叠且可开合。npm latest/alpha 均已更新为0.2.2，gitHead与v0.2.2均为`78ce553f606489f99e7407d643c82f7a93032b9b`，GitHub Release已上线；双平台CI `33962917810`、release `33963069200`均success，registry与本地验收包逐字节相同。详细结果见 BUILD-LOG 最新记录，功能说明见 README 和 `docs/RELEASE-0.2.2.md`。
 
@@ -90,6 +98,7 @@
 - 会话事件只读：`ctx.on('session/event', (session, event) => …)`（隔离调用、抛错只告警）；**不写自定义会话事件**（未知 type 且无 `ignorable` 会拒载整份日志）。`Session {id, header{cwd?, parentSession?, isSeeded}, firstLiveSeq, inheritedEventCount, snapshotEvents(), ownEvents()}`；`SessionStore.list()/get()`。
 - storage-domain：`defineDomain({name, version, layout?, global?:{schema, initial}, tables:{t: domainTable<K,V>(zodSchema)}})`，名字匹配 `/^[a-z][a-z0-9_]*$/`；`await ctx.storageDomain.open(spec)`；`table().get/put/update/delete/entries`；json 后端根固定 `$DSH_HOME/storages/`（所以域文件落不到 `$DSH_HOME/amphoreus/`，接受分置：文件类数据落 `dataDir`）。
 - Web 路由：`ctx.webServer.register({kind:'exact'|'prefix', path, handler})` 重复抛错；SSE 可长期持有响应；静态资源用 `readFile(new URL('./x', import.meta.url))` 自定位。
+- 0.3.0 新增路由（均在 `src/host/webapi.ts` 的 `// @anchor webapi-routes` 之后，写路由沿用 `x-amphoreus-nonce` + `application/json`）：`POST /amphoreus/api/assets/check`、`PUT /amphoreus/api/assets/root`（无素材包信号 400、派生中 409）；`GET|PUT /amphoreus/api/seats/<skill>/preset`；`POST /amphoreus/api/memory/<skill>/notes`、`DELETE /amphoreus/api/memory/<skill>/notes/<id>`、`PUT /amphoreus/api/memory/<skill>/settings`；`GET|PUT /amphoreus/api/prefs/visual-scheme`（64 KiB，GET 带 `content-disposition: attachment`）；`PUT|DELETE /amphoreus/api/seat-sound/<heroId>/<slot>`（20 MiB，415/413）与 `GET|HEAD /amphoreus/seat-sound/<heroId>/<file>`（Range）；`GET /amphoreus/stickers/<key>.webp`。
 - 命令：`ctx.commands.register({name:/^[a-z][a-z0-9_-]*$/, description, input?, handler({agent, rawInput, signal}) → {kind:'success', text?}|{kind:'error', text}})`，命令行不进模型。
 
 ## 3. 设计文档状态
@@ -316,7 +325,8 @@ Vendoring 版 `/amphoreus/workbench/` 返回 200；iframe 在 `conversation.view
 | `.npmrc` | 是 | 否 | `legacy-peer-deps=true`，无 registry 或 token |
 | `BUILD-LOG.md` | 是 | 否 | 承载 66 个任务与六章验收日志 |
 | `cordis.patch.yml` | 是 | 是 | DSH bundle patch |
-| `docs/` | 是 | 否 | 历史审计、E2E 清单、四张脱敏实机截图与 `RELEASE-0.2.0.md` |
+| `docs/` | 是 | 否 | 历史审计、E2E 清单（含 0.3.0 增补）、四张脱敏实机截图与 `RELEASE-0.2.0.md`…`RELEASE-0.3.0.md` |
+| `docs/features/` | 是 | 否 | 0.3.0 七项功能的权威行为说明（setup-wizard、seat-presets、seat-memory、visual-scheme、seat-switch、suite-notice、seat-sounds） |
 | `HANDOFF.md` | 是 | 否 | 唯一交接入口 |
 | `LICENSE` | 是 | 是 | 本包 MIT |
 | `NOTICE` | 是 | 是 | vendoring、非官方声明与变更归属 |

@@ -1390,3 +1390,13 @@
 - 第三轮（参考 omdsh-dev/DSH-better-sidebar 与 zhijun-dai/Catppuccin-dsh-theme）：① 借后者的思路做逐席 `--shiki-token-*` 代码配色与开拓者气泡色（`shared/seat-code.ts`，26 组对比度断言）；② 席位提示词加「开拓者」称呼纪律；③ 用户自传席位壁纸：`host/custom-wallpapers.ts`（流式写盘、Range 206、一席一文件）、`prefs.customWallpapers` 位置/播放、设置面板 `wallpaper-panel.tsx`、视频用 `<video>` 挂进壁纸层；④ 与 better-sidebar 共存：圆角语法跳过 `[data-dsh-better-sidebar]` 子树。实测：上传 2.4MB PNG 给白厄 200，流 200/206。
 - 插件冲突结论：better-sidebar 只占 `settings.section`／`conversation.chat.turnTail` 两个槽、自己挂 body 根节点（z 25）、只消费 `--dsw-alias-*`；与本插件槽位无重叠，唯一交叉是我们的宽选择器（`[class*='card']` 等）会扫进它的 DOM——已用 `:not([data-dsh-better-sidebar] *)` 排除。不建议把侧栏底座搬进来（2 万行、node-pty、CodeMirror），装两份即可共存。
 - 用户报障：万敌／赛飞儿席打不开设置。根因：这两席的 `clip-path` 切角落在侧栏列本体上，而官方设置弹窗（position:fixed）就 portal 在侧栏列内部——clip-path 与 backdrop-filter 一样会成为 fixed 子孙的包含块并把它裁掉。修：切角只落在侧栏玻璃片伪元素与气泡上；新增测试断言 clip-path 永不出现在承载弹层的容器选择器上。
+
+## 0.3.0：七功能并行建设与集成 — 2026-09-06
+- 起点：`845c186` 快照并发会话工作（贴纸运行时 `host/stickers.ts` 与 `/amphoreus/stickers/` 路由、提示词引用、指纹、version 0.3.0、README 改指 delta-me13-skill）。
+- 基座 `a51634d`：解除 `verify:dist` 阻塞（sourcemap 不再进 tarball）、补平台类型 devDependencies、在共享热点文件（client/index.ts、locales.ts、settings.tsx、state.ts、host/config.ts、store.ts、webapi.ts、seats.ts）标注 `// @anchor <name>` 扩展点。
+- 七个 `feat/*` 分支在独立 worktree 上从基座并行建设，每支各经 2 轮对抗评审 + 修复提交（visual-scheme `9bde5b2`、suite-notice `450bf27`、seat-switch `7830c57`、seat-memory `221f4d5`、seat-sounds `a2ac181`、seat-presets `d7d6d7e`、setup-wizard `b2d56a6`）。
+- 合并顺序 visual-scheme → suite-notice → seat-switch → seat-presets → seat-sounds → seat-memory → setup-wizard（`1be1e7d`…`bc70217`）；同锚点冲突用 `../scripts/merge-union.mjs` 并集解决，保留双方追加块；`b6a2514` 放宽 setup-wizard 对 settings 签名与 overlay 数量的钉子以适配集成树。
+- 合并后对抗审计：20 条发现 → 6 条确认（seat-sounds realpath 包含校验、memory 旧版整记录 PUT 入串行队列与墓碑只增、seat preset PUT 改 `table.update`、改根钉住派生、memory 草稿只在 POST 成功后清空、suite-notice 在向导期间卸载／Alt 快捷键挂起等）→ 修复于 `7fd2ed8`，并补宿主 `apply()` stub、改根与派生竞争、memory 路由竞争、跨功能 prefs PUT、overlay/dock id+order 钉子等回归测试；`docs/features/*.md` 同步刷新。
+- 最终门：typecheck 通过；`npm test` 590 项／589 通过／0 失败／1 跳过（`AMPHOREUS_REAL_SUITE` 环境门）；`npm run build`；`npm run verify:dist` OK（567 checks）。
+- 文档：README 功能／配置／素材包／相关文档、`docs/RELEASE-0.3.0.md`、HANDOFF §0 刷新、E2E 清单 0.3.0 增补。
+- 发布：待回填（npm publish 与 tag SHA、CI run、registry 对账）。

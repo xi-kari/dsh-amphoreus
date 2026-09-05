@@ -1,4 +1,4 @@
-# dsh-amphoreus 0.2.0 端到端验收清单
+# dsh-amphoreus 端到端验收清单
 
 > 任一 ☐ 为假则不发布。机器断言必须保留命令输出或对应 `BUILD-LOG.md` 证据；截图只能辅助人工判断，不能替代断言。
 
@@ -232,3 +232,18 @@
 | 10 | ✓ | profile 原始 SHA256=`DB10860ACCBAB96252A33C5F62106E7834D8102F8D2543B0BFB1837CB8F7C6BC`。live 关闭后 Tab 列表无「工作台」，设置区逐字显示 `已在配置中关闭（workbench.enabled=false）`，API index=`503`；稳定 HTML 壳=`200` 且 boot 明示 disabled。按原始 bytes 恢复后 SHA 相同、Tab 恢复、API index=`200`、state enabled=true。 |
 | 11 | ✓ | Anaxa description 临时别名出现在运行时 aliases，generation 经 watcher/显式解析递增到 3，binding `21→21`、memory hash 不变；恢复后文件 SHA256=`E6BBFDCFCB0BC17926555010FE16D07322EA5E31D0166565BCC1DCAF2551FBA2` 且 mtime 原样，generation=4。Cipher 目录缺失时 cards=12、seat=`undeployed`、既有 binding=1、UI 显示「未部署席位（1）」和赛飞儿；恢复后 generation=7、cards=13、seat=`deployed`、L0。`suite_events` 逐次保留 parsed：generation `2/3/4/5/6/7`，对应 cards `13/13/13/12/12/13`。 |
 | 12 | ✓ | 两轮共 6 个测试会话均经官方 `workspace/archiveSession` 成功归档，6 个日志目录均保留；对应 bindings 全部 DELETE 200，最终 binding 从本轮峰值 21 回基线 17。profile/Anaxa hash、Anaxa mtime、Cipher 路径、主题、`lastSeat=null`、memory hash 均恢复；3080 running/HTTP 200、stderr 0 bytes、3090 listeners 0、临时 cookie/备份/rollback 文件全部删除。observations 由 14 增至 19，因公开 API 无删除路由而保留为已归档验收证据。 |
+
+## 0.3.0 增补
+
+> 沿用前文的 `$BASE`／`jar`／nonce 约定：`N` 为首帧下发的 `x-amphoreus-nonce`，写请求带 `-H "x-amphoreus-nonce: $N" -H "content-type: application/json"`（下文简记为 `$W`）。`<skill>` 取 `amphoreus-anaxa`。行为细节以 `docs/features/*.md` 为准。
+
+| 编号 | 断言（命令） | 预期 | 结果 |
+|---|---|---|---|
+| R30-1 | `curl -s -b jar -X POST "$BASE/amphoreus/api/assets/check" $W -d '{}' -o /dev/null -w '%{http_code}'` | `200`，响应 `report` 含必需／可选／壁纸夹计数 | ☐ |
+| R30-2 | `curl -s -b jar -X PUT "$BASE/amphoreus/api/assets/root" $W -d '{"root":"C:/Windows"}' -w '\n%{http_code}'` | `400`，正文含 `does not look like an Amphoreus asset pack`；`prefs.assetsRoot` 不变 | ☐ |
+| R30-3 | `curl -s -b jar -X POST "$BASE/amphoreus/api/memory/<skill>/notes" $W -d '{"text":"E2E 留言"}'` → 取 `note.id` → `curl -s -b jar -X DELETE "$BASE/amphoreus/api/memory/<skill>/notes/<id>" -H "x-amphoreus-nonce: $N" -o /dev/null -w '%{http_code}'` | POST `201` 且回显已存储 note；DELETE `200`；再 GET `/amphoreus/api/memory/<skill>` 不含该 id | ☐ |
+| R30-4 | `curl -s -b jar -D - "$BASE/amphoreus/api/prefs/visual-scheme" -o /tmp/scheme.json \| grep -i '^content-disposition'` | 含 `attachment`；文件 `version` 为 `1`，除三个视觉键与 `exportedAt` 外不含其他偏好键 | ☐ |
+| R30-5 | 浏览器：焦点在页面（非 iframe、非输入框）时按 `Alt+3` | 进入侧栏第 3 席（按 `userOrder ?? order`）的最近会话或新建一段并切到对话视图；`Alt+0` 开关总览 | ☐ |
+| R30-6 | 浏览器：设置 → δ-me13，`document.querySelectorAll('[data-amph-console] section').length` | `12`（席位目录、运行时、视觉层、素材向导、视觉语法、席位壁纸、视觉方案、席位预设、席位音效、席位记忆、工作台、诊断） | ☐ |
+
+清理：删除 R30-3 留下的 note（若 DELETE 失败则从设置面板删除）；R30-2 不改变任何状态；R30-4 的下载文件不含壁纸二进制，可直接删除。
