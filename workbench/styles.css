@@ -573,3 +573,17 @@ button.primary:hover { border-color: var(--dsw-alias-button-primary-hover, #000)
 .audit-ledger-body { padding: 2px 0 6px; overflow-wrap: anywhere; }
 .audit-ledger-body > :first-child { margin-top: 0; }
 .audit-ledger-body > :last-child { margin-bottom: 0; }
+
+/* ── Seat visual grammar mirror (host pushes `amphoreus:grammar`; variables land on <html>) ──
+   Every rule is gated on html[data-amph-grammar] so the canvas keeps its stock look when the
+   shell grammar is off. Only --amph-* / --dsw-* variables appear here; no seat colours. */
+[data-amph-grammar] .synapse-shell { --amph-canvas-glass: color-mix(in srgb, color-mix(in srgb, var(--dsw-alias-bg-layer-1, #fff) 70%, var(--amph-glass-tint, #fff)) calc(var(--amph-glass-frost, .78) * 100%), transparent); }
+[data-amph-grammar] .topbar, [data-amph-grammar] .canvas-tabs { background: var(--amph-canvas-glass); border-bottom: var(--amph-rim-width, 1px) var(--amph-rim-style, solid) var(--amph-glass-rim, var(--dsw-alias-border-l2)); }
+[data-amph-grammar] .sidebar { background: var(--amph-canvas-glass); border-right: var(--amph-rim-width, 1px) var(--amph-rim-style, solid) var(--amph-glass-rim, var(--dsw-alias-border-l2)); }
+[data-amph-grammar] .thread-card, [data-amph-grammar] .message, [data-amph-grammar] .detail-view, [data-amph-grammar] .card-inspector, [data-amph-grammar] .portal-card { border-radius: var(--amph-radius, 7px); }
+[data-amph-grammar] .thread-card { border-style: var(--amph-rim-style, solid); box-shadow: inset 3px 0 0 var(--thread-color), var(--amph-edge, 0 3px 11px rgba(33,48,67,.08)); }
+[data-amph-grammar] .message { background: var(--amph-canvas-glass); border-style: var(--amph-rim-style, solid); }
+[data-amph-grammar] button, [data-amph-grammar] .tree-row, [data-amph-grammar] .portal-all, [data-amph-grammar] .dispatch-panel input { border-radius: var(--amph-radius-sm, 6px); }
+[data-amph-grammar] .portal-head h1, [data-amph-grammar] .detail-head h1, [data-amph-grammar] .brand strong, [data-amph-grammar] .thread-title { font-family: var(--amph-font-display, var(--amphoreus-font-display)); font-weight: var(--amph-font-weight, 650); font-style: var(--amph-font-style, normal); letter-spacing: var(--amph-letter-spacing, 0); }
+[data-amph-grammar] .portal-kicker { text-transform: var(--amph-title-transform, uppercase); }
+[data-amph-grammar] .main-stage { --amphoreus-motif-url: var(--amph-motif-url, none); }

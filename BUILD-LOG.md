@@ -1374,3 +1374,11 @@
 - 实机SUITE-V160-ROUND-20260905：同文13/13、唯一技能13/13、typed/skill同首step13/13、skill先于回复13/13、completed13/13、单条角色回复13/13、generic0/doubleReply0，两句原生身份均消失13/13。浏览器字面13/13已回复·本轮结束；details13/open0，点击0→1→0。原始回复与会话记录保留供对照，未将台账长度算成角色正文篇幅失败，也未把独立征询称作互相交错对话。
 - 事务位于D:/DeepSeek Harness/.codex-transactions/2026-09-05-suite-v1.6。原app.js SHA256=010712952ec45c13eddb0e23202d5881124e16a91c74bc880190db678a359f9c；修改版=aecec66a414f18aefe993a7a0a497263cca54ae28edfbe2c78b06d7fd833d3b2。账本探针baseline exit1（ledger=false），modified exit0（ledger=true/collapsed=true）；ROLLBACK.sh只在独立copy恢复原hash与原行为，线上保留新版。
 - 0.2.2发布完成：commit/tag=78ce553f606489f99e7407d643c82f7a93032b9b；npm publish字面+ dsh-amphoreus@0.2.2，dist-tag字面+latest: dsh-amphoreus@0.2.2，两条命令exit0。registry latest=alpha=0.2.2，gitHead与tag相同；74文件/427710bytes/unpacked1706725，SHA512=fErBwTFtvI3DatHyfYJGvOJDmflrXhf0xjn39LsdborrOZC/9rvBlblMjv4xKiWZwJVy+bPqf3ZCMaLqRRjliQ==，本地包与远端tarball逐字节相同。GitHub main/v0.2.2/Release已上线，双平台CI33962917810、release33963069200均success；本地最终构建PID76212/HTTP200。
+
+## 0.3.0-dev：席位视觉语法、主页壁纸、δ-me13 品牌 — 2026-09-05
+- 参考项目克隆到 `../参考项目/`（NoNameLeGo/dsh-catppuccin-theme、elysia395/dsh-wallpaper-engine）。借鉴前者的玻璃层架构（data 属性门控、seam stamper、color-mix 派生、侧栏 ::before 承载 blur、@supports 回退、零残留）；后者只借鉴 scrim/模糊/吉祥物思路，未搬运其场景渲染器。
+- 设计评审团工作流（3 设计角度 → 3 评委 → 综合终稿）：editorial 版式方案 66 分胜出；终稿与四份原稿落盘 `../设计文档/08_*.json`。评委裁决已吸收：气泡不 blur、刊头不压标题、贴纸严格取 heroes.ts、动效只在壁纸层、生成文本读屏静音。
+- 新增：`shared/grammar.ts`（13 席 SeatGrammar）、`client/grammar-{layer,seams,vars}.ts`、`client/grammar.css`、`client/grammar-ambient.css`、`client/grammar-panel.tsx`、`prefs.grammar`（PUT 补丁/重置，无效输入 400）、`amphoreus:grammar` iframe 桥、`workbench/styles.css` 镜像段。
+- 主页壁纸：`heroes.ts` 增 `homeWallpaperDir`、`HOME_WALLPAPER_ROOT`、`GLOBAL_WALLPAPER_DIRS`（昔涟壁纸迁到 13黄金裔壁纸/ 下仍兼容）、`HOME_WALLPAPER_PARKED`；`derive.ts` 增 `home` kind（扫文件夹、≤12、清理多余）。本机派生 46 张。
+- 品牌：`brand-shell.ts`（标题/favicon/manifest 重写与恢复）、`brand-icon.ts`（原创 δ 图形 data URI）、词典 翁法罗斯 → δ-me13、字标 XIII → CHRYSOS；问候 `greetings.ts` 13 席×3 时段；`seat-watch.ts` 镜像 body 席位属性。
+- 构建：tsdown 的 lightningcss 显式 targets，避免 backdrop-filter 只剩 -webkit- 前缀。测试 415 项通过（+7 文件）。实机：刻律德菈席 2px 锐角玻璃、棋盘 rim、壁纸 blur 6px、0101 电报带、专属问候与贴纸均已验证。
