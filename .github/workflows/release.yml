@@ -4,6 +4,10 @@ on:
   push:
     tags: ['v*']
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   publish:
     runs-on: ubuntu-latest
@@ -21,6 +25,52 @@ jobs:
       - run: npm run release:check
       - name: tag matches package.json
         run: node -e "const v=require('./package.json').version; if ('v'+v!==process.env.GITHUB_REF_NAME) { console.error('tag',process.env.GITHUB_REF_NAME,'!= v'+v); process.exit(1) }"
-      - run: npm publish --provenance
+      - name: choose publish mode
+        id: publish-mode
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        shell: bash
+        run: |
+          name="$(node -p "require('./package.json').name")"
+          version="$(node -p "require('./package.json').version")"
+          error_file="$RUNNER_TEMP/npm-view.err"
+          set +e
+          existing="$(npm view "$name@$version" version --registry https://registry.npmjs.org 2>"$error_file")"
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ]; then
+            test "$existing" = "$version"
+            published_git_head="$(npm view "$name@$version" gitHead --registry https://registry.npmjs.org)"
+            if [ "$published_git_head" != "$GITHUB_SHA" ]; then
+              echo "::error::$name@$version exists at gitHead $published_git_head, expected $GITHUB_SHA"
+              exit 1
+            fi
+            alpha="$(npm view "$name" dist-tags.alpha --registry https://registry.npmjs.org)"
+            if [ "$alpha" != "$version" ]; then
+              echo "::error::$name@$version exists but alpha points to $alpha"
+              exit 1
+            fi
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "mode=local-prepublished" >> "$GITHUB_OUTPUT"
+          elif grep -q 'E404' "$error_file"; then
+            if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
+              echo "::error::$name@$version is unpublished and NPM_TOKEN is absent; publish locally with --tag alpha before pushing the tag"
+              exit 1
+            fi
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "mode=ci-token" >> "$GITHUB_OUTPUT"
+          else
+            cat "$error_file" >&2
+            exit "$status"
+          fi
+      - name: publish alpha
+        if: steps.publish-mode.outputs.publish == 'true'
+        run: npm publish --provenance --tag alpha --access public --registry https://registry.npmjs.org
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: verify alpha
+        run: |
+          name="$(node -p "require('./package.json').name")"
+          version="$(node -p "require('./package.json').version")"
+          test "$(npm view "$name" dist-tags.alpha --registry https://registry.npmjs.org)" = "$version"
+          test "$(npm view "$name@$version" gitHead --registry https://registry.npmjs.org)" = "$GITHUB_SHA"

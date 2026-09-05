@@ -14,7 +14,7 @@
 
 ![翁法罗斯设置区](docs/screenshots/settings.png)
 
-截图待补；所需画幅与明暗版本见 [`docs/screenshots/README.md`](docs/screenshots/README.md)。
+以上四张截图均由本地 `dsh-v0.1.2-alpha.4` 实机界面于 2026-09-05 重新启动后截取；它们只展示运行效果，不提供可复用的原图素材。文件尺寸、脱敏与复核信息见 [`docs/screenshots/README.md`](docs/screenshots/README.md)。npm README 会把这些相对路径解析到 GitHub `HEAD` 的 raw 文件，因此 GitHub main 推送后两处共用同一组图片。
 
 ## 兼容性
 
@@ -51,14 +51,14 @@ dsh plugin --profile web add ./dsh-amphoreus-0.2.0.tgz
 dsh plugin --profile web add github:xi-kari/dsh-amphoreus#<sha>
 ```
 
-GitHub 安装会在本机执行本包的 `prepare` 脚本以生成 `lib/`。第一次安装会失败并打印 `allowBuilds` 提示；把下面配置加入 `$DSH_HOME/profiles/web/pnpm-workspace.yaml` 后，再执行一次上面的 add 命令：
+GitHub 安装会在本机执行本包的 `prepare` 脚本以生成 `lib/`。第一次安装会失败并打印 `allowBuilds` 提示；把提示中的**完整 key** 加入 `$DSH_HOME/profiles/web/pnpm-workspace.yaml` 后，再执行一次上面的 add 命令。以 `v0.2.0` 的发布提交为例：
 
 ```yaml
 allowBuilds:
-  dsh-amphoreus: true
+  'dsh-amphoreus@https://codeload.github.com/xi-kari/dsh-amphoreus/tar.gz/fc754a6ca02f96d4bbd47fe655196c04d611431e': true
 ```
 
-这一步表示用户明确授权安装期构建，建议始终钉定 commit SHA。若启动时报 `run pnpm run build before launch`，说明 `prepare` 没有获准执行；npm 与 tarball 已携带构建产物，不会走这条源码构建路径。GitHub 方式以发布后的独立安装抽测结果为最终依据。
+这一步表示用户明确授权安装期构建，建议始终钉定 commit SHA。pnpm `11.7.0` 实测要求 key 同时包含包名、完整 codeload URL 与同一 40 位 SHA；仅写 `dsh-amphoreus: true` 不生效，换 SHA 时必须复制新提示，不使用通配。若启动时报 `run pnpm run build before launch`，说明 `prepare` 没有获准执行；npm 与 tarball 已携带构建产物，不会走这条源码构建路径。GitHub 方式已用上述发布 SHA 完成独立安装抽测。
 
 ### 含空格的本地路径
 
@@ -299,6 +299,8 @@ npm run assets:check -- "<assetsRoot>"
 ```
 
 `npm run dev:link` 在 Windows 上以 junction 链接本地 DSH 依赖。改宿主代码后重启 `dsh web`；改浏览器代码后先 build，再刷新页面。含空格的本地 link 安装仍使用“安装”一节中的 profile 内 `pnpm add` 方法。
+
+维护者发布必须显式执行 `npm publish --tag alpha --access public --registry https://registry.npmjs.org`，发布前 dry-run 也必须带 `--tag alpha`。npm `11.11.0` 实测裸 `npm publish` 仍选择 `latest`，不能把 `publishConfig.tag` 当作执行保证；首发由注册表自动出现 `latest` 时只记录事实，不另做 `dist-tag add` 或 `dist-tag rm`。
 
 ## 已知限制
 

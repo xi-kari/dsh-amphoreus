@@ -3,6 +3,7 @@ lib/
 *.tsbuildinfo
 *.log
 .tmp/
+.playwright-cli/
 .pack-dry-run.json
 *.tmp
 *.tgz
