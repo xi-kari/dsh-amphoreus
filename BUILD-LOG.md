@@ -1347,3 +1347,4 @@
 - 最终打包：`npm pack --dry-run --json --ignore-scripts` → 420297 bytes / unpacked 1670249 bytes / 73 files / raster images 0，exit 0。运行 PID=81588、HTTP=200、stderr=0。
 - 精确清理：两轮 final 会议 26 个 Session、参考路径对照 4 个 Session、baseline Anaxa 与 blank Cipher 各 1，共 32 个已官方 archive，binding absent=32/32，画布隐藏=32/32，权威 zstd 日志保留=32/32；最终 Cipher 展示会话保留。外部技能、主项目文件与用户既有 Workspace 未替换；初始化生成的有效 seat Workspace 保留以支持直聊。npm 0.2.0 未重发，发布 tag 不动。
 - 干净环境 CI：首个修复提交 `a4db4d1` 的 run `33952603414` 在 Ubuntu／Windows 都完成测试，但 build 发现缺少 `system-prompt/assemble` 类型声明。已显式添加 `@deepseek-ai/dsh-system-prompt@0.1.2-alpha.4` devDependency 与 type-only import，锁文件仅增该包条目；本地 typecheck exit 0，远程复跑以随后 CI 为准。此项不改变已验证的运行代码。
+- 远程复跑闭合：代码提交 `fd5c8769a8cfa9f607ca8aa72c4ae30298021877` 的 CI run `33952725757` 已 completed/success；Ubuntu 与 Windows 的 npm ci、test、build、verify:dist、pack 均 success。主修复为 `a4db4d1f0da4c95f40ad36f19dcef6c7cec785ab`，本地工作树已完成提交并推送；本轮未发布新的 npm 版本。
