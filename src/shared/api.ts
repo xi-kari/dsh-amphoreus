@@ -87,7 +87,7 @@ export interface MagazineModeMessage {
   readonly mode: 'light' | 'full'
 }
 
-export type DeriveKind = 'covers' | 'chronicle' | 'cards' | 'stickers' | 'wallpapers'
+export type DeriveKind = 'covers' | 'chronicle' | 'cards' | 'stickers' | 'wallpapers' | 'home'
 
 export interface DeriveProgress {
   readonly kind: DeriveKind

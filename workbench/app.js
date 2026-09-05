@@ -2170,7 +2170,7 @@ function renderPortal() {
     <header class="portal-head">
       <p class="portal-kicker">CHRYSOS · CONCILIUM</p>
       <p class="portal-kicker portal-kicker-full">CHRYSOS · XIII VOLUMES</p>
-      <h1>黄金裔工作台</h1>
+      <h1>δ-me13</h1>
       <p class="portal-sub">点开一张英雄纪，进入这位黄金裔的独立工作空间。</p>
     </header>
     <button class="portal-all" type="button" data-action="enter-seat" data-workspace="all">

@@ -9,7 +9,7 @@ export interface AmphoreusClientSnapshot {
 }
 
 const INITIAL: AmphoreusClientSnapshot = { phase: 'loading', refreshing: false }
-const DERIVE_KINDS: readonly DeriveKind[] = ['covers', 'chronicle', 'cards', 'stickers', 'wallpapers']
+const DERIVE_KINDS: readonly DeriveKind[] = ['covers', 'chronicle', 'cards', 'stickers', 'wallpapers', 'home']
 
 export function parseDeriveProgress(value: unknown): DeriveProgress | undefined {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined

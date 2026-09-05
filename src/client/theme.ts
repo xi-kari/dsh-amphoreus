@@ -281,7 +281,7 @@ export function registerSeatTheme(
     } catch {}
   }
 
-  const planFor = (state: AmphoreusState, hero: HeroVisual | null): SeatVisualPlan => {
+  const planFor = (state: AmphoreusState, hero: HeroVisual | null, homeSeed: string | undefined): SeatVisualPlan => {
     const wallpaper = state.effectiveConfig.wallpaper
     const derivedVersion = state.assets.lastDerive?.at
     const candidates = hero !== null && wallpaper.enabled && wallpaper.perSeat
@@ -289,6 +289,7 @@ export function registerSeatTheme(
         derived: state.assets.derived,
         assetsConfigured: state.effectiveConfig.assetsConfigured,
         ...(derivedVersion === undefined ? {} : { derivedVersion }),
+        ...(homeSeed === undefined ? {} : { homeSeed }),
       })
       : []
     return {
@@ -446,7 +447,7 @@ export function registerSeatTheme(
       hero = heroVisualById(bootstrapHeroId)
     }
     const target = hero === undefined || hero.heroId === GLOBAL_SEAT_HERO ? null : hero
-    const plan = planFor(state, target)
+    const plan = planFor(state, target, list.current)
 
     if (pendingKey === plan.key) return
     if (pendingKey !== null) {
@@ -503,7 +504,7 @@ export function registerSeatTheme(
         darkMask: boot?.darkMask ?? 0.18,
         lightMask: boot?.lightMask ?? 0.03,
       }
-      : planFor(state, null)
+      : planFor(state, null, undefined)
     leaveSeat(plan)
   }
 

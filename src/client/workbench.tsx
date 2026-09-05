@@ -812,7 +812,7 @@ export function WorkbenchView({
         ref={frameRef}
         className={css.frame}
         src="/amphoreus/workbench/"
-        title="翁法罗斯工作台"
+        title="δ-me13 工作台"
         onLoad={onFrameLoad}
       />
     </div>

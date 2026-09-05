@@ -16,12 +16,12 @@
  * layer does nothing (assetsConfigured gate).
  */
 import { CHIMERA_STICKERS, stickerAssetUrl } from '../shared/heroes.ts'
+import { seatGreetingFor } from './greetings.ts'
+import type { SeatWatch } from './seat-watch.ts'
 
-/** Greeting for an hour of day (exported for unit tests). */
+/** Neutral greeting for an hour of day (exported for unit tests). */
 export function greetingFor(hour: number): string {
-  if (hour >= 5 && hour < 12) return '早上好，开拓者'
-  if (hour >= 12 && hour < 18) return '下午好，开拓者'
-  return '晚上好，开拓者'
+  return seatGreetingFor(null, hour)
 }
 
 /** Stable chimera pick per workspace title (exported for unit tests). */
@@ -34,21 +34,21 @@ export function chimeraFor(title: string): string {
 const HEADLINE_TEXTS = new Set(['探索未至之境', 'Into the Unknown'])
 const GARNISH_MARK = 'amphoreusGarnish'
 
-function swapHeadline(root: ParentNode, now: () => Date): void {
+function swapHeadline(root: ParentNode, now: () => Date, seat: () => string | null): void {
   const walker = document.createTreeWalker(root as Node, NodeFilter.SHOW_TEXT)
   for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
     const text = node.textContent?.trim()
     if (text !== undefined && HEADLINE_TEXTS.has(text)) {
-      node.textContent = greetingFor(now().getHours())
+      node.textContent = seatGreetingFor(seat(), now().getHours())
       const holder = node.parentElement
       if (holder !== null) holder.dataset[GARNISH_MARK] = 'headline'
     }
   }
 }
 
-function refreshHeadlines(now: () => Date): void {
+function refreshHeadlines(now: () => Date, seat: () => string | null): void {
   for (const holder of document.querySelectorAll<HTMLElement>(`[data-amphoreus-garnish="headline"]`)) {
-    holder.textContent = greetingFor(now().getHours())
+    holder.textContent = seatGreetingFor(seat(), now().getHours())
   }
 }
 
@@ -83,14 +83,17 @@ function swapFolderIcons(root: ParentNode): void {
 
 export interface GarnishOptions {
   readonly assetsConfigured: () => boolean
+  /** Current seat (body data attribute mirror); the greeting follows it. Omitted → neutral copy. */
+  readonly seat?: Pick<SeatWatch, 'getSnapshot' | 'subscribe'>
   readonly now?: () => Date
 }
 
 /** Install both decorations; returns a disposer. */
 export function installGarnish(options: GarnishOptions): () => void {
   const now = options.now ?? (() => new Date())
+  const seat = (): string | null => options.seat?.getSnapshot() ?? null
   const apply = (root: ParentNode): void => {
-    swapHeadline(root, now)
+    swapHeadline(root, now, seat)
     if (options.assetsConfigured()) swapFolderIcons(root)
   }
   apply(document.body)
@@ -98,14 +101,17 @@ export function installGarnish(options: GarnishOptions): () => void {
     for (const mutation of mutations) {
       for (const added of mutation.addedNodes) {
         if (added.nodeType === Node.ELEMENT_NODE) apply(added as Element)
-        else if (added.nodeType === Node.TEXT_NODE && added.parentNode !== null) swapHeadline(added.parentNode, now)
+        else if (added.nodeType === Node.TEXT_NODE && added.parentNode !== null) swapHeadline(added.parentNode, now, seat)
       }
     }
   })
   observer.observe(document.body, { childList: true, subtree: true })
-  // Re-greet across a day boundary without a remount (hourly check is plenty).
-  const timer = window.setInterval(() => refreshHeadlines(now), 60 * 60 * 1000)
+  // Re-greet across a day boundary without a remount (hourly check is plenty),
+  // and immediately whenever the seat changes.
+  const timer = window.setInterval(() => refreshHeadlines(now, seat), 60 * 60 * 1000)
+  const unsubscribeSeat = options.seat?.subscribe(() => refreshHeadlines(now, seat)) ?? (() => {})
   return () => {
+    unsubscribeSeat()
     observer.disconnect()
     window.clearInterval(timer)
   }

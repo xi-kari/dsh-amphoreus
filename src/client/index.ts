@@ -15,6 +15,8 @@ import type {} from '@deepseek-ai/dsh-client-ui-theme/client'
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { HeroBrandMark, SidebarBrandMark, SidebarBrandName } from './brand.tsx'
+import { BRAND_ICON_DATA_URL, BRAND_MANIFEST_DATA_URL } from './brand-icon.ts'
+import { installShellBrand } from './brand-shell.ts'
 import { installGarnish } from './garnish.ts'
 import { createEnterSeatQueue } from './enter-seat-queue.ts'
 import type { HandoffDeps } from './handoff.ts'
@@ -24,6 +26,7 @@ import { SeatNameplate } from './nameplate.tsx'
 import { PipelineRail } from './pipeline-rail.tsx'
 import { PortalFooterAction, PortalOverlay, type PortalFooterInjected, type PortalOverlayInjected } from './portal.tsx'
 import { createPortalStore } from './portal-store.ts'
+import { createSeatWatch } from './seat-watch.ts'
 import { createDirectChatRequests, openDirectSeatChat, startSeatSession } from './seat-actions.ts'
 import { assertSessionUnarchived, createSessionArchiveAction } from './session-archive.ts'
 import { SeatBrowser, type SeatBrowserInjected } from './seat-browser.tsx'
@@ -58,6 +61,7 @@ export function apply(ctx: ClientContext): void {
     mode: () => model.getSnapshot().state?.effectiveConfig.magazineMode ?? 'light',
     subscribe: (listener: () => void) => model.subscribe(listener),
   }
+  const t = ctx.locale.bind(NS)
   ctx.effect(() => registerGlobalTheme(ctx, model), 'amphoreus: global theme')
   const seatLayer = createSeatLayer(ctx, model)
   ctx.effect(() => () => seatLayer.dispose(), 'amphoreus: seat theme')
@@ -68,6 +72,8 @@ export function apply(ctx: ClientContext): void {
     seatLayer,
   )
   ctx.effect(() => () => seatTheme.dispose(), 'amphoreus: seat wallpaper')
+  const seatWatch = createSeatWatch()
+  ctx.effect(() => () => seatWatch.dispose(), 'amphoreus: seat watch')
   const portal = createPortalStore()
   const openPortal = portal.open
   const enterSeatQueue = createEnterSeatQueue()
@@ -240,12 +246,17 @@ export function apply(ctx: ClientContext): void {
   ctx.slots.inject('sidebar.brand.name', () =>
     ctx.slots.register({ name: 'sidebar.brand.name', priority: -10, locale: NS }, SidebarBrandName))
   ctx.slots.inject('conversation.hero.brand.mark', () =>
-    ctx.slots.register({ name: 'conversation.hero.brand.mark', priority: -10, inject: () => ({ assetsConfigured }) }, HeroBrandMark))
+    ctx.slots.register({ name: 'conversation.hero.brand.mark', priority: -10, inject: () => ({ assetsConfigured, seat: seatWatch }) }, HeroBrandMark))
 
-  // DOM garnish: time-of-day greeting headline + chimera folder stickers.
-  ctx.effect(() => installGarnish({ assetsConfigured }), 'amphoreus: garnish')
+  // DOM garnish: seat-aware time-of-day greeting headline + chimera folder stickers.
+  ctx.effect(() => installGarnish({ assetsConfigured, seat: seatWatch }), 'amphoreus: garnish')
+  // Tab chrome: product title, favicon and web-app manifest become δ-me13 (no vendor residue).
+  ctx.effect(() => installShellBrand({
+    name: t('brand.name'),
+    iconHref: BRAND_ICON_DATA_URL,
+    manifestHref: BRAND_MANIFEST_DATA_URL,
+  }), 'amphoreus: shell brand')
 
-  const t = ctx.locale.bind(NS)
   ctx.slots.inject('settings.section', () => ctx.slots.register({
     name: 'settings.section',
     id: 'amphoreus',

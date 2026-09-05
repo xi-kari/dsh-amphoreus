@@ -3,7 +3,7 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { deriveAssets } from '../lib/derive.js'
 
-const KINDS = ['covers', 'chronicle', 'cards', 'stickers', 'wallpapers']
+const KINDS = ['covers', 'chronicle', 'cards', 'stickers', 'wallpapers', 'home']
 const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
 function contained(root, child) {

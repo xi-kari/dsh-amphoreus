@@ -1,11 +1,16 @@
 import { spawn, spawnSync } from 'node:child_process'
-import { readFile, realpath, rename, rm, stat, writeFile, mkdir } from 'node:fs/promises'
-import { basename, dirname, isAbsolute, relative, resolve, sep } from 'node:path'
+import { readdir, readFile, realpath, rename, rm, stat, writeFile, mkdir } from 'node:fs/promises'
+import { basename, dirname, extname, isAbsolute, relative, resolve, sep } from 'node:path'
 import {
   BRAND_STICKER,
   CHIMERA_STICKERS,
+  GLOBAL_HOME_DIR,
+  GLOBAL_WALLPAPER_DIRS,
   GLOBAL_WALLPAPERS,
   HERO_VISUALS,
+  HOME_WALLPAPER_EXTENSIONS,
+  HOME_WALLPAPER_ROOT,
+  homeWallpaperFile,
 } from '../shared/heroes.ts'
 import type { DeriveKind, DeriveProgress } from '../shared/api.ts'
 import { listZip, readZipEntry } from './zip.ts'
@@ -40,7 +45,9 @@ interface SourceFile {
   readonly size: number
 }
 
-const DERIVE_KINDS: readonly DeriveKind[] = ['covers', 'chronicle', 'cards', 'stickers', 'wallpapers']
+const DERIVE_KINDS: readonly DeriveKind[] = ['covers', 'chronicle', 'cards', 'stickers', 'wallpapers', 'home']
+/** Upper bound of home wallpapers derived per folder (file names sorted, extras ignored). */
+export const MAX_HOME_WALLPAPERS = 12
 const MAX_SOURCE_BYTES = 64 * 1024 * 1024
 const MAX_MAGICK_OUTPUT_BYTES = 64 * 1024 * 1024
 const MAX_MAGICK_ERROR_BYTES = 1024 * 1024
@@ -86,6 +93,46 @@ export function derivedPaths(cacheDir: string, heroId: string): {
 export function derivedWallpaperPath(cacheDir: string, index: number): string {
   if (!Number.isSafeInteger(index) || index < 0 || index >= GLOBAL_WALLPAPERS.length) throw new Error(`invalid wallpaper index: ${index}`)
   return cachePath(cacheDir, '_global', `wallpaper-${index}.webp`)
+}
+
+/** `<cache>/<heroId|_global>/home-NN.webp` for the n-th home wallpaper of a seat (or the all-seat space). */
+export function derivedHomeWallpaperPath(cacheDir: string, owner: string, index: number): string {
+  if (owner !== '_global') validateHeroId(owner)
+  if (!Number.isSafeInteger(index) || index < 0 || index >= MAX_HOME_WALLPAPERS) throw new Error(`invalid home wallpaper index: ${index}`)
+  return cachePath(cacheDir, owner, homeWallpaperFile(index))
+}
+
+/**
+ * Sorted image files directly inside `<assetsRoot>/<HOME_WALLPAPER_ROOT>/<folder>` (no recursion,
+ * by extension allow-list, capped at MAX_HOME_WALLPAPERS). A missing folder yields an empty list.
+ */
+export async function listHomeWallpapers(assetsRoot: string, folder: string): Promise<string[]> {
+  const directory = resolve(assetsRoot, HOME_WALLPAPER_ROOT, folder)
+  if (!contained(assetsRoot, directory)) throw new Error('home wallpaper folder escapes assets root')
+  let entries
+  try {
+    entries = await readdir(directory, { withFileTypes: true })
+  } catch (error) {
+    if (isErrno(error, 'ENOENT') || isErrno(error, 'ENOTDIR')) return []
+    throw error
+  }
+  return entries
+    .filter(entry => entry.isFile() && HOME_WALLPAPER_EXTENSIONS.includes(extname(entry.name).toLowerCase()))
+    .map(entry => entry.name)
+    .sort((left, right) => left.localeCompare(right, 'en'))
+    .slice(0, MAX_HOME_WALLPAPERS)
+}
+
+/** First GLOBAL_WALLPAPER_DIRS candidate that exists as a directory under assetsRoot, else the legacy flat folder. */
+export async function resolveGlobalWallpaperDir(assetsRoot: string): Promise<readonly string[]> {
+  for (const segments of GLOBAL_WALLPAPER_DIRS) {
+    try {
+      if ((await stat(resolve(assetsRoot, ...segments))).isDirectory()) return segments
+    } catch (error) {
+      if (!isErrno(error, 'ENOENT') && !isErrno(error, 'ENOTDIR')) throw error
+    }
+  }
+  return GLOBAL_WALLPAPER_DIRS[GLOBAL_WALLPAPER_DIRS.length - 1]!
 }
 
 export function derivedGlobalStickerPath(cacheDir: string, name: 'brand' | `chimera-${string}`): string {
@@ -402,13 +449,38 @@ export async function deriveAssets(options: DeriveOptions, runtime: DeriveRuntim
     ]
     await ordinary('stickers', [...seatJobs, ...globalJobs])
   }
+  const wallpaperArgs = ['-', '-auto-orient', '-resize', '2560x2560>', '-quality', '80', 'webp:-']
   if (requested.has('wallpapers')) {
+    const globalDir = await resolveGlobalWallpaperDir(assetsRoot)
     await ordinary('wallpapers', GLOBAL_WALLPAPERS.map((file, index) => ({
-      source: ['昔涟壁纸', file],
+      source: [...globalDir, file],
       target: derivedWallpaperPath(cacheDir, index),
       current: `_global wallpaper-${index}.webp`,
-      args: ['-', '-auto-orient', '-resize', '2560x2560>', '-quality', '80', 'webp:-'],
+      args: wallpaperArgs,
     })))
+  }
+  if (requested.has('home')) {
+    // Home-space wallpapers: one folder per seat plus the all-seat group shots. Folder
+    // contents are scanned (any file names), so users drop images in without renaming.
+    const owners = [
+      ...HERO_VISUALS.map(hero => ({ owner: hero.heroId, folder: hero.assets.homeWallpaperDir })),
+      { owner: '_global', folder: GLOBAL_HOME_DIR },
+    ]
+    const jobs: { source: readonly string[]; target: string; current: string; args: readonly string[] }[] = []
+    for (const { owner, folder } of owners) {
+      const files = await listHomeWallpapers(assetsRoot, folder)
+      files.forEach((file, index) => jobs.push({
+        source: [HOME_WALLPAPER_ROOT, folder, file],
+        target: derivedHomeWallpaperPath(cacheDir, owner, index),
+        current: `${owner} ${homeWallpaperFile(index)}`,
+        args: wallpaperArgs,
+      }))
+      // Drop stale extras when a folder shrank so the served set mirrors the folder.
+      for (let index = files.length; index < MAX_HOME_WALLPAPERS; index += 1) {
+        await rm(derivedHomeWallpaperPath(cacheDir, owner, index), { force: true }).catch(() => {})
+      }
+    }
+    if (jobs.length > 0) await ordinary('home', jobs)
   }
 
   return { written, skipped, failed, startedAt, finishedAt: Date.now() }

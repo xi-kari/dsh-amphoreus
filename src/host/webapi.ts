@@ -9,7 +9,7 @@ import { z } from 'zod'
 import type { AmphoreusAssetsStatus, AmphoreusState, DeriveProgress, PublicSuite, WorkbenchBoot, WorkbenchStatus } from '../shared/api.ts'
 import { GLOBAL_WALLPAPERS } from '../shared/heroes.ts'
 import type { AmphoreusConfig } from './config.ts'
-import { deriveAssets, probeMagick, type DeriveOptions, type DeriveResult } from './derive.ts'
+import { deriveAssets, probeMagick, resolveGlobalWallpaperDir, type DeriveOptions, type DeriveResult } from './derive.ts'
 import { publicWorkbench } from './firstframe.ts'
 import { BindingSchema, CanvasSchema, MemorySchema, ObservationSchema, updateAmphoreusGlobal, type AmphoreusStores } from './store.ts'
 import type { SuiteResolver } from './bridge.ts'
@@ -672,7 +672,9 @@ export class AmphoreusWebApi {
       json(response, 404, { error: 'wallpaper not found' })
       return
     }
-    await this.#serveAssetPath(response, ['昔涟壁纸', name])
+    const configured = this.#config.assetsRoot.trim()
+    const directory = configured === '' ? ['昔涟壁纸'] : await resolveGlobalWallpaperDir(resolve(configured))
+    await this.#serveAssetPath(response, [...directory, name])
   }
 
   async #deriveRoute(request: IncomingMessage, response: ServerResponse): Promise<void> {
@@ -1074,7 +1076,7 @@ function boundedText(value: string, limit: number): string {
 
 export function workbenchPage(boot: WorkbenchBoot): string {
   const serializedBoot = JSON.stringify(boot).replaceAll('<', '\\u003c')
-  return '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>翁法罗斯工作台</title><link rel="stylesheet" href="/amphoreus/workbench/styles.css"></head><body><div id="app"></div><script>globalThis.__AMPHOREUS_BOOT__=' + serializedBoot + '</script><script src="/amphoreus/workbench/app.js"></script></body></html>'
+  return '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>δ-me13 工作台</title><link rel="stylesheet" href="/amphoreus/workbench/styles.css"></head><body><div id="app"></div><script>globalThis.__AMPHOREUS_BOOT__=' + serializedBoot + '</script><script src="/amphoreus/workbench/app.js"></script></body></html>'
 }
 
 function redirect(response: ServerResponse, location: string): void {

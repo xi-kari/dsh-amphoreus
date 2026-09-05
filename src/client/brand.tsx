@@ -1,11 +1,14 @@
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import { useState } from 'react'
-import { BRAND_STICKER, stickerAssetUrl } from '../shared/heroes.ts'
+import { useState, useSyncExternalStore } from 'react'
+import { BRAND_STICKER, heroVisualById, stickerAssetUrl } from '../shared/heroes.ts'
+import type { SeatWatch } from './seat-watch.ts'
 import css from './brand.module.css'
 
 export interface BrandMarkInjected {
   /** True when assetsRoot serves local stickers (mini-Cyrene mark). */
   readonly assetsConfigured: () => boolean
+  /** Current seat mirror; when present the hero mark shows that seat's own sticker. */
+  readonly seat?: Pick<SeatWatch, 'getSnapshot' | 'subscribe'>
 }
 
 export type SidebarBrandMarkProps = PropsRuntime<'sidebar.brand.mark'> & BrandMarkInjected
@@ -16,39 +19,47 @@ export function SidebarBrandMark({ size, assetsConfigured }: SidebarBrandMarkPro
   return <AmphoreusMark size={size} className={css.sidebarMark} assetsConfigured={assetsConfigured} />
 }
 
-export function HeroBrandMark({ size, className, assetsConfigured }: HeroBrandMarkProps) {
+const NO_SEAT = (): string | null => null
+const NO_SUBSCRIBE = (): (() => void) => () => {}
+
+export function HeroBrandMark({ size, className, assetsConfigured, seat }: HeroBrandMarkProps) {
+  const heroId = useSyncExternalStore(seat?.subscribe ?? NO_SUBSCRIBE, seat?.getSnapshot ?? NO_SEAT)
   const classes = [css.heroMark, className].filter(Boolean).join(' ')
-  return <AmphoreusMark size={size} className={classes} assetsConfigured={assetsConfigured} />
+  const sticker = heroId === null ? undefined : heroVisualById(heroId)?.assets.sticker
+  return <AmphoreusMark size={size} className={classes} assetsConfigured={assetsConfigured} {...(sticker === undefined ? {} : { sticker })} />
 }
 
 export function SidebarBrandName({ t }: SidebarBrandNameProps) {
   return (
     <span className={css.wordmark}>
       <strong>{t('brand.name')}</strong>
-      <span aria-hidden="true">XIII</span>
+      <span aria-hidden="true">CHRYSOS</span>
     </span>
   )
 }
 
-export function AmphoreusMark({ size, className, assetsConfigured }: {
+export function AmphoreusMark({ size, className, assetsConfigured, sticker = BRAND_STICKER }: {
   readonly size: number
   readonly className?: string | undefined
   readonly assetsConfigured?: (() => boolean) | undefined
+  /** Sticker file (表情包/) to show; defaults to the mini-Cyrene brand mark. */
+  readonly sticker?: string
 }) {
-  // Mini-Cyrene sticker when local assets serve; abstract mark otherwise
+  // Sticker when local assets serve; abstract mark otherwise
   // (and as an onError fallback so a broken asset never leaves a hole).
-  const [broken, setBroken] = useState(false)
-  if (assetsConfigured?.() === true && !broken) {
+  const [broken, setBroken] = useState<string | null>(null)
+  if (assetsConfigured?.() === true && broken !== sticker) {
     return (
       <img
+        key={sticker}
         className={className}
-        src={stickerAssetUrl(BRAND_STICKER)}
+        src={stickerAssetUrl(sticker)}
         width={size}
         height={size}
         style={{ objectFit: 'contain', display: 'block' }}
         alt=""
         aria-hidden="true"
-        onError={() => setBroken(true)}
+        onError={() => setBroken(sticker)}
       />
     )
   }
