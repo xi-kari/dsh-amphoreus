@@ -329,6 +329,8 @@ export function apply(ctx: ClientContext): void {
     enter: enterSeatView,
     togglePortal: portal.toggle,
     isBusy: seatStartGuard.isBusy,
+    // The setup wizard is aria-modal: Alt+digit / Alt+0 must not switch seats or open the portal underneath it.
+    isSuspended: () => setup.getSnapshot().open,
     onError: error => { console.warn('[dsh-amphoreus] seat hotkey:', error) },
   }), 'amphoreus: seat hotkeys')
   // Degrade, don't gate: a profile without the slash pipeline still boots the plugin, only `/seat` is absent.
@@ -412,8 +414,13 @@ export function apply(ctx: ClientContext): void {
         if (skillName !== undefined) openDirectSession(sessionId)
       },
       startSeatSession: async skillName => {
-        const sessionId = await startSeatSession(seatDeps, skillName, { open: false })
-        openDirectSession(sessionId)
+        // Shares seatStartGuard with the hotkey / `/seat` paths: a start already in flight from
+        // either side (or not yet visible in the snapshot) is not repeated from the sidebar.
+        let sessionId: string | undefined
+        await seatStartGuard.run(skillName, async () => {
+          sessionId = await startSeatSession(seatDeps, skillName, { open: false })
+          openDirectSession(sessionId)
+        })
         return sessionId
       },
       startDirectorySession: workspaceId => ctx.uiWorkspace.startSession(workspaceId as WorkspaceId),
@@ -498,6 +505,9 @@ export function apply(ctx: ClientContext): void {
       model,
       portalOpen: () => portal.getSnapshot().open,
       subscribePortal: portal.subscribe,
+      // `setup` is declared below (inject factories run at render, never during apply).
+      setupOpen: () => setup.getSnapshot().open,
+      subscribeSetup: listener => setup.subscribe(listener),
     }),
   }, SuiteNoticeBanner),
   registerSetupOverlay(ctx.slots, (): SetupWizardInjected => ({

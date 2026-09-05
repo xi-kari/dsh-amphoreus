@@ -61,7 +61,12 @@ const SEEDED_PREFS: AmphoreusGlobal['prefs'] = {
     aglaea: { fit: 'contain', x: 10, y: 90 },
     mydei: { scale: 2, paused: true },
   },
+  // Keys owned by the other feature branches: a scheme import must leave every one of them alone.
+  seatSounds: { master: false, seats: { anaxa: { greeting: { volume: 0.25 } } } },
+  assetsRoot: 'D:/assets',
+  setupDismissedAt: 1234,
 }
+const FOREIGN_PREF_KEYS = ['seatSounds', 'assetsRoot', 'setupDismissedAt'] as const
 
 test('GET visual-scheme exports only the three visual prefs, sparse, as an attachment', async () => {
   const h = await harness()
@@ -84,7 +89,7 @@ test('GET visual-scheme exports only the three visual prefs, sparse, as an attac
     assert.equal(body.magazineMode, 'full')
     assert.deepEqual(body.grammar, SEEDED_PREFS.grammar)
     assert.deepEqual(body.customWallpapers, SEEDED_PREFS.customWallpapers)
-    for (const key of ['lastSeat', 'wallpaperCursor', 'quickPhrases', 'quickPhrasesInitialized']) assert.equal(Object.hasOwn(body, key), false, key)
+    for (const key of ['lastSeat', 'wallpaperCursor', 'quickPhrases', 'quickPhrasesInitialized', ...FOREIGN_PREF_KEYS]) assert.equal(Object.hasOwn(body, key), false, key)
 
     const head = await fetch(`${h.origin}${PATH}`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-amphoreus-nonce': NONCE }, body: '{}' })
     assert.equal(head.status, 405)
@@ -125,6 +130,7 @@ test('PUT visual-scheme replaces exactly the visual prefs and keeps every other 
     assert.equal(prefs.wallpaperCursor, 7)
     assert.deepEqual(prefs.quickPhrases, ['继续', '停'])
     assert.equal(prefs.quickPhrasesInitialized, true)
+    for (const key of FOREIGN_PREF_KEYS) assert.deepEqual(prefs[key], SEEDED_PREFS[key], key)
     assert.equal(GlobalSchema.safeParse(h.read()).success, true, 'stored global still parses')
 
     // Minimal file clears all three visual keys (restore factory look) but nothing else.
@@ -133,6 +139,7 @@ test('PUT visual-scheme replaces exactly the visual prefs and keeps every other 
     for (const key of ['magazineMode', 'grammar', 'customWallpapers']) assert.equal(Object.hasOwn(h.read().prefs, key), false, key)
     assert.equal(h.read().prefs.lastSeat, 'amphoreus-aglaea')
     assert.deepEqual(h.read().prefs.quickPhrases, ['继续', '停'])
+    for (const key of FOREIGN_PREF_KEYS) assert.deepEqual(h.read().prefs[key], SEEDED_PREFS[key], key)
 
     // Round trip: export → import yields identical stored visual prefs.
     h.write({ ...h.read(), prefs: structuredClone(SEEDED_PREFS) })

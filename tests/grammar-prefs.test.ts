@@ -77,3 +77,78 @@ test('PUT /amphoreus/api/prefs patches, merges, rejects unknown knobs, and reset
     await once(server, 'close')
   }
 })
+
+test('PUT /amphoreus/api/prefs with keys from several features lands every key, drops none, and ignores the wizard-only assetsRoot', async () => {
+  let global = structuredClone(INITIAL_GLOBAL)
+  global = {
+    ...global,
+    prefs: {
+      ...global.prefs,
+      grammar: { blurScale: 1.2 },
+      customWallpapers: { aglaea: { x: 10 } },
+      assetsRoot: 'D:/assets',
+      seatSounds: { master: true, seats: { mydei: { send: { volume: 0.5 } } } },
+    },
+  }
+  const stores = {
+    main: {
+      global: { get: () => global, set: async (value: typeof global) => { global = value } },
+      table: () => ({ entries: () => new Map().entries() }),
+    },
+    canvas: { table: () => ({ entries: () => new Map().entries() }) },
+    close: async () => {},
+  } as unknown as AmphoreusStores
+  const api = new AmphoreusWebApi({} as Context, {
+    config: fixtureConfig(),
+    stores,
+    resolver: { current: () => undefined } as unknown as SuiteResolver,
+    nonce: NONCE,
+  })
+  const server = createServer((request, response) => { void api.handle(request, response) })
+  server.listen(0, '127.0.0.1')
+  await once(server, 'listening')
+  const address = server.address()
+  assert.ok(address !== null && typeof address !== 'string')
+  const put = (body: unknown) => fetch(`http://127.0.0.1:${address.port}/amphoreus/api/prefs`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json', 'x-amphoreus-nonce': NONCE },
+    body: JSON.stringify(body),
+  })
+  try {
+    const mixed = await put({
+      quickPhrases: ['a'],
+      grammar: { blurScale: 0.5 },
+      seatSounds: { master: false, seats: { anaxa: { send: { volume: 1 } } } },
+      setupDismissedAt: 7,
+      magazineMode: 'light',
+    })
+    assert.equal(mixed.status, 200)
+    assert.deepEqual(global.prefs, {
+      ...INITIAL_GLOBAL.prefs,
+      quickPhrases: ['a'],
+      quickPhrasesInitialized: true,
+      grammar: { blurScale: 0.5 },
+      customWallpapers: { aglaea: { x: 10 } },
+      assetsRoot: 'D:/assets',
+      seatSounds: { master: false, seats: { mydei: { send: { volume: 0.5 } }, anaxa: { send: { volume: 1 } } } },
+      setupDismissedAt: 7,
+      magazineMode: 'light',
+    })
+
+    const partial = await put({ setupDismissedAt: null, seatSounds: { seats: { anaxa: null } } })
+    assert.equal(partial.status, 200)
+    assert.equal(Object.hasOwn(global.prefs, 'setupDismissedAt'), false)
+    assert.deepEqual(global.prefs.seatSounds, { master: false, seats: { mydei: { send: { volume: 0.5 } } } })
+    assert.deepEqual(global.prefs.grammar, { blurScale: 0.5 }, 'untouched keys survive a partial body')
+    assert.equal(global.prefs.assetsRoot, 'D:/assets')
+
+    // assetsRoot is owned by the validated PUT /api/assets/root: the generic prefs route silently ignores it.
+    const rootAttempt = await put({ assetsRoot: 'X:/elsewhere' })
+    assert.equal(rootAttempt.status, 200)
+    assert.equal(global.prefs.assetsRoot, 'D:/assets')
+    assert.equal(GlobalSchema.safeParse(global).success, true)
+  } finally {
+    server.close()
+    await once(server, 'close')
+  }
+})

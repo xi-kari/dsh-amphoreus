@@ -10,6 +10,9 @@ export interface SuiteNoticeInjected {
   readonly model: Pick<AmphoreusClientModel, 'reparse'>
   readonly portalOpen: () => boolean
   readonly subscribePortal: (listener: () => void) => () => void
+  /** Setup wizard (aria-modal sibling in shell.overlay): the banner must not paint or stay clickable above it. */
+  readonly setupOpen: () => boolean
+  readonly subscribeSetup: (listener: () => void) => () => void
 }
 
 export type SuiteNoticeBannerProps =
@@ -26,15 +29,16 @@ function errorMessage(error: unknown): string {
  * card was already injected lag (until /clear, resume or a new session), and a
  * genuine restart is needed only when the suite root was missing at startup.
  */
-export function SuiteNoticeBanner({ store, model, portalOpen, subscribePortal, t }: SuiteNoticeBannerProps) {
+export function SuiteNoticeBanner({ store, model, portalOpen, subscribePortal, setupOpen, subscribeSetup, t }: SuiteNoticeBannerProps) {
   const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot)
   const portalIsOpen = useSyncExternalStore(subscribePortal, portalOpen)
+  const setupIsOpen = useSyncExternalStore(subscribeSetup, setupOpen)
   const [busy, setBusy] = useState(false)
   // Keyed to the notice so a failure reported for one notice never lingers under the next.
   const [error, setError] = useState<{ readonly id: string; readonly message: string }>()
   const notice = snapshot.active
 
-  if (notice === undefined || portalIsOpen) return null
+  if (notice === undefined || portalIsOpen || setupIsOpen) return null
   const errorText = error?.id === notice.id ? error.message : undefined
 
   // Reparse is a no-op on the host when no watcher exists (root missing when the resolver started).

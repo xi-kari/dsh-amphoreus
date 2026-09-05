@@ -413,7 +413,9 @@ test('banner source: role=status, polite live region, portal gate, no ctx/fetch/
   assert.match(bannerSource, /aria-live="polite"/)
   assert.match(bannerSource, /useSyncExternalStore\(store\.subscribe, store\.getSnapshot\)/)
   assert.match(bannerSource, /useSyncExternalStore\(subscribePortal, portalOpen\)/)
-  assert.match(bannerSource, /if \(notice === undefined \|\| portalIsOpen\) return null/)
+  // The setup wizard is an aria-modal sibling in shell.overlay: the banner yields to it exactly like to the portal.
+  assert.match(bannerSource, /useSyncExternalStore\(subscribeSetup, setupOpen\)/)
+  assert.match(bannerSource, /if \(notice === undefined \|\| portalIsOpen \|\| setupIsOpen\) return null/)
   assert.match(bannerSource, /store\.dismiss\(notice\.id\)/)
   assert.match(bannerSource, /model\.reparse\(\)/)
   assert.match(bannerSource, /snapshot\.startedMissing && <span[^>]*>\{t\('suite\.restartHint'\)\}/)
@@ -462,6 +464,8 @@ test('index wires the store once at client-services and registers the banner ins
   assert.match(block, /id: 'amphoreus-suite-notice',\s*order: 10,\s*locale: NS/)
   assert.match(block, /portalOpen: \(\) => portal\.getSnapshot\(\)\.open/)
   assert.match(block, /subscribePortal: portal\.subscribe/)
+  assert.match(block, /setupOpen: \(\) => setup\.getSnapshot\(\)\.open/)
+  assert.match(block, /subscribeSetup: listener => setup\.subscribe\(listener\)/)
   assert.match(block, /\}, SuiteNoticeBanner\),/)
   const store = clientSource.indexOf('const suiteNotice = createSuiteNoticeStore(')
   assert.ok(store > clientSource.indexOf('const portal = createPortalStore()') && store < overlay)
@@ -470,4 +474,54 @@ test('index wires the store once at client-services and registers the banner ins
   assert.match(clientSource, /archivedSessionIds: \(\) => ctx\.workspaces\.list\.getSnapshot\(\)\.archivedSessionIds,/)
   assert.match(clientSource, /ctx\.effect\(\(\) => \(\) => suiteNotice\.dispose\(\), 'amphoreus: suite notice'\)/)
   assert.doesNotMatch(clientSource, /new EventSource/)
+})
+
+test('a ready state with suite undefined before the first parse (webapi answers before bridge.start) is neither missing nor a baseline', () => {
+  // Host window: /amphoreus/api/state is registered before `await bridge.start()` resolves, so the first
+  // fetch can carry `suite: undefined` while firstframe served `level: 'loading'`.
+  const model = fakeModel()
+  const store = createSuiteNoticeStore({ model, boot: { revision: 0, level: 'loading' } })
+  model.ready(stateOf({ suite: false, generation: 0 }))
+  assert.equal(store.getSnapshot().active, undefined, 'nothing is missing yet')
+  assert.equal(store.getSnapshot().notices.length, 0)
+  assert.equal(store.getSnapshot().startedMissing, false)
+  // The parsed state that follows becomes the baseline: no spurious "recovered".
+  model.ready(stateOf({ sha: 'aaa', level: 'L0', generation: 1 }))
+  assert.equal(store.getSnapshot().active, undefined)
+  assert.equal(store.getSnapshot().notices.length, 0)
+  // …and real changes after that baseline still notify.
+  model.ready(stateOf({ sha: 'bbb', level: 'L0', generation: 2 }))
+  assert.equal(store.getSnapshot().active?.kind, 'updated')
+  store.dispose()
+
+  // Same first fetch with no boot payload at all (or an L0 boot) is treated the same way.
+  const noBoot = fakeModel()
+  const store2 = createSuiteNoticeStore({ model: noBoot })
+  noBoot.ready(stateOf({ suite: false, generation: 0 }))
+  assert.equal(store2.getSnapshot().notices.length, 0)
+  noBoot.ready(stateOf({ sha: 'aaa', level: 'L0', generation: 1 }))
+  assert.equal(store2.getSnapshot().notices.length, 0)
+  store2.dispose()
+
+  // Boot L3 + suite undefined is still the genuine "no root at startup" case (covered above) — unchanged.
+  const missing = fakeModel()
+  const store3 = createSuiteNoticeStore({ model: missing, boot: { revision: 0, level: 'L3' } })
+  missing.ready(stateOf({ suite: false, generation: 0 }))
+  assert.equal(store3.getSnapshot().active?.kind, 'missing')
+  store3.dispose()
+})
+
+test('banner yields to the setup wizard (aria-modal sibling in shell.overlay) exactly like to the portal', () => {
+  const wizardCss = readFileSync(new URL('../src/client/setup-wizard.module.css', import.meta.url), 'utf8')
+  const scrimZ = Number(/\.scrim \{[^}]*z-index: (\d+);/su.exec(wizardCss)?.[1])
+  const bannerZ = Number(/\.banner \{[^}]*z-index: (\d+);/su.exec(bannerCss)?.[1])
+  assert.ok(Number.isFinite(scrimZ) && Number.isFinite(bannerZ))
+  // The banner paints above the wizard scrim by z-index, so the pair may never be mounted together:
+  // the banner returns null while the setup store reports open, and index injects that gate.
+  assert.ok(bannerZ > scrimZ, 'if this flips, the setupIsOpen gate below is what keeps the wizard usable')
+  assert.match(bannerSource, /readonly setupOpen: \(\) => boolean/)
+  assert.match(bannerSource, /readonly subscribeSetup: \(listener: \(\) => void\) => \(\) => void/)
+  assert.match(bannerSource, /portalIsOpen \|\| setupIsOpen\) return null/)
+  assert.match(clientSource, /setupOpen: \(\) => setup\.getSnapshot\(\)\.open/)
+  assert.match(clientSource, /subscribeSetup: listener => setup\.subscribe\(listener\)/)
 })

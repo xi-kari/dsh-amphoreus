@@ -190,6 +190,14 @@ export function AmphoreusSettings({ model, previewSound, t }: AmphoreusSettingsP
               : <p className={css.hintLine}>{t('settings.lastDerive')} {formatTime(state.assets.lastDerive.at)} · {state.assets.lastDerive.written}/{state.assets.lastDerive.failed}{state.assets.lastDerive.error === undefined ? '' : ` · ${state.assets.lastDerive.error}`}</p>}
           </section>
 
+          <SetupPanel
+            assets={state.assets}
+            busy={busy}
+            t={t}
+            onOpenWizard={() => setupStoreOf(model)?.open('root')}
+            onRecheck={async () => { await model.checkAssets() }}
+            onResetRoot={() => model.setAssetsRoot(null)}
+          />
           <GrammarPanel
             grammar={state.effectiveConfig.grammar}
             busy={busy}
@@ -244,17 +252,9 @@ export function AmphoreusSettings({ model, previewSound, t }: AmphoreusSettingsP
             config={state.effectiveConfig.memory}
             busy={busy}
             t={t}
-            onAdd={(skill, text) => { void run('memory', () => model.addMemoryNote(skill, text)) }}
+            onAdd={(skill, text) => model.addMemoryNote(skill, text)}
             onDelete={(skill, id) => { void run('memory', () => model.deleteMemoryNote(skill, id)) }}
             onSettings={(skill, patch) => { void run('memory', () => model.setMemorySettings(skill, patch)) }}
-          />
-          <SetupPanel
-            assets={state.assets}
-            busy={busy}
-            t={t}
-            onOpenWizard={() => setupStoreOf(model)?.open('root')}
-            onRecheck={async () => { await model.checkAssets() }}
-            onResetRoot={() => model.setAssetsRoot(null)}
           />
 
           <section className={css.panel} aria-labelledby="amphoreus-workbench">

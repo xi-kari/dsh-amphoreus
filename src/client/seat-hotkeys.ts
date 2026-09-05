@@ -36,6 +36,8 @@ export interface SeatHotkeyDeps {
   readonly togglePortal: () => void
   /** Extra busy predicate (e.g. the sidebar's own in-flight set); the installer also tracks its own starts. */
   readonly isBusy?: (skillName: string) => boolean
+  /** While true (a modal overlay such as the setup wizard is open) every chord is ignored and left to the page. */
+  readonly isSuspended?: () => boolean
   readonly onError?: (error: unknown) => void
 }
 
@@ -73,6 +75,7 @@ export function installSeatHotkeys(deps: SeatHotkeyDeps): () => void {
   const inflight = new Set<string>()
   const listener = (event: SeatHotkeyEvent): void => {
     if (event.isComposing === true || event.repeat === true || event.defaultPrevented === true) return
+    if (deps.isSuspended?.() === true) return
     if (isEditableTarget(event.target)) {
       // Plain digits are text; Alt+digit that yields a glyph (macOS Option+1 → '¡') is text input too.
       if (!event.altKey || !/^\d$/u.test(event.key)) return

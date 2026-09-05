@@ -15,6 +15,7 @@ const MEMORY_KEYS = [
   'settings.memoryAutoNote', 'settings.memoryAutoNoteTip', 'settings.memoryInjectLimit', 'settings.memoryEmpty',
   'settings.memoryAuthorSeat', 'settings.memoryAuthorUser', 'settings.memoryAuthorLegacy', 'settings.memoryDelete',
   'settings.memoryAdd', 'settings.memoryPlaceholder', 'settings.memoryCommandHint', 'settings.memoryInactive',
+  'settings.memoryAdding', 'settings.memoryNoSeats',
 ] as const
 
 test('memory settings keys exist in both dictionaries and key sets stay identical', () => {
@@ -38,6 +39,15 @@ test('memory panel is mounted in the side column after the wallpaper panel and u
   assert.ok(wallpaper >= 0 && wallpaper < memory && memory < workbench)
   const mount = settings.slice(memory, workbench)
   assert.match(mount, /model\.addMemoryNote\(skill, text\)/)
+  // Add returns the model promise (not `void run(...)`): the panel clears the draft only after the POST succeeded
+  // and reports a failure next to the textarea instead of in the page header.
+  assert.match(mount, /onAdd=\{\(skill, text\) => model\.addMemoryNote\(skill, text\)\}/)
+  assert.match(panel, /readonly onAdd: \(skill: string, text: string\) => Promise<void>/)
+  assert.match(panel, /await onAdd\(seat\.skillName, text\)\s*\n\s*setDrafts\(current => \(\{ \.\.\.current, \[seat\.skillName\]: '' \}\)\)/)
+  assert.match(panel, /catch \(error\) \{\s*setAddError\(\{ skill: seat\.skillName/)
+  assert.match(panel, /rowError === undefined \? null : <p className=\{css\.error\} role="alert">/)
+  // Empty state when no seat is deployed and no record exists.
+  assert.match(panel, /rows\.length === 0\s*\? <p className=\{shell\.empty\}>\{t\('settings\.memoryNoSeats'\)\}<\/p>/)
   assert.match(mount, /model\.deleteMemoryNote\(skill, id\)/)
   assert.match(mount, /model\.setMemorySettings\(skill, patch\)/)
   assert.match(mount, /config=\{state\.effectiveConfig\.memory\}/)
@@ -76,7 +86,7 @@ test('memory panel CSS uses only DSW alias tokens (no raw colors, no non-alias d
   for (const declaration of panelCss.matchAll(/(?:^|;|\{)\s*(?:color|background|border-color|border-left-color|outline):\s*([^;]+);/gmu)) {
     assert.match(declaration[1]!, /var\(--dsw-alias-|var\(--amph-seat-accent|transparent|^0$|solid/u, declaration[1])
   }
-  for (const className of ['list', 'row', 'head', 'toggle', 'notes', 'note', 'badge', 'compose', 'textarea', 'counter', 'limit']) {
+  for (const className of ['list', 'row', 'head', 'toggle', 'notes', 'note', 'badge', 'compose', 'textarea', 'counter', 'limit', 'error']) {
     assert.match(panelCss, new RegExp(`\\.${className}(?:\\b|\\[)`), className)
   }
 })

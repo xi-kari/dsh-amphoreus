@@ -37,7 +37,20 @@ async function fixture() {
     main: {
       global: { get: () => global, set: async (value: typeof global) => { global = value } },
       table: (name: string) => name === 'seats'
-        ? { get: (key: string) => seats.get(key), put: async (key: string, value: SeatRecord) => { puts.push([key, value]); seats.set(key, value) }, entries: () => seats.entries() }
+        ? {
+            get: (key: string) => seats.get(key),
+            put: async (key: string, value: SeatRecord) => { puts.push([key, value]); seats.set(key, value) },
+            // Platform semantics: atomic read-modify-write at the queue slot; a missing key rejects.
+            update: async (key: string, transform: (current: SeatRecord) => SeatRecord) => {
+              const current = seats.get(key)
+              if (current === undefined) throw Object.assign(new Error('missing-key'), { code: 'missing-key' })
+              const next = transform(current)
+              puts.push([key, next])
+              seats.set(key, next)
+              return next
+            },
+            entries: () => seats.entries(),
+          }
         : { entries: () => empty.entries() },
     },
     canvas: { table: () => ({ entries: () => empty.entries() }) },
@@ -133,4 +146,30 @@ test('the seat preset branch sits after the exact /amphoreus/api/seats check and
   const route = source.slice(source.indexOf('async #seatPresetRoute'), source.indexOf('#authorize(request: IncomingMessage'))
   assert.match(route, /SKILL_NAME\.test\(skill\)/u)
   assert.match(route, /await readJson\(request\)/u)
+})
+
+test('PUT seats/<skill>/preset merges against the live record: a reconcile landing between read and write is not reverted', async () => {
+  const { seats, server, put } = await fixture()
+  try {
+    // Simulate reconcileSeats writing status/name changes right after the route read the seat (before the body arrived).
+    const originalGet = seats.get.bind(seats)
+    let renamed = false
+    seats.get = ((key: string) => {
+      const value = originalGet(key)
+      if (value !== undefined && !renamed) {
+        renamed = true
+        queueMicrotask(() => { seats.set(key, { ...value, displayName: '阿格莱雅（改）', lastSeenAt: 99 }) })
+      }
+      return value
+    }) as typeof seats.get
+    const stored = await put(SKILL, { permission: 'read-only' })
+    assert.equal(stored.status, 200)
+    const record = seats.get(SKILL)!
+    assert.deepEqual(record.preset, { permission: 'read-only' })
+    assert.equal(record.displayName, '阿格莱雅（改）', 'the concurrent reconcile write survives')
+    assert.equal(record.lastSeenAt, 99)
+  } finally {
+    server.close()
+    await once(server, 'close')
+  }
 })

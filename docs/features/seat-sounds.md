@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | 宿主 | `src/host/seat-sounds.ts` `SeatSoundStore` | 与 `custom-wallpapers.ts` 平行的兄弟模块（未重构原文件）。`scan / list / get / urlOf / put / remove / serve`；一席两槽 `greeting`/`send`，上传即替换。 |
 | 路由 | `PUT|DELETE /amphoreus/api/seat-sound/<heroId>/<slot>` | PUT 二进制正文，`content-type` 为音频 MIME；或 **空 / `application/octet-stream`** + `x-amphoreus-ext: mp3…`（Windows 上 .ogg/.flac 的 `File.type` 常为空）。其它已声明类型（如 `image/png`）即使带扩展名提示也 415。需 `x-amphoreus-nonce`。415 未知类型 / 413 超限 / 400 非法 hero 或槽位 / 503 无 dataDir。 |
-| 路由 | `GET|HEAD /amphoreus/seat-sound/<heroId>/<file>` | Range（206/416）、`cache-control: private, max-age=31536000, immutable`、`nosniff`、realpath 包含校验；URL 带 `?v=<mtime>`。 |
+| 路由 | `GET|HEAD /amphoreus/seat-sound/<heroId>/<file>` | Range（206/416）、`cache-control: private, max-age=31536000, immutable`、`nosniff`、realpath 包含校验（根目录也经 `realpath` 规范化后再比较——dataDir 位于 junction / 符号链接之后时文件的 realpath 才落在根内，否则全部 404；`scan()` 时重置缓存的规范根）；URL 带 `?v=<mtime>`。 |
 | SSE | `state-change` table `seat-sounds` | put/remove 后推送，客户端模型按现有 120 ms 去抖刷新。 |
 | 状态 | `AmphoreusState.seatSounds: SeatSoundInfo[]` | `{heroId, slot, url, mime, bytes, prefs}`，prefs 已合并默认值。 |
 | 偏好 | `prefs.seatSounds?: { master?, seats?: Record<heroId, { greeting?: {enabled?, volume?}, send?: 同 }> }` | 全部 `.optional()`，旧全局仍可解析。`PUT /amphoreus/api/prefs` `{ seatSounds: patch }` 部分补丁，seat 条目为 `null` 时删除。删除文件时同步清掉该槽偏好。 |

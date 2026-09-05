@@ -28,7 +28,7 @@
 - **`matchEnter` 只认 `/seat` 精确 token**：`/seats`、`/seatx` 等不会被截获，继续走默认链路。
 - **带图片时拒绝整个提交**：`/seat` 的 claim 不声明图片支持；若输入框附带图片，`matchEnter` 按平台契约抛出 `seat.imagesUnsupported`，输入机把它显示为错误通知并原样保留文字与图片（与 ui-commands 的 `refuseImages` 一致），不会出现“席位切了、图片留在旧会话”的情况。
 - **防抖**：同一 skill 的进入操作在飞行中时再次按键被吞掉（`preventDefault`）但不重复启动；不同席位可并发。`event.repeat`、`event.isComposing`、`defaultPrevented` 一律忽略。
-- **新建会话的共享守卫**：`startSeatSession` 返回后模型快照要等 SSE 推动 `model.refresh()` 才会出现新会话，这段窗口内 `view.sessionIds` 仍为空。`seatStartGuard` 让该 skill 在“新建已发出 → 快照中出现绑定会话（或 4 s 超时）”期间保持 busy，快捷键与 `/seat` 共用同一守卫，不会为同一席位开出两段会话；新建失败则立即释放以便重试。侧栏自己的 `creatingSkills` 仍是 React 局部状态，未与之合并（属于 seat-browser.tsx 的既有实现，本次不动）。
+- **新建会话的共享守卫**：`startSeatSession` 返回后模型快照要等 SSE 推动 `model.refresh()` 才会出现新会话，这段窗口内 `view.sessionIds` 仍为空。`seatStartGuard` 让该 skill 在“新建已发出 → 快照中出现绑定会话（或 4 s 超时）”期间保持 busy，快捷键与 `/seat` 共用同一守卫，不会为同一席位开出两段会话；新建失败则立即释放以便重试。侧栏「+」新建同样经 `seatStartGuard.run(skill, …)` 走这条共享守卫（已在飞行中则不重复新建、返回 `undefined`）；侧栏自己的 `creatingSkills` 仍保留为按钮禁用态。向导（aria-modal）打开期间 `isSuspended` 让所有和弦交还页面。
 - **可编辑目标**：目标是 input / textarea / contenteditable 时，不带 Alt 的数字直接放行；带 Alt 且 `key` 本身是数字时才生效——若 Alt+数字在该布局下产生字形（macOS Option+1 → `¡`），视为文字输入放行，不吞键。
 - **只认主键盘区数字（`Digit0-9`），不认小键盘**：Windows 下 Alt+小键盘数字是系统 Alt-code 字符输入（Alt+Numpad0233 → é），字符在 Alt 松开时由系统合成，`preventDefault` 拦不住累积——若把 Numpad 当快捷键，会既切席位又往输入框塞乱码。`event.code` 有值时以物理键为准（`Numpad2` 即便 `key` 为 `'2'` 也不算）；`code` 为空的合成事件才回退看 `key`。非可编辑目标下 `code=Digit2, key='™'` 仍能切到第 2 席。
 

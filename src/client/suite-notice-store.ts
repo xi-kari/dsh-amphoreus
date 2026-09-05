@@ -192,6 +192,11 @@ export function createSuiteNoticeStore(options: SuiteNoticeOptions): SuiteNotice
       publish()
     }
     if (baseline === undefined) {
+      // `suite: undefined` without a root-missing signal is the host answering
+      // /api/state before its first parse finished (webapi registers before
+      // bridge.start resolves): nothing is missing yet, so it is not a baseline
+      // either — the parsed state that follows becomes the reference.
+      if (state.suite === undefined && !noWatcher) return
       // The first ready state is the reference. Boot contributes only its
       // level: a level that moved between first paint and first fetch is real.
       const bootLevel = boot?.level

@@ -19,7 +19,8 @@ export interface SeatBrowserInjected {
   readonly model: AmphoreusClientModel
   readonly openSession: (sessionId: string, skillName?: string) => Promise<void>
   readonly archiveSession: (sessionId: string) => Promise<void>
-  readonly startSeatSession: (skillName: string) => Promise<string>
+  /** Resolves undefined when a start for the seat was already in flight (shared guard) and nothing was created. */
+  readonly startSeatSession: (skillName: string) => Promise<string | undefined>
   readonly startDirectorySession: (workspaceId: string) => void
   readonly createDirectoryWorkspace: (fallbackPrompt: () => string | null) => Promise<void>
   /** Remove a directory workspace from the registry (official delete; sessions and files are untouched). */

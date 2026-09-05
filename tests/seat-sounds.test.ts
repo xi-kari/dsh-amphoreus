@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { once } from 'node:events'
-import { mkdtemp, mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises'
-import { createServer, request as httpRequest, type IncomingMessage } from 'node:http'
+import { mkdtemp, mkdir, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises'
+import { createServer, request as httpRequest, type IncomingMessage, type ServerResponse } from 'node:http'
 import { PassThrough } from 'node:stream'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -388,6 +388,46 @@ test('store rescans existing files on start, ignores strangers, one file per slo
     const empty = new SeatSoundStore(join(root, 'nowhere'))
     await empty.scan()
     assert.deepEqual(empty.list(), [])
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('serve resolves containment against the canonical root: a junction/symlinked dataDir still serves its own files', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'amphoreus-seat-snd-link-'))
+  try {
+    const real = join(root, 'real-data')
+    const link = join(root, 'link-data')
+    await mkdir(join(real, 'seat-sounds', 'castorice'), { recursive: true })
+    await writeFile(join(real, 'seat-sounds', 'castorice', 'greeting.mp3'), 'ID3-castorice')
+    let linked = true
+    try {
+      await symlink(real, link, 'junction')
+    } catch {
+      linked = false // no link privilege on this machine: only the direct half is checked
+    }
+    const fakeResponse = () => {
+      const calls: Array<{ status: number; headers: Record<string, string> }> = []
+      return {
+        calls,
+        response: {
+          writeHead(status: number, headers: Record<string, string>) { calls.push({ status, headers }) },
+          end() {},
+        } as unknown as ServerResponse,
+      }
+    }
+    for (const dataDir of linked ? [real, link] : [real]) {
+      const store = new SeatSoundStore(dataDir)
+      await store.scan()
+      assert.equal(store.list().length, 1, dataDir)
+      const { calls, response } = fakeResponse()
+      const served = await store.serve({ method: 'HEAD', headers: {} } as unknown as IncomingMessage, response, 'castorice', 'greeting.mp3')
+      assert.equal(served, true, `${dataDir}: a record the state advertises must be servable`)
+      assert.equal(calls[0]?.status, 200)
+      assert.equal(calls[0]?.headers['content-length'], '13')
+      // A file the index does not know (or a stranger name) is still refused.
+      assert.equal(await store.serve({ method: 'HEAD', headers: {} } as unknown as IncomingMessage, fakeResponse().response, 'castorice', 'send.mp3'), false)
+    }
   } finally {
     await rm(root, { recursive: true, force: true })
   }

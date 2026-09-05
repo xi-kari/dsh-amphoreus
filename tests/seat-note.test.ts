@@ -125,8 +125,11 @@ test('extractSeatNote takes the note line before the receipt, ignores fenced exa
   assert.equal(extractSeatNote(RECEIPT), undefined)
   assert.equal(extractSeatNote('留言：\n' + RECEIPT), undefined)
   // Only the trailing window counts: a note buried far above is not the seat's closing line.
-  const far = ['留言：太早了', ...Array.from({ length: 8 }, (_, index) => `第 ${index} 行`)].join('\n')
+  const far = ['留言：太早了', ...Array.from({ length: 20 }, (_, index) => `第 ${index} 行`)].join('\n')
   assert.equal(extractSeatNote(far), undefined)
+  // The window is wide enough for the instructed placement: note, then a multi-row 台账 block, then the receipt.
+  const ledger = ['正文。', '留言：下次继续讨论分册第七册', '<details><summary>台账</summary>', ...Array.from({ length: 10 }, (_, index) => `- 台账行 ${index}`), '</details>', RECEIPT].join('\n')
+  assert.equal(extractSeatNote(ledger), '下次继续讨论分册第七册')
   // <details>台账 wrapper is unwrapped like the observer does.
   assert.equal(extractSeatNote(`正文\n<details><summary>台账</summary>\n留言：包在台账里也算\n</details>`), '包在台账里也算')
 })

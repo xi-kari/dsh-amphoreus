@@ -238,3 +238,30 @@ test('Alt+0 toggles the portal without touching seats, even with no seats deploy
   const one = win.fire({ key: '1', code: 'Digit1', altKey: true })
   assert.equal(one.prevented, false)
 })
+
+test('isSuspended (modal setup wizard open) makes every chord a no-op: no seat start, no portal toggle, default not prevented', async () => {
+  const w = fakeWindow()
+  let suspended = true
+  const entered: string[] = []
+  let toggles = 0
+  installSeatHotkeys({
+    target: w.target,
+    seats: () => seats,
+    enter: async view => { entered.push(view.skillName) },
+    togglePortal: () => { toggles += 1 },
+    isSuspended: () => suspended,
+  })
+  const seat = w.fire({ key: '1', code: 'Digit1', altKey: true })
+  const portal = w.fire({ key: '0', code: 'Digit0', altKey: true })
+  await settle()
+  assert.deepEqual(entered, [])
+  assert.equal(toggles, 0)
+  assert.equal(seat.prevented, false, 'the chord is left to the page while a modal owns the keyboard')
+  assert.equal(portal.prevented, false)
+  suspended = false
+  w.fire({ key: '1', code: 'Digit1', altKey: true })
+  w.fire({ key: '0', code: 'Digit0', altKey: true })
+  await settle()
+  assert.deepEqual(entered, ['amphoreus-aglaea'])
+  assert.equal(toggles, 1)
+})

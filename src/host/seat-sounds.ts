@@ -12,7 +12,7 @@ import { randomBytes } from 'node:crypto'
 import { createReadStream, createWriteStream } from 'node:fs'
 import { mkdir, readdir, realpath, rename, rm, stat } from 'node:fs/promises'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { extname, join, resolve } from 'node:path'
+import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { once } from 'node:events'
 import { finished, pipeline } from 'node:stream/promises'
 import { SEAT_SOUND_MAX_BYTES, SEAT_SOUND_SLOTS, type SeatSoundSlot } from '../shared/api.ts'
@@ -99,6 +99,13 @@ export function resolveSeatSoundExt(mime: string, extHint: string | undefined): 
   return MIME_BY_EXT[hint] === undefined ? undefined : hint
 }
 
+/** `child` is `root` or below it (both already canonical); case-folded on Windows like the other host helpers. */
+function contained(root: string, child: string): boolean {
+  const fold = (value: string): string => process.platform === 'win32' ? value.toLowerCase() : value
+  const rel = relative(fold(resolve(root)), fold(resolve(child)))
+  return rel === '' || (!rel.startsWith(`..${sep}`) && rel !== '..' && !isAbsolute(rel))
+}
+
 /** Read a body to its end and discard it (keeps the connection orderly for the error response). */
 async function drain(body: IncomingMessage): Promise<void> {
   for await (const _chunk of body.iterator({ destroyOnReturn: false })) { /* discard */ }
@@ -106,6 +113,8 @@ async function drain(body: IncomingMessage): Promise<void> {
 
 export class SeatSoundStore {
   readonly #root: string
+  /** `realpath(#root)` (lazily resolved, falls back to #root): serve() compares realpath'd files against THIS, so a junction/symlink dataDir still contains its own files. */
+  #realRoot: string | undefined
   readonly #maxBytes: number
   readonly #tempToken: () => string
   #index = new Map<string, SeatSoundRecord>()
@@ -121,8 +130,18 @@ export class SeatSoundStore {
   get root(): string { return this.#root }
   get maxBytes(): number { return this.#maxBytes }
 
+  /** Canonical root for containment checks; a missing root (nothing uploaded yet) keeps the configured path. */
+  async #canonicalRoot(): Promise<string> {
+    if (this.#realRoot === undefined) {
+      this.#realRoot = await realpath(this.#root).catch(() => undefined)
+      if (this.#realRoot === undefined) return this.#root
+    }
+    return this.#realRoot
+  }
+
   /** Rescan `<root>/<heroId>/<slot>.<ext>`; unknown names are ignored, first name per slot wins. */
   async scan(): Promise<void> {
+    this.#realRoot = undefined
     const next = new Map<string, SeatSoundRecord>()
     let heroes: string[] = []
     try {
@@ -290,7 +309,7 @@ export class SeatSoundStore {
     if (record === undefined || record.file !== file) return false
     const path = join(this.#root, heroId, file)
     const real = await realpath(path).catch(() => undefined)
-    if (real === undefined || !real.toLowerCase().startsWith(resolve(this.#root).toLowerCase())) return false
+    if (real === undefined || !contained(await this.#canonicalRoot(), real)) return false
     const info = await stat(real)
     const headers: Record<string, string> = {
       'content-type': record.mime,

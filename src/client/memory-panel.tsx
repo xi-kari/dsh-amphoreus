@@ -23,7 +23,8 @@ export interface MemoryPanelProps {
   readonly config: MemoryPublicConfig
   readonly busy: boolean
   readonly t: Translate
-  readonly onAdd: (skill: string, text: string) => void
+  /** Resolves once the note is stored; rejects on failure. The panel clears the draft only after success. */
+  readonly onAdd: (skill: string, text: string) => Promise<void>
   readonly onDelete: (skill: string, id: string) => void
   readonly onSettings: (skill: string, patch: Partial<MemorySettings>) => void
 }
@@ -37,6 +38,10 @@ export interface MemoryPanelProps {
 export function MemoryPanel({ seats, memory, config, busy, t, onAdd, onDelete, onSettings }: MemoryPanelProps) {
   const [open, setOpen] = useState<string | undefined>(undefined)
   const [drafts, setDrafts] = useState<Record<string, string>>({})
+  // Add is owned here (not by the settings-wide action lock): a failed POST must keep the typed
+  // text and report next to the textarea, not in the page header far above this row.
+  const [adding, setAdding] = useState<string>()
+  const [addError, setAddError] = useState<{ readonly skill: string; readonly message: string }>()
   const bySkill = new Map(memory.map(record => [record.skillName, record]))
   const known = new Set(seats.map(seat => seat.skillName))
   const rows: MemoryPanelSeat[] = [
@@ -56,11 +61,21 @@ export function MemoryPanel({ seats, memory, config, busy, t, onAdd, onDelete, o
     const overflow = length > SEAT_NOTE_MAX_CHARS
     const color = seatColorOf(seat.skillName)
     const textareaId = `amphoreus-memory-${seat.skillName}`
-    const submit = (): void => {
+    const rowBusy = busy || adding !== undefined
+    const rowError = addError?.skill === seat.skillName ? addError.message : undefined
+    const submit = async (): Promise<void> => {
       const text = draft.trim()
-      if (text === '' || overflow || busy) return
-      onAdd(seat.skillName, text)
-      setDrafts(current => ({ ...current, [seat.skillName]: '' }))
+      if (text === '' || overflow || rowBusy) return
+      setAdding(seat.skillName)
+      setAddError(undefined)
+      try {
+        await onAdd(seat.skillName, text)
+        setDrafts(current => ({ ...current, [seat.skillName]: '' }))
+      } catch (error) {
+        setAddError({ skill: seat.skillName, message: error instanceof Error ? error.message : String(error) })
+      } finally {
+        setAdding(undefined)
+      }
     }
     return (
       <li key={seat.skillName} className={css.row} style={{ '--amph-seat-accent': color.accent } as CSSProperties} data-expanded={expanded || undefined} data-inactive={seat.inactive || undefined} data-amph-memory-seat={seat.skillName}>
@@ -107,11 +122,12 @@ export function MemoryPanel({ seats, memory, config, busy, t, onAdd, onDelete, o
                 rows={2}
                 value={draft}
                 placeholder={t('settings.memoryPlaceholder')}
-                disabled={busy}
+                disabled={rowBusy}
                 aria-invalid={overflow || undefined}
                 onChange={event => { const value = event.currentTarget.value; setDrafts(current => ({ ...current, [seat.skillName]: value })) }}
-                onKeyDown={event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); submit() } }}
+                onKeyDown={event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); void submit() } }}
               />
+              {rowError === undefined ? null : <p className={css.error} role="alert">{rowError}</p>}
               <div className={css.composeFoot}>
                 <span className={css.counter} data-overflow={overflow || undefined} aria-live="polite">{length} / {SEAT_NOTE_MAX_CHARS}</span>
                 <label className={css.limit}>
@@ -122,8 +138,8 @@ export function MemoryPanel({ seats, memory, config, busy, t, onAdd, onDelete, o
                       if (Number.isInteger(value) && value >= 0 && value <= 50) onSettings(seat.skillName, { injectLimit: value })
                     }} />
                 </label>
-                <button type="button" className={shell.secondaryButton} disabled={busy || draft.trim() === '' || overflow} onClick={submit}>
-                  {t('settings.memoryAdd')}
+                <button type="button" className={shell.secondaryButton} disabled={rowBusy || draft.trim() === '' || overflow} onClick={() => { void submit() }}>
+                  {adding === seat.skillName ? t('settings.memoryAdding') : t('settings.memoryAdd')}
                 </button>
               </div>
             </div>
@@ -142,7 +158,9 @@ export function MemoryPanel({ seats, memory, config, busy, t, onAdd, onDelete, o
         </div>
         <span className={shell.index}>{String(total).padStart(2, '0')}</span>
       </div>
-      <ul className={css.list}>{rows.map(row)}</ul>
+      {rows.length === 0
+        ? <p className={shell.empty}>{t('settings.memoryNoSeats')}</p>
+        : <ul className={css.list}>{rows.map(row)}</ul>}
       <p className={shell.hintLine}>{t('settings.memoryCommandHint', { command: config.command })}</p>
     </section>
   )

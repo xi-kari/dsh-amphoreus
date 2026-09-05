@@ -163,3 +163,64 @@ test('memory sub-routes append, delete and patch without replacing the record; s
     await once(server, 'close')
   }
 })
+
+test('legacy whole-record PUT runs inside the memory write queue: a seat note appended meanwhile survives, and tombstones never shrink', async () => {
+  const { stores, table } = fakeStores()
+  // A slow `put` widens the get→put window so the race below is deterministic.
+  const memory = table('memory')
+  let release: (() => void) | undefined
+  const originalPut = memory.put
+  memory.put = async (key: string, value: unknown) => {
+    if (release === undefined) await new Promise<void>(resolve => { release = resolve })
+    await originalPut(key, value)
+  }
+  const snapshot = fixtureSnapshot()
+  const resolver = { current: () => snapshot, onSnapshot: () => () => {} } as unknown as SuiteResolver
+  const ctx = {
+    webServer: { register: () => () => {} },
+    on: () => () => {},
+    logger: { info() {}, warn() {}, error() {}, debug() {} },
+    sessions: { list: () => [] },
+  } as unknown as Context
+  const api = new AmphoreusWebApi(ctx, { config: fixtureConfig(), stores, resolver, nonce: 'test-nonce' })
+  const server = createServer((request, response) => { void api.handle(request, response) })
+  server.listen(0, '127.0.0.1')
+  await once(server, 'listening')
+  const address = server.address()
+  assert.ok(address !== null && typeof address !== 'string')
+  const skill = 'amphoreus-testcard-a'
+  const auth = { 'content-type': 'application/json', 'x-amphoreus-nonce': 'test-nonce' }
+  try {
+    memory.values.set(skill, { skillName: skill, notes: [{ id: 'keep', text: '既有', createdAt: 1, author: 'user' }], pinnedSessionIds: [], updatedAt: 1, deletedNoteIds: ['old-tombstone'] })
+    // Ledger echoes a stale record (it never saw the seat note) and drops the tombstone list entirely.
+    const putRequest = fetch(`http://127.0.0.1:${address.port}/amphoreus/api/memory/${skill}`, {
+      method: 'PUT', headers: auth, body: JSON.stringify({ notes: [{ id: 'keep', text: '既有', createdAt: 1, author: 'user' }], pinnedSessionIds: ['pinned'] }),
+    })
+    // Observer appends a seat note while the PUT is between its read and its (blocked) write.
+    await new Promise(resolve => setTimeout(resolve, 30))
+    const appended = appendSeatNote(memory as never, skill, { text: '席位留言', author: 'seat', id: 'session-x:5:note', seq: 5 })
+    await new Promise(resolve => setTimeout(resolve, 30))
+    release!()
+    const [put, note] = await Promise.all([putRequest, appended])
+    assert.equal(put.status, 200)
+    assert.ok(note !== undefined)
+    const stored = memory.get(skill) as MemoryRecord
+    assert.deepEqual(stored.notes.map(entry => entry.id), ['keep', 'session-x:5:note'], 'the queued PUT landed first and the seat note was appended on top of it')
+    assert.deepEqual(stored.pinnedSessionIds, ['pinned'])
+    assert.deepEqual(stored.deletedNoteIds, ['old-tombstone'], 'a body without deletedNoteIds cannot erase stored tombstones')
+
+    // A body that still carries a note tombstoned meanwhile (panel delete racing a stale ledger echo) does not resurrect it.
+    memory.put = originalPut
+    memory.values.set(skill, { ...stored, notes: [stored.notes[0]!], deletedNoteIds: ['old-tombstone', 'session-x:5:note'] })
+    const stale = await fetch(`http://127.0.0.1:${address.port}/amphoreus/api/memory/${skill}`, {
+      method: 'PUT', headers: auth, body: JSON.stringify({ notes: stored.notes, pinnedSessionIds: [], deletedNoteIds: ['old-tombstone'] }),
+    })
+    assert.equal(stale.status, 200)
+    const after = memory.get(skill) as MemoryRecord
+    assert.deepEqual(after.notes.map(entry => entry.id), ['keep'])
+    assert.deepEqual(after.deletedNoteIds, ['old-tombstone', 'session-x:5:note'], 'tombstones are unioned, never shrunk by the client list')
+  } finally {
+    server.close()
+    await once(server, 'close')
+  }
+})

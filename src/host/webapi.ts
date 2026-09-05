@@ -18,7 +18,7 @@ import type { SuiteSnapshot } from './suite/types.ts'
 import { InputError, NotFoundError, type ProjectionIndex } from './workbench.ts'
 import type { SeatDirRecord } from './seatdirs.ts'
 import { readSticker } from './stickers.ts'
-import { appendSeatNote, deleteSeatNote, effectiveMemorySettings, patchSeatMemorySettings, withReplacementTombstones } from './memory.ts'
+import { appendSeatNote, deleteSeatNote, effectiveMemorySettings, enqueueMemoryWrite, patchSeatMemorySettings, withReplacementTombstones } from './memory.ts'
 
 const MAX_BODY_BYTES = 4 * 1024
 const MAX_CANVAS_BODY_BYTES = 64 * 1024
@@ -257,6 +257,8 @@ export class AmphoreusWebApi {
   #assetsPrepared = false
   #assetsPreparation: Promise<void> | undefined
   #deriveRunning = false
+  /** Set while PUT /api/assets/root is checking/persisting a candidate; the derive route answers 409 meanwhile. */
+  #rootChanging = false
   #deriveGeneration = 0
   #lastDerive: AmphoreusAssetsStatus['lastDerive'] = null
 
@@ -758,9 +760,15 @@ export class AmphoreusWebApi {
       }
       if (!method(request, response, 'PUT')) return
       const body = await readJson(request, 64 * 1024)
+      const incoming = MemorySchema.parse({ ...asRecord(body), skillName: skill, updatedAt: Date.now() })
       // Whole-record replace: tombstone replayable notes the caller dropped (workbench ledger delete).
-      const value = withReplacementTombstones(table.get(skill), MemorySchema.parse({ ...asRecord(body), skillName: skill, updatedAt: Date.now() }))
-      await table.put(skill, value)
+      // Inside the memory write queue so the `previous` snapshot cannot go stale under a
+      // concurrent appendSeatNote (turn/end observer, /remember) between get and put.
+      const value = await enqueueMemoryWrite(table, async () => {
+        const next = withReplacementTombstones(table.get(skill), incoming)
+        await table.put(skill, next)
+        return next
+      })
       json(response, 200, { memory: value })
       return
     }
@@ -986,6 +994,10 @@ export class AmphoreusWebApi {
       json(response, 409, { error: 'asset derivation is already running' })
       return
     }
+    if (this.#rootChanging) {
+      json(response, 409, { error: 'assetsRoot is being changed; retry once it is saved' })
+      return
+    }
     let body: unknown
     try {
       body = await readJson(request)
@@ -1011,6 +1023,10 @@ export class AmphoreusWebApi {
     }
     if (this.#deriveRunning) {
       json(response, 409, { error: 'asset derivation is already running' })
+      return
+    }
+    if (this.#rootChanging) {
+      json(response, 409, { error: 'assetsRoot is being changed; retry once it is saved' })
       return
     }
     this.#deriveRunning = true
@@ -1301,9 +1317,12 @@ export class AmphoreusWebApi {
     }
     const input = parsed.data
     const empty = input === null || (input.agentPreset === undefined && input.model === undefined && input.permission === undefined)
-    const { preset: _previous, ...rest } = seat
-    const value: import('./store.ts').SeatRecord = empty ? rest : { ...rest, preset: input }
-    await table.put(skill, value)
+    // Merge against the record current at the write slot (not the one read before the body arrived):
+    // a suite reconcile landing in between keeps its status/name changes and we keep the preset.
+    const value = await table.update(skill, current => {
+      const { preset: _previous, ...rest } = current
+      return empty ? rest : { ...rest, preset: input }
+    })
     json(response, 200, { preset: value.preset ?? null })
   }
 
@@ -1462,10 +1481,21 @@ export class AmphoreusWebApi {
       json(response, 400, { error: 'assetsRoot must not be empty (send null to clear)' })
       return
     }
-    if (this.#deriveRunning) {
+    if (this.#deriveRunning || this.#rootChanging) {
       json(response, 409, { error: 'asset derivation is running; wait for it to finish before changing assetsRoot' })
       return
     }
+    // Pin the root while the candidate is checked and persisted: a derive request in this window is
+    // refused (409) instead of starting against the old root and being reported under the new one.
+    this.#rootChanging = true
+    try {
+      await this.#assetsRootChange(response, next)
+    } finally {
+      this.#rootChanging = false
+    }
+  }
+
+  async #assetsRootChange(response: ServerResponse, next: string | null): Promise<void> {
     if (next !== null) {
       const report = await this.#checkAssets(next, this.#assetsCheckOptions())
       if (report.error !== undefined) {

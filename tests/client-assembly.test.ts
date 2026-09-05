@@ -122,3 +122,19 @@ test('README distinguishes seat bindings from official directories and reports c
   assert.doesNotMatch(status, /尚待|待后续/u)
   assert.doesNotMatch(readme, /仍待后续章节兑现：`M3`/u)
 })
+
+test('shell.overlay and conversation.input.dock entries are pinned by id and order across the merged features', () => {
+  const overlayStart = client.indexOf("ctx.slots.inject('shell.overlay'")
+  const viewStart = client.indexOf("ctx.slots.inject('conversation.view'")
+  const overlay = client.slice(overlayStart, viewStart)
+  assert.deepEqual([...overlay.matchAll(/id: '(amphoreus-[a-z-]+)'/gu)].map(match => match[1]), ['amphoreus-portal', 'amphoreus-suite-notice'])
+  assert.match(overlay, /registerSetupOverlay\(ctx\.slots/u)
+  const wizard = readFileSync(new URL('../src/client/setup-wizard.tsx', import.meta.url), 'utf8')
+  assert.match(wizard, /name: 'shell\.overlay', id: 'amphoreus-setup', order: -10/u)
+  assert.match(overlay, /id: 'amphoreus-portal',\s*order: 0/u)
+  assert.match(overlay, /id: 'amphoreus-suite-notice',\s*order: 10/u)
+
+  const dockStart = client.indexOf("ctx.slots.inject('conversation.input.dock'")
+  const dock = client.slice(dockStart, client.indexOf('])', dockStart))
+  assert.deepEqual([...dock.matchAll(/id: '(amphoreus-[a-z-]+)',\s*order: (\d+)/gu)].map(match => `${match[1]}@${match[2]}`), ['amphoreus-handoff@30', 'amphoreus-send-sound@31'])
+})

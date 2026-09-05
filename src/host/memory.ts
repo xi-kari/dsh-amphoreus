@@ -22,7 +22,8 @@ import type { SuiteSnapshot } from './suite/types.ts'
 /** Matches the plugin-owned note line; ASCII colon tolerated because models drift between widths. */
 const NOTE_LINE = /^留言[：:]\s*(.+)$/u
 /** Only the tail of a message may carry the note line (mirrors the observer's contract window). */
-const TAIL_LINES = 6
+/** Trailing non-fenced lines inspected for `留言：`; wide enough for a note placed before a multi-row 台账 block plus the receipt. */
+const TAIL_LINES = 16
 /** Cross-seat context along a handoff edge is capped independently of the seat's own limit. */
 const HANDOFF_NOTE_LIMIT = 3
 const COMMAND_NAME = /^[a-z][a-z0-9_-]*$/u
@@ -109,14 +110,18 @@ function withTombstone(record: MemoryRecord, ids: readonly string[]): MemoryReco
 /**
  * Whole-record replace (legacy PUT route): notes that vanished but could be replayed from a
  * session log are tombstoned so a restart does not resurrect what the workbench ledger deleted.
- * Existing tombstones are carried over unless the caller supplied its own list.
+ * Tombstones only grow: the stored list is unioned with the caller's, and a note the caller
+ * still carries but that was tombstoned meanwhile (panel delete racing a stale ledger echo) is
+ * dropped rather than resurrected.
  */
 export function withReplacementTombstones(previous: MemoryRecord | undefined, next: MemoryRecord): MemoryRecord {
-  const kept = new Set(next.notes.map(note => note.id))
+  const tombstones = [...new Set([...(previous?.deletedNoteIds ?? []), ...(next.deletedNoteIds ?? [])])]
+  const notes = tombstones.length === 0 ? next.notes : next.notes.filter(note => !tombstones.includes(note.id))
+  const kept = new Set(notes.map(note => note.id))
   const removed = (previous?.notes ?? []).filter(note => replayable(note) && !kept.has(note.id)).map(note => note.id)
-  const base = previous?.deletedNoteIds === undefined || next.deletedNoteIds !== undefined
-    ? next
-    : { ...next, deletedNoteIds: previous.deletedNoteIds }
+  const base: MemoryRecord = tombstones.length === 0
+    ? { ...next, notes }
+    : { ...next, notes, deletedNoteIds: tombstones.slice(-MAX_TOMBSTONES) }
   return withTombstone(base, removed)
 }
 

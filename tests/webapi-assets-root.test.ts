@@ -389,3 +389,60 @@ test('root changes force the next derive once, are refused while deriving, publi
     await rm(root, { recursive: true, force: true })
   }
 })
+
+test('a derive requested while PUT /api/assets/root is still checking the candidate is refused (409), never started against the old root', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'amphoreus-assets-rootchange-'))
+  try {
+    const first = join(root, 'pack-a')
+    const second = join(root, 'pack-b')
+    await seedPackSignal(first)
+    await seedPackSignal(second)
+    const cache = join(root, 'cache')
+    await mkdir(cache, { recursive: true })
+    const fixture = stores()
+    await fixture.stores.main.global.set({ ...fixture.global(), prefs: { ...fixture.global().prefs, assetsRoot: first } })
+    let releaseCheck: (() => void) | undefined
+    const runs: DeriveOptions[] = []
+    const { checkAssets } = await import('../src/host/assets-check.ts')
+    const api = new AmphoreusWebApi({} as Context, {
+      config: fixtureConfig(),
+      stores: fixture.stores,
+      resolver: { current: () => undefined } as unknown as SuiteResolver,
+      nonce: NONCE,
+      assetsCacheDir: cache,
+      deriveAssets: async options => { runs.push(options); return { written: 0, skipped: 0, failed: [], startedAt: 1, finishedAt: 2 } },
+      probeMagick: async () => 'Version: synthetic',
+      checkAssets: async (candidate, options) => {
+        // Hold the root-change check (candidate `second`) until the test has probed the derive route.
+        // prepareAssets() already checks the seeded root (`first`) through this same stub: let it through.
+        if (candidate === second && releaseCheck === undefined) await new Promise<void>(resolve => { releaseCheck = resolve })
+        return checkAssets(candidate, options)
+      },
+    })
+    await api.prepareAssets()
+    const server = await listen(api)
+    try {
+      const change = send(server.origin, '/amphoreus/api/assets/root', 'PUT', { root: second })
+      await waitFor(() => releaseCheck !== undefined)
+      const derive = await send(server.origin, '/amphoreus/api/assets/derive', 'POST', {})
+      assert.equal(derive.status, 409, 'the root is pinned while it is being changed')
+      assert.match(((await derive.json()) as { error: string }).error, /being changed/u)
+      const secondChange = await send(server.origin, '/amphoreus/api/assets/root', 'PUT', { root: first })
+      assert.equal(secondChange.status, 409, 'one root change at a time')
+      assert.deepEqual(runs, [], 'nothing ran against the old root')
+      releaseCheck!()
+      assert.equal((await change).status, 200)
+      assert.equal(fixture.global().prefs.assetsRoot, second)
+      // Once saved, a derive runs against the new root and is forced (the cache belonged to the old one).
+      assert.equal((await send(server.origin, '/amphoreus/api/assets/derive', 'POST', {})).status, 202)
+      await waitFor(() => runs.length === 1)
+      assert.equal(runs[0]!.assetsRoot, second)
+      assert.equal(runs[0]!.force, true)
+      await waitFor(() => api.state().assets.running === false)
+    } finally {
+      server.close()
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})

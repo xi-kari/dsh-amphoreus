@@ -218,3 +218,29 @@ test('setup locale keys are balanced and the wizard CSS uses only DSW tokens', (
   // Both scrims are absolute siblings inside shell.overlay; the wizard (order -10, painted first) needs z-index to sit above the portal scrim.
   assert.match(wizardCss, /\.scrim \{[^}]*z-index: 1;/su)
 })
+
+test('while the wizard is open the suite-notice banner unmounts and the Alt+digit hotkeys are suspended (mirror of the suite-notice pins)', () => {
+  const bannerSource = readFileSync(new URL('../src/client/suite-notice.tsx', import.meta.url), 'utf8')
+  const bannerCss = readFileSync(new URL('../src/client/suite-notice.module.css', import.meta.url), 'utf8')
+  const bannerZ = Number(/\.banner \{[^}]*z-index: (\d+);/su.exec(bannerCss)?.[1])
+  const scrimZ = Number(/\.scrim \{[^}]*z-index: (\d+);/su.exec(wizardCss)?.[1])
+  // The banner would paint above the aria-modal wizard, so it must not be mounted at the same time.
+  assert.ok(bannerZ > scrimZ)
+  assert.match(bannerSource, /portalIsOpen \|\| setupIsOpen\) return null/u)
+  const overlayStart = clientSource.indexOf("ctx.slots.inject('shell.overlay'")
+  const viewStart = clientSource.indexOf("ctx.slots.inject('conversation.view'")
+  const overlayBlock = clientSource.slice(overlayStart, viewStart)
+  assert.match(overlayBlock, /setupOpen: \(\) => setup\.getSnapshot\(\)\.open/u)
+  assert.match(overlayBlock, /subscribeSetup: listener => setup\.subscribe\(listener\)/u)
+  // Global seat hotkeys honour the modal too (Alt+1-9 must not switch sessions, Alt+0 must not open the portal underneath).
+  const hotkeys = clientSource.slice(clientSource.indexOf('installSeatHotkeys({'), clientSource.indexOf("'amphoreus: seat hotkeys'"))
+  assert.match(hotkeys, /isSuspended: \(\) => setup\.getSnapshot\(\)\.open/u)
+  // The assets panel sits right after the visual section that shows the same root and owns the derive controls.
+  const visual = settingsSource.indexOf('aria-labelledby="amphoreus-visual"')
+  const grammar = settingsSource.indexOf('<GrammarPanel')
+  const setupPanel = settingsSource.indexOf('<SetupPanel')
+  assert.ok(visual < setupPanel && setupPanel < grammar)
+  // "Skip" writes setupDismissedAt (permanent) — the label must say so in both languages.
+  assert.match(zh['setup.skip'], /不再提示/u)
+  assert.match(en['setup.skip'], /not ask again/iu)
+})

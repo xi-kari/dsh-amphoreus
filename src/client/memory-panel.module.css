@@ -34,6 +34,7 @@
 .body { display: flex; flex-direction: column; gap: 10px; padding: 10px 0 4px; }
 
 .empty { margin: 0; color: var(--dsw-alias-label-tertiary); font-size: 11px; }
+.error { margin: 0; color: var(--dsw-alias-state-error-primary); font-size: 11px; overflow-wrap: anywhere; }
 
 .notes { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
 

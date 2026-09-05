@@ -32,7 +32,7 @@
 - `suite.sessionsStale`（"已有 {n} 个会话在 /clear、恢复或新建后才会用到新卡"）：`staleSessions > 0` 且 kind ≠ missing 时显示。`staleSessions` = `injection.state==='done'` 且 `(injection.at ?? boundAt) < suite.parsedAt` 且会话未归档（`ctx.workspaces.list.getSnapshot().archivedSessionIds`）的绑定数。用注入时间而非绑定时间：绑定先是 `pending`，首个 pre-step 才写卡并置 `done`（`injector.ts`），解析前打开、解析后才发第一条消息的会话拿到的已是新卡。归档会话保留 bindings 行（不会被清理），但用户已看不到，不计入。
 - `suite.restartHint`：仅当 `startedMissing`（宿主没有 watcher：首拉前看 `boot.level === 'L3'`，首拉后看诊断 `root-missing`）时显示；此时"重新解析"按钮也隐藏，因为点了也没用。运行期 `parse-exception` 导致的 L3 不属于此类，按钮保留。
 
-沉默规则：首个 ready 状态（或 boot）只作基线，不提示——**唯一例外是首个 ready 状态本身就是 L3**：这是启动缺根的情形，没有 watcher，状态永远不会自己变化，所以首拉是唯一一次把"套件未识别 + 需重启"说出来的机会，于是直接播一条 `missing`（id 稳定，关闭后同一页会话内不再弹）。强制重新解析但 sha 不变（仅 generation 递增）不提示；boot level 与首拉 level 不一致（例如页面按 L3 起跳、首拉已是 L0）按转换分类提示一次。
+沉默规则：首个 ready 状态（或 boot）只作基线，不提示（`suite` 为空且无 `root-missing` 诊断的状态连基线都不算，见上）——**唯一例外是首个 ready 状态本身就是 L3**：这是启动缺根的情形，没有 watcher，状态永远不会自己变化，所以首拉是唯一一次把"套件未识别 + 需重启"说出来的机会，于是直接播一条 `missing`（id 稳定，关闭后同一页会话内不再弹）。强制重新解析但 sha 不变（仅 generation 递增）不提示；boot level 与首拉 level 不一致（例如页面按 L3 起跳、首拉已是 L0）按转换分类提示一次。
 
 ## 动作
 
@@ -43,8 +43,9 @@
 ## 接入点
 
 - 新文件：`src/client/suite-notice-store.ts`（纯存储，可单测）、`src/client/suite-notice.tsx`（`SuiteNoticeBanner`）、`src/client/suite-notice.module.css`。
-- `src/client/index.ts`：`@anchor client-imports` 后导入；`@anchor client-services` 后 `createSuiteNoticeStore({ model, boot, storage: safeSessionStorage(), archivedSessionIds: () => ctx.workspaces.list.getSnapshot().archivedSessionIds })` + `ctx.effect` 释放；`@anchor shell-overlay-entries` 后在**同一个** `shell.overlay` inject 回调数组内 `ctx.slots.register({ id: 'amphoreus-suite-notice', order: 10, locale: NS, inject: () => ({ store, model, portalOpen, subscribePortal }) }, SuiteNoticeBanner)`。`ctx.slots.inject` 调用列表未变，assembly 测试原样通过。
-- 门户打开（`portal.getSnapshot().open`）时横幅返回 `null`，不与全屏门户抢位置。
+- `src/client/index.ts`：`@anchor client-imports` 后导入；`@anchor client-services` 后 `createSuiteNoticeStore({ model, boot, storage: safeSessionStorage(), archivedSessionIds: () => ctx.workspaces.list.getSnapshot().archivedSessionIds })` + `ctx.effect` 释放；`@anchor shell-overlay-entries` 后在**同一个** `shell.overlay` inject 回调数组内 `ctx.slots.register({ id: 'amphoreus-suite-notice', order: 10, locale: NS, inject: () => ({ store, model, portalOpen, subscribePortal, setupOpen, subscribeSetup }) }, SuiteNoticeBanner)`。`ctx.slots.inject` 调用列表未变，assembly 测试原样通过。
+- 门户打开（`portal.getSnapshot().open`）或首次运行向导打开（`setup.getSnapshot().open`）时横幅返回 `null`：不与全屏门户抢位置，也不画在 aria-modal 向导之上（横幅 z-index 5 高于向导遮罩的 1）。
+- **首拉早于首次解析**：webapi 在 `bridge.start` 完成前就已注册，页面首个 `/api/state` 可能带回 `suite: undefined` 而没有 `root-missing` 诊断——这不是缺失也不作基线，跳过，等随后带解析结果的状态成为基线；否则会误报一条 `missing` 再接一条 `recovered`。
 - 无新路由、无新 EventSource（MAX_SSE_CLIENTS=8）、无 host 改动、无 storage schema 改动。
 - 语言键前缀 `suite.*`（9 个，zh/en 对齐）：updated / sessionsStale / degraded / missing / recovered / restartHint / reparse / reparsing / dismiss。
 
