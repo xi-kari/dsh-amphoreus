@@ -15,7 +15,10 @@ import { readFileSync } from 'node:fs'
 import { isBuiltin } from 'node:module'
 import { basename, dirname, resolve as resolvePath } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { transform } from 'lightningcss'
+import { browserslistToTargets, transform } from 'lightningcss'
+
+/** Modern evergreen browsers: keeps unprefixed backdrop-filter / color-mix / :has() intact. */
+const CSS_TARGETS = browserslistToTargets(['chrome >= 120', 'edge >= 120', 'firefox >= 121'])
 import type { UserConfig } from 'tsdown'
 
 const ID = 'dsh-amphoreus'
@@ -142,7 +145,7 @@ const clientConfig: UserConfig = {
       if (!id.startsWith(CSS_VIRTUAL_PREFIX)) return null
       const fileId = id.slice(CSS_VIRTUAL_PREFIX.length, -CSS_VIRTUAL_SUFFIX.length)
       this.addWatchFile(fileId)
-      const { code, exports } = transform({ filename: fileId, code: await readFile(fileId), cssModules: { pattern: '[hash]_[local]' }, minify: true })
+      const { code, exports } = transform({ filename: fileId, code: await readFile(fileId), cssModules: { pattern: '[hash]_[local]' }, minify: true, targets: CSS_TARGETS })
       const classMap: Record<string, string> = {}
       for (const [local, exp] of Object.entries(exports ?? {}).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) classMap[local] = exp.name
       return styleInjectionModule(fileId, code.toString(), classMap)
@@ -157,7 +160,7 @@ const clientConfig: UserConfig = {
       if (!id.startsWith(INLINE_CSS_VIRTUAL_PREFIX)) return null
       const fileId = id.slice(INLINE_CSS_VIRTUAL_PREFIX.length, -CSS_VIRTUAL_SUFFIX.length)
       this.addWatchFile(fileId)
-      const { code } = transform({ filename: fileId, code: await readFile(fileId), minify: true })
+      const { code } = transform({ filename: fileId, code: await readFile(fileId), minify: true, targets: CSS_TARGETS })
       return `export default ${JSON.stringify(code.toString())};`
     },
   }, {
@@ -170,7 +173,7 @@ const clientConfig: UserConfig = {
       if (!id.startsWith(GLOBAL_CSS_VIRTUAL_PREFIX)) return null
       const fileId = id.slice(GLOBAL_CSS_VIRTUAL_PREFIX.length, -CSS_VIRTUAL_SUFFIX.length)
       this.addWatchFile(fileId)
-      const { code } = transform({ filename: fileId, code: await readFile(fileId), minify: true })
+      const { code } = transform({ filename: fileId, code: await readFile(fileId), minify: true, targets: CSS_TARGETS })
       return styleInjectionModule(fileId, code.toString())
     },
   }],

@@ -41,12 +41,14 @@ export function grammarVariablesFor(snapshot: GrammarSnapshot): Record<string, s
   const frost = Math.min(1, Math.max(0.42, snapshot.grammar.glass.frost * prefs.frostScale))
   vars['--amph-glass-blur'] = `${Math.round(blur * 10) / 10}px`
   vars['--amph-glass-frost'] = String(Math.round(frost * 100) / 100)
-  vars['--amph-motif-opacity'] = String(Math.round(snapshot.grammar.motif.opacity * prefs.motifScale * 1000) / 1000)
+  const motifOpacity = Math.round(snapshot.grammar.motif.opacity * prefs.motifScale * 1000) / 1000
+  vars['--amph-motif-opacity'] = String(motifOpacity)
   vars['--amph-scrim-boost'] = String(prefs.scrimBoost)
   const motif = visual?.motif ?? 'ripples'
-  vars['--amph-motif-url'] = motifDataUri(motif, {
+  // The SVG carries its own opacity: backgrounds cannot be faded independently of the pane fill.
+  vars['--amph-motif-url'] = motifOpacity <= 0 ? 'none' : motifDataUri(motif, {
     color: snapshot.dark ? accent2 : accent,
-    opacity: 1,
+    opacity: Math.min(1, motifOpacity),
     size: snapshot.grammar.motif.sizePx,
   })
   return vars
