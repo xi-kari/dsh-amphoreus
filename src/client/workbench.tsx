@@ -7,7 +7,7 @@ import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ChatSnapshot } from '@deepseek-ai/dsh-client-ui-chat/client'
 import { useCallback, useEffect, useRef, type RefObject } from 'react'
-import type { AmphoreusState, MagazineModeMessage, ThemeTokensMessage } from '../shared/api.ts'
+import type { AmphoreusState, GrammarMessage, MagazineModeMessage, ThemeTokensMessage } from '../shared/api.ts'
 import { heroVisualOf } from '../shared/heroes.ts'
 import { promptWithDeferredActivation } from './activation-bridge.ts'
 import { buildStateMessage } from './bridge-state.ts'
@@ -54,6 +54,11 @@ export interface SessionsFace {
   readonly list: ObservableSnapshot<SessionListSnapshot>
 }
 
+export interface GrammarBridge {
+  readonly read: () => Omit<GrammarMessage, 'source' | 'type'>
+  readonly subscribe: (listener: () => void) => () => void
+}
+
 interface ThemeBridge {
   readonly read: () => BridgedTokens
   readonly isDark: () => boolean
@@ -75,6 +80,7 @@ export interface WorkbenchViewInjected {
   readonly theme: ThemeBridge
   readonly setSeat: (heroId: string | null) => void
   readonly magazine: MagazineBridge
+  readonly grammar: GrammarBridge
   readonly startSeatSession: (skillName: string) => Promise<string>
   readonly seatDeps: HandoffDeps
   readonly enterSeatQueue: EnterSeatQueue
@@ -169,6 +175,7 @@ export interface WorkbenchBridgeDeps {
   readonly followSession?: ConferenceDeps['followSession']
   readonly theme?: ThemeBridge
   readonly magazine?: MagazineBridge
+  readonly grammar?: GrammarBridge
   readonly openChat?: (focus: string) => void
   readonly insertInput?: (text: string) => void
 }
@@ -206,6 +213,7 @@ export function useWorkbenchBridge(
     followSession,
     theme,
     magazine,
+    grammar,
     openChat,
     insertInput,
   } = deps
@@ -214,6 +222,7 @@ export function useWorkbenchBridge(
   const pushLiveRef = useRef<() => void>(() => {})
   const pushThemeTokensRef = useRef<() => void>(() => {})
   const pushMagazineRef = useRef<() => void>(() => {})
+  const pushGrammarRef = useRef<() => void>(() => {})
   const readyRef = useRef(false)
   const deferredActivationsRef = useRef(new Set<string>())
   const handlersRef = useRef(handlers)
@@ -285,6 +294,24 @@ export function useWorkbenchBridge(
       if (pushMagazineRef.current === push) pushMagazineRef.current = () => {}
     }
   }, [frameRef, magazine])
+
+  useEffect(() => {
+    if (grammar === undefined) {
+      pushGrammarRef.current = () => {}
+      return
+    }
+    const push = (): void => {
+      const message: GrammarMessage = { source: 'dsh-amphoreus', type: 'amphoreus:grammar', ...grammar.read() }
+      frameRef.current?.contentWindow?.postMessage(message, window.location.origin)
+    }
+    pushGrammarRef.current = push
+    push()
+    const unsubscribe = grammar.subscribe(push)
+    return () => {
+      unsubscribe()
+      if (pushGrammarRef.current === push) pushGrammarRef.current = () => {}
+    }
+  }, [frameRef, grammar])
 
   useEffect(() => {
     if (theme === undefined) {
@@ -463,6 +490,7 @@ export function useWorkbenchBridge(
               pushLiveRef.current()
               pushThemeTokensRef.current()
               pushMagazineRef.current()
+              pushGrammarRef.current()
               flushEnterSeat()
               return
             case 'amphoreus:map-opened':
@@ -714,6 +742,7 @@ export function useWorkbenchBridge(
     readyRef.current = false
     reply({ type: 'amphoreus:map-opened' })
     pushThemeTokensRef.current()
+    pushGrammarRef.current()
   }, [reply])
 
   return { pushCurrent, onFrameLoad }
@@ -730,6 +759,7 @@ export function WorkbenchView({
   theme,
   setSeat,
   magazine,
+  grammar,
   startSeatSession,
   seatDeps,
   enterSeatQueue,
@@ -795,6 +825,7 @@ export function WorkbenchView({
     followSession,
     theme,
     magazine,
+    grammar,
     openChat,
     insertInput,
   }, {

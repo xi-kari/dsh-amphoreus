@@ -171,7 +171,7 @@ export function createFirstFrameRows(options: FirstFrameOptions): IndexInjection
   if (!options.config.wallpaper.enabled) return rows
   rows.push(
     { kind: 'style', text: WALLPAPER_STYLE },
-    { kind: 'html', placement: 'body', html: '<div id="amphoreus-wallpaper" aria-hidden="true"><div class="amphoreus-seat-layer" data-slot="0"></div><div class="amphoreus-seat-layer" data-slot="1"></div></div>' },
+    { kind: 'html', placement: 'body', html: '<div id="amphoreus-wallpaper" aria-hidden="true"><div class="amphoreus-seat-layer" data-slot="0"></div><div class="amphoreus-seat-layer" data-slot="1"></div><div class="amph-ambient" aria-hidden="true"></div></div><span data-amph-fade="top" aria-hidden="true"></span><span data-amph-fade="bottom" aria-hidden="true"></span>' },
     { kind: 'script', placement: 'body', text: WALLPAPER_SCRIPT },
   )
   return rows

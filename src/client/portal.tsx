@@ -35,6 +35,7 @@ export interface PortalOverlayInjected {
   readonly setSeat: WorkbenchBridgeDeps['setSeat']
   readonly theme: NonNullable<WorkbenchBridgeDeps['theme']>
   readonly magazine: NonNullable<WorkbenchBridgeDeps['magazine']>
+  readonly grammar: NonNullable<WorkbenchBridgeDeps['grammar']>
   readonly openSeat: (
     heroId: string | null,
     extra?: { readonly dispatchText?: string },
@@ -76,6 +77,7 @@ export function PortalOverlay({
   setSeat,
   theme,
   magazine,
+  grammar,
   openSeat,
   t,
 }: PortalOverlayProps) {
@@ -93,6 +95,7 @@ export function PortalOverlay({
     setSeat,
     theme,
     magazine,
+    grammar,
   }, {
     onOpenSeat: openSeat,
     onOpenPortal: portal.open,

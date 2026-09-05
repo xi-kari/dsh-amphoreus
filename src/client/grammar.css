@@ -1,0 +1,364 @@
+/* ============================================================================
+ * dsh-amphoreus seat visual grammar — the shell-wide skin that gives each
+ * Chrysos Heir seat its own material, geometry, edge signature, typographic
+ * register and ambient motion. Architecture follows dsh-catppuccin-theme's
+ * glass layer (MIT, NoNameLeGo): every rule is gated on `html[data-amph-grammar]`
+ * so off == stock UI exactly; fills derive from --dsw-* tokens via color-mix();
+ * the sidebar carries its backdrop-filter on a ::before child so fixed-position
+ * popovers are never re-anchored; a @supports fallback keeps text readable
+ * without backdrop-filter. Seat-specific values arrive as --amph-* variables on
+ * <body> (see grammar-layer.ts); this file never hardcodes a seat colour.
+ * ========================================================================== */
+
+/* ---------- Recipes (defined on body so var() over body-inline --dsw tokens resolves) ---------- */
+[data-amph-grammar] body {
+  --amph-glass-card: color-mix(in srgb, color-mix(in srgb, var(--dsw-alias-bg-layer-1) 70%, var(--amph-glass-tint)) calc(var(--amph-glass-frost, .78) * 100%), transparent);
+  --amph-glass-raised: color-mix(in srgb, color-mix(in srgb, var(--dsw-alias-bg-layer-2) 70%, var(--amph-glass-tint)) calc(min(1, var(--amph-glass-frost, .78) + .12) * 100%), transparent);
+  --amph-glass-hover: color-mix(in srgb, color-mix(in srgb, var(--dsw-alias-bg-layer-2) 70%, var(--amph-glass-tint)) calc(min(1, var(--amph-glass-frost, .78) + .18) * 100%), transparent);
+  --amph-glass-filter: blur(var(--amph-glass-blur, 14px)) saturate(1.18);
+  --amph-ease: cubic-bezier(.16, 1, .3, 1);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  [data-amph-grammar] body {
+    --amph-glass-card: color-mix(in srgb, var(--dsw-alias-bg-layer-1) 96%, var(--amph-glass-tint));
+    --amph-glass-raised: var(--dsw-alias-bg-layer-2);
+    --amph-glass-hover: var(--dsw-alias-bg-layer-3);
+    --amph-glass-filter: none;
+  }
+}
+
+/* Seat wallpaper treatment: blur/position/saturation on the active seat layer, so a
+   portrait figure never sits razor-sharp behind the transcript. Global (Cyrene) space
+   keeps blur 0. Transition rides the existing 240ms fade. */
+[data-amph-grammar] #amphoreus-wallpaper > .amphoreus-seat-layer {
+  background-position: var(--amph-wp-position, center 30%);
+  filter: blur(var(--amph-wp-blur, 0px)) saturate(var(--amph-wp-saturate, 1));
+  transform: scale(calc(1 + var(--amph-wp-blur, 0px) / 400px));
+  transition: opacity 240ms ease, filter 240ms ease;
+}
+[data-amph-grammar] #amphoreus-wallpaper::after {
+  --amph-scrim-total: calc(var(--amph-scrim-boost, 0) + var(--amph-wp-dim, 0));
+}
+
+/* Extra wallpaper scrim requested by the user knob (multiplies the first-frame mask). */
+[data-amph-grammar] #amphoreus-wallpaper::after {
+  background-image:
+    linear-gradient(112deg,
+      rgba(var(--amphoreus-wallpaper-veil-rgb), calc(var(--amphoreus-wallpaper-mask) * .72 + var(--amph-scrim-total, 0))) 0%,
+      rgba(var(--amphoreus-wallpaper-veil-rgb), calc(var(--amphoreus-wallpaper-mask) * .22 + var(--amph-scrim-total, 0) * .6)) 58%,
+      rgba(var(--amphoreus-wallpaper-veil-rgb), calc(var(--amphoreus-wallpaper-mask) * .5 + var(--amph-scrim-total, 0))) 100%);
+}
+
+/* ---------- Ground: frame and columns go transparent; the wallpaper layer is the page ground ---------- */
+[data-amph-grammar] [data-amph-frame],
+[data-amph-grammar] [data-phase],
+[data-amph-grammar] [data-amph-details] {
+  background: transparent;
+}
+
+/* ---------- Corner language driven by the seat ---------- */
+[data-amph-grammar] [role='menu'],
+[data-amph-grammar] [role='dialog'],
+[data-amph-grammar] [role='alert'],
+[data-amph-grammar] [class*='card'] {
+  border-radius: var(--amph-radius);
+}
+[data-amph-grammar] button[class*='button'],
+[data-amph-grammar] [role='menuitem'],
+[data-amph-grammar] [role='tooltip'],
+[data-amph-grammar] [class*='pill'],
+[data-amph-grammar] [class*='iconButton'] {
+  border-radius: var(--amph-radius-sm);
+}
+[data-amph-grammar] [class*='block'] {
+  border-radius: var(--amph-radius);
+  --dsl-code-block-border-radius: var(--amph-radius);
+  --dsl-diff-radius: var(--amph-radius);
+  --dsl-read-radius: var(--amph-radius);
+  --dsl-terminal-radius: var(--amph-radius);
+  --dsl-web-radius: var(--amph-radius);
+  --dsl-search-radius: var(--amph-radius);
+}
+
+/* ---------- Sidebar: floating glass sheet (blur on ::before so fixed popovers keep the viewport) ---------- */
+[data-amph-grammar] [data-amph-sidebar] {
+  --dsw-specific-sidebar-fill: transparent;
+  position: relative;
+  z-index: 9;
+  margin: 12px;
+  padding: 10px 12px 14px;
+  border: 1px solid var(--amph-glass-rim);
+  border-right-color: color-mix(in srgb, var(--amph-accent) 42%, transparent);
+  border-radius: calc(var(--amph-radius) + 4px);
+  box-shadow: var(--amph-edge);
+  overflow: hidden;
+  background-color: transparent !important;
+  background-image: none !important;
+}
+[data-amph-grammar] [data-amph-sidebar]::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background-color: var(--amph-glass-card);
+  background-image: var(--amph-motif-url);
+  background-size: var(--amph-motif-size) var(--amph-motif-size);
+  background-repeat: repeat;
+  backdrop-filter: var(--amph-glass-filter);
+  -webkit-backdrop-filter: var(--amph-glass-filter);
+  pointer-events: none;
+}
+[data-amph-grammar] [data-amph-sidebar]::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--amph-glass-tint) 55%, transparent) 0%, transparent 42%, color-mix(in srgb, var(--amph-glass-tint) 70%, transparent) 100%);
+  opacity: calc(1 - var(--amph-motif-opacity, .1) * 4);
+  pointer-events: none;
+}
+[data-amph-grammar] [data-amph-frame][data-sidebar-collapsed] [data-amph-sidebar] {
+  margin: 12px -12px 12px 12px;
+  padding: 0;
+  border-radius: var(--amph-radius);
+}
+[data-amph-grammar] [data-amph-frame]:not([data-sidebar-collapsed]) [data-amph-sidebar-root] {
+  width: 100% !important;
+}
+[data-amph-grammar] [data-amph-raised] {
+  background: var(--amph-glass-raised);
+  border: 1px solid var(--amph-glass-rim);
+  border-radius: var(--amph-radius-sm);
+  backdrop-filter: var(--amph-glass-filter);
+  -webkit-backdrop-filter: var(--amph-glass-filter);
+}
+[data-amph-grammar] [data-amph-raised]:hover:not(:disabled) {
+  background: var(--amph-glass-hover);
+}
+
+/* ---------- Header: detached glass card with the seat's edge signature ---------- */
+[data-amph-grammar] [data-phase='active'] [data-amph-header] {
+  position: relative;
+  z-index: 8;
+  margin: 12px 16px 0;
+  padding: 10px 16px 8px;
+  border: 1px solid var(--amph-glass-rim);
+  border-radius: var(--amph-radius);
+  background: var(--amph-glass-card);
+  box-shadow: var(--amph-edge);
+  backdrop-filter: var(--amph-glass-filter);
+  -webkit-backdrop-filter: var(--amph-glass-filter);
+}
+[data-amph-grammar] [data-phase='active'] [data-amph-header]::after {
+  display: none;
+}
+[data-amph-grammar] [data-amph-frame][data-sidebar-collapsed] [data-phase='active'] [data-amph-header] {
+  margin-left: 28px;
+}
+/* Scrolling transcript slides under the floating header. */
+[data-amph-grammar] [data-phase='active'] [data-conversation-scroll] {
+  margin-top: -88px;
+  padding-top: 100px;
+}
+[data-amph-grammar] [class*='banner'] {
+  position: static;
+}
+
+/* ---------- Composer + stats: one glass slab ---------- */
+[data-amph-grammar] [data-phase] [class*='composerSeat'] {
+  background: none;
+}
+[data-amph-grammar] [data-amph-composer] {
+  position: relative;
+  z-index: 8;
+  background: var(--amph-glass-card);
+  border: 1px solid var(--amph-glass-rim);
+  border-radius: var(--amph-radius);
+  box-shadow: var(--amph-edge);
+  backdrop-filter: var(--amph-glass-filter);
+  -webkit-backdrop-filter: var(--amph-glass-filter);
+}
+[data-amph-grammar] [data-amph-composer]::after {
+  border-radius: var(--amph-radius);
+}
+[data-amph-grammar] [data-amph-inputbar]:has([data-amph-stats]) {
+  width: var(--dsh-composer-card-max-width) !important;
+  max-width: var(--dsh-composer-card-max-width) !important;
+  margin: 0 auto 12px;
+  padding: 0;
+  border: 1px solid var(--amph-glass-rim);
+  border-radius: var(--amph-radius);
+  background: var(--amph-glass-card);
+  box-shadow: var(--amph-edge);
+  backdrop-filter: var(--amph-glass-filter);
+  -webkit-backdrop-filter: var(--amph-glass-filter);
+}
+[data-amph-grammar] [data-amph-inputbar]:has([data-amph-stats]) [data-amph-composer] {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+[data-amph-grammar] [data-amph-inputbar]:has([data-amph-stats]) [data-amph-composer]::after {
+  display: none;
+}
+[data-amph-grammar] [data-amph-inputbar]:has([data-amph-stats]) [data-slot] {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0;
+  padding: 2px 16px 6px;
+  border: none;
+  border-top: 1px solid color-mix(in srgb, var(--amph-glass-rim) 70%, transparent);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+[data-amph-grammar] [data-amph-inputbar] [data-slot] [data-amph-stats] {
+  width: 100% !important;
+  min-width: 0;
+  margin: 0;
+  padding: 4px 0 0 !important;
+  border: none;
+  background: none;
+  box-shadow: none;
+}
+
+/* ---------- Bubbles, menus, trajectory, details ---------- */
+[data-amph-grammar] [data-amph-bubble] {
+  border: 1px solid color-mix(in srgb, var(--amph-glass-rim) 70%, transparent);
+  border-radius: var(--amph-radius);
+  background: color-mix(in srgb, color-mix(in srgb, var(--dsw-specific-bubble) 72%, var(--amph-glass-tint)) calc(var(--amph-glass-frost, .78) * 100%), transparent);
+  backdrop-filter: var(--amph-glass-filter);
+  -webkit-backdrop-filter: var(--amph-glass-filter);
+}
+[data-amph-grammar] [role='menu'] {
+  background: var(--amph-glass-raised);
+  border: 1px solid var(--amph-glass-rim);
+  backdrop-filter: var(--amph-glass-filter);
+  -webkit-backdrop-filter: var(--amph-glass-filter);
+}
+[data-amph-grammar] [role='menu']:has([role='group'] > [role='menuitemradio']) {
+  background: color-mix(in srgb, var(--dsw-alias-bg-layer-2) 72%, transparent);
+}
+[data-amph-grammar] [data-amph-trajectory] {
+  margin: 8px 16px 12px;
+  width: calc(100% - 32px);
+  height: calc(100% - 20px);
+  border: 1px solid var(--amph-glass-rim);
+  border-radius: var(--amph-radius);
+  background: var(--amph-glass-card);
+  box-shadow: var(--amph-edge);
+  backdrop-filter: var(--amph-glass-filter);
+  -webkit-backdrop-filter: var(--amph-glass-filter);
+  overflow: hidden;
+}
+[data-amph-grammar] [data-amph-trajectory] [role='toolbar'],
+[data-amph-grammar] [data-amph-trajectory] section[aria-label='Trajectory timeline'] {
+  background: transparent;
+}
+[data-amph-grammar] [data-amph-settings] {
+  --dsw-alias-bg-layer-1: var(--amph-glass-card);
+  --dsw-alias-bg-layer-2: var(--amph-glass-raised);
+  --dsw-alias-bg-layer-3: var(--amph-glass-hover);
+  --dsw-specific-sidebar-nav-item-active: color-mix(in srgb, var(--amph-accent) 22%, transparent);
+  --dsw-specific-sidebar-nav-item-hover: color-mix(in srgb, var(--amph-accent) 12%, transparent);
+  --dsw-alias-brand-primary: var(--amph-accent);
+  border: 1px solid var(--amph-glass-rim);
+  border-radius: calc(var(--amph-radius) + 8px);
+  box-shadow: var(--amph-edge);
+  backdrop-filter: var(--amph-glass-filter);
+  -webkit-backdrop-filter: var(--amph-glass-filter);
+}
+[data-amph-grammar] [role='treeitem'][aria-selected='true'] {
+  box-shadow:
+    inset 2px 0 0 var(--amph-accent),
+    0 0 16px color-mix(in srgb, var(--amph-accent) 20%, transparent);
+}
+[data-amph-grammar] button[class*='button']:hover:not(:disabled),
+[data-amph-grammar] [role='menuitem']:hover:not(:disabled) {
+  box-shadow:
+    0 0 12px color-mix(in srgb, var(--amph-accent) 18%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--dsw-alias-border-l3) 60%, transparent);
+}
+
+/* ---------- Typographic register: display faces follow the seat ---------- */
+[data-amph-grammar] [data-amph-header] [class*='crumb'],
+[data-amph-grammar] [data-amph-hero] [class*='headlineText'],
+[data-amph-grammar] [data-amph-settings] h1,
+[data-amph-grammar] [data-amph-settings] h2 {
+  font-family: var(--amph-font-display);
+  letter-spacing: var(--amph-letter-spacing);
+  text-transform: var(--amph-title-transform);
+}
+
+/* ---------- Motif on the conversation stage (only when the seat asks for it) ---------- */
+[data-amph-grammar] [data-phase] {
+  position: relative;
+}
+[data-amph-grammar] [data-phase]::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: var(--amph-motif-url) center / var(--amph-motif-size) var(--amph-motif-size) repeat;
+  opacity: 0;
+  mask-image: radial-gradient(ellipse at 50% 20%, rgba(0, 0, 0, .9), transparent 78%);
+  -webkit-mask-image: radial-gradient(ellipse at 50% 20%, rgba(0, 0, 0, .9), transparent 78%);
+}
+[data-amph-grammar][data-amph-motif-stage] [data-phase]::before {
+  opacity: var(--amph-motif-opacity, .1);
+}
+
+/* ---------- Page-edge fades: content melts into the viewport edges ---------- */
+[data-amph-grammar] [data-amph-fade] {
+  position: fixed;
+  left: 0;
+  right: 0;
+  height: 14px;
+  z-index: 7;
+  pointer-events: none;
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+  background: rgba(255, 255, 255, .16);
+}
+[data-amph-grammar='dark'] [data-amph-fade] {
+  background: rgba(0, 0, 0, .14);
+}
+[data-amph-grammar] [data-amph-fade='top'] {
+  top: 0;
+  mask-image: linear-gradient(180deg, black 0%, transparent 100%);
+  -webkit-mask-image: linear-gradient(180deg, black 0%, transparent 100%);
+}
+[data-amph-grammar] [data-amph-fade='bottom'] {
+  bottom: 0;
+  mask-image: linear-gradient(0deg, black 0%, transparent 100%);
+  -webkit-mask-image: linear-gradient(0deg, black 0%, transparent 100%);
+}
+
+/* ---------- Ambient motion: one layer per seat, CSS only, reduced-motion aware ---------- */
+[data-amph-grammar] #amphoreus-wallpaper > .amph-ambient {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 400ms var(--amph-ease);
+}
+[data-amph-grammar]:not([data-amph-ambient='none']) #amphoreus-wallpaper > .amph-ambient {
+  opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-amph-grammar] #amphoreus-wallpaper > .amph-ambient,
+  [data-amph-grammar] #amphoreus-wallpaper > .amph-ambient::before,
+  [data-amph-grammar] #amphoreus-wallpaper > .amph-ambient::after {
+    animation: none !important;
+  }
+}
+
+/* Seat ambient recipes are appended below by the design synthesis (one @keyframes + one rule set each). */

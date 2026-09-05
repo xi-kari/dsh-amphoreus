@@ -27,6 +27,7 @@ import { PipelineRail } from './pipeline-rail.tsx'
 import { PortalFooterAction, PortalOverlay, type PortalFooterInjected, type PortalOverlayInjected } from './portal.tsx'
 import { createPortalStore } from './portal-store.ts'
 import { createSeatWatch } from './seat-watch.ts'
+import { createGrammarLayer, grammarVariablesFor } from './grammar-layer.ts'
 import { createDirectChatRequests, openDirectSeatChat, startSeatSession } from './seat-actions.ts'
 import { assertSessionUnarchived, createSessionArchiveAction } from './session-archive.ts'
 import { SeatBrowser, type SeatBrowserInjected } from './seat-browser.tsx'
@@ -74,6 +75,28 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => () => seatTheme.dispose(), 'amphoreus: seat wallpaper')
   const seatWatch = createSeatWatch()
   ctx.effect(() => () => seatWatch.dispose(), 'amphoreus: seat watch')
+  // Seat visual grammar: --amph-* variables + data-amph-* hooks; fully retractable.
+  const grammarLayer = createGrammarLayer({
+    seat: seatWatch,
+    isDark: themeBridge.isDark,
+    subscribeTheme: themeBridge.subscribe,
+    prefs: () => model.getSnapshot().state?.effectiveConfig.grammar,
+    subscribePrefs: listener => model.subscribe(listener),
+  })
+  ctx.effect(() => () => grammarLayer.dispose(), 'amphoreus: grammar layer')
+  const grammarBridge = {
+    read: () => {
+      const snapshot = grammarLayer.getSnapshot()
+      return {
+        enabled: snapshot.prefs.enabled,
+        heroId: snapshot.heroId,
+        display: snapshot.grammar.typography.display,
+        ambient: snapshot.prefs.ambient ? snapshot.grammar.ambient : 'none',
+        variables: snapshot.prefs.enabled ? grammarVariablesFor(snapshot) : {},
+      }
+    },
+    subscribe: (listener: () => void) => grammarLayer.subscribe(listener),
+  }
   const portal = createPortalStore()
   const openPortal = portal.open
   const enterSeatQueue = createEnterSeatQueue()
@@ -341,6 +364,7 @@ export function apply(ctx: ClientContext): void {
       setSeat: seatTheme.hint,
       theme: themeBridge,
       magazine: magazineBridge,
+      grammar: grammarBridge,
       openSeat,
     }),
   }, PortalOverlay))
@@ -364,6 +388,7 @@ export function apply(ctx: ClientContext): void {
         theme: themeBridge,
         setSeat: seatTheme.hint,
         magazine: magazineBridge,
+        grammar: grammarBridge,
         startSeatSession: skillName => startSeatSession(seatDeps, skillName, { open: false }),
         seatDeps,
         enterSeatQueue,

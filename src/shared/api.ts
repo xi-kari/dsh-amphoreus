@@ -81,6 +81,17 @@ export interface SeatChangedMessage {
   readonly heroId: string | null
 }
 
+/** Host → iframe: the resolved seat grammar variables (already scaled by user prefs). */
+export interface GrammarMessage {
+  readonly source: 'dsh-amphoreus'
+  readonly type: 'amphoreus:grammar'
+  readonly enabled: boolean
+  readonly heroId: string | null
+  readonly display: string
+  readonly ambient: string
+  readonly variables: Readonly<Record<string, string>>
+}
+
 export interface MagazineModeMessage {
   readonly source: 'dsh-amphoreus'
   readonly type: 'amphoreus:magazine-mode'

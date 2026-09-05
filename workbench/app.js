@@ -56,6 +56,34 @@ function validThemeTokenValue(value) {
     && CSS.supports('color', normalized)
 }
 
+const GRAMMAR_VARIABLE_RE = /^--amph-[a-z0-9-]{1,48}$/
+let appliedGrammarVariables = []
+
+function applyGrammarMessage(data) {
+  const root = document.documentElement
+  for (const name of appliedGrammarVariables) root.style.removeProperty(name)
+  appliedGrammarVariables = []
+  if (data?.enabled !== true || data.variables === null || typeof data.variables !== 'object' || Array.isArray(data.variables)) {
+    root.removeAttribute('data-amph-grammar')
+    root.removeAttribute('data-amph-seat')
+    root.removeAttribute('data-amph-ambient')
+    root.removeAttribute('data-amph-display')
+    return true
+  }
+  const entries = Object.entries(data.variables)
+  if (entries.length > 64) return false
+  for (const [name, value] of entries) {
+    if (!GRAMMAR_VARIABLE_RE.test(name) || typeof value !== 'string' || value.length > 4096 || /[;{}]/.test(value) && !name.endsWith('-url')) continue
+    root.style.setProperty(name, value)
+    appliedGrammarVariables.push(name)
+  }
+  root.dataset.amphGrammar = root.dataset.theme === 'dark' ? 'dark' : 'light'
+  root.dataset.amphSeat = typeof data.heroId === 'string' ? data.heroId : 'global'
+  root.dataset.amphAmbient = typeof data.ambient === 'string' ? data.ambient : 'none'
+  root.dataset.amphDisplay = typeof data.display === 'string' ? data.display : 'serif'
+  return true
+}
+
 function applyThemeTokensMessage(data) {
   if (typeof data?.dark !== 'boolean') return false
   const tokens = data.tokens
@@ -3063,6 +3091,10 @@ window.addEventListener('message', event => {
       if (canReplaceView()) render()
       else deferCanvasRefresh()
     }
+  }
+  if (data.type === 'amphoreus:grammar') {
+    if (!trustedThemeTokenEvent(event)) return
+    applyGrammarMessage(data)
   }
   if (data.type === 'amphoreus:magazine-mode' && (data.mode === 'light' || data.mode === 'full') && data.mode !== state.magazineMode) {
     state.magazineMode = data.mode
