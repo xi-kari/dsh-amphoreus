@@ -173,7 +173,9 @@ test('wizard and panel are ctx-free dialogs registered inside the single shell.o
   assert.match(clientSource, /watchSetupAutoOpen\(model, setup\)/u)
   // Settings reach the store through the model binding, not through a widened inject payload (hot-spot signature stays `{ model, t }`).
   assert.match(clientSource, /bindSetupStore\(model, setup\)/u)
-  assert.match(settingsSource, /export function AmphoreusSettings\(\{ model, t \}: AmphoreusSettingsProps\)/u)
+  // Other panels may widen the destructured props; the setup store must not be one of them.
+  assert.match(settingsSource, /export function AmphoreusSettings\(\{ model, [^}]*t \}: AmphoreusSettingsProps\)/u)
+  assert.doesNotMatch(settingsSource, /export function AmphoreusSettings\(\{[^}]*\bsetup\b[^}]*\}/u)
   assert.match(settingsSource, /onOpenWizard=\{\(\) => setupStoreOf\(model\)\?\.open\('root'\)\}/u)
   assert.doesNotMatch(settingsSource, /readonly setup\??:/u)
   // Escape is handled in the capture phase and stopped so overlays underneath the wizard never see it.
