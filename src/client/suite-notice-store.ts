@@ -29,7 +29,11 @@ export interface SuiteNoticeSnapshot {
   readonly notices: readonly SuiteNotice[]
   /** The newest notice unless dismissed; the banner renders exactly this. */
   readonly active: SuiteNotice | undefined
-  /** True when the suite root was missing at process startup: no watcher exists, so recovery needs a restart. */
+  /**
+   * True when the host has no suite watcher: the root was missing when the
+   * resolver started (diagnostic `root-missing`, or boot level L3 before the
+   * first fetch). Reparse is a no-op then; only a restart rescans.
+   */
   readonly startedMissing: boolean
 }
 
@@ -51,6 +55,8 @@ export interface SuiteNoticeOptions {
   readonly model: SuiteNoticeModel
   readonly boot?: Pick<AmphoreusBoot, 'revision' | 'level'> | undefined
   readonly storage?: SuiteNoticeStorage | undefined
+  /** Session ids the shell has archived; their bindings never count as stale (the user cannot reach them). */
+  readonly archivedSessionIds?: (() => readonly string[]) | undefined
   readonly now?: () => number
 }
 
@@ -63,8 +69,15 @@ interface Baseline {
   readonly level: SuiteLevel
 }
 
-export function suiteNoticeId(level: SuiteLevel, sha: string | undefined): string {
-  return `${level}:${sha ?? 'none'}`
+/**
+ * One id per emission: kind and generation are part of it so dismissing an
+ * 'updated' never hides a later 'recovered' at the same sha, and a revert to a
+ * previously dismissed sha is still a fresh event. The seeded root-missing
+ * notice has a stable generation (no reparse can happen), so its dismissal
+ * survives reloads.
+ */
+export function suiteNoticeId(kind: SuiteNoticeKind, level: SuiteLevel, sha: string | undefined, generation: number): string {
+  return `${kind}:${level}:${sha ?? 'none'}:${generation}`
 }
 
 export function classifySuiteChange(previous: SuiteLevel, next: SuiteLevel): SuiteNoticeKind {
@@ -73,10 +86,26 @@ export function classifySuiteChange(previous: SuiteLevel, next: SuiteLevel): Sui
   return previous === 'L0' ? 'updated' : 'recovered'
 }
 
-export function countStaleSessions(state: AmphoreusState): number {
+/**
+ * Sessions that already hold an older card. A binding is 'pending' from boundAt
+ * and becomes 'done' only when the card is written on the first pre-step
+ * (injection.at); a session opened before the parse but injected after it
+ * already carries the new card, so the injection time is what matters.
+ */
+export function countStaleSessions(state: AmphoreusState, archived: ReadonlySet<string> = new Set()): number {
   const parsedAt = state.suite?.parsedAt
   if (parsedAt === undefined) return 0
-  return state.bindings.filter(binding => binding.injection.state === 'done' && binding.boundAt < parsedAt).length
+  return state.bindings.filter(binding =>
+    binding.injection.state === 'done'
+    && !archived.has(binding.sessionId)
+    && (binding.injection.at ?? binding.boundAt) < parsedAt,
+  ).length
+}
+
+/** The host builds a watcher only when a primary root exists; `root-missing` is emitted exactly when it does not. */
+export function suiteHasNoWatcher(state: AmphoreusState, bootLevel: SuiteLevel | 'loading' | undefined): boolean {
+  if (state.suite === undefined) return bootLevel === 'L3'
+  return state.suite.diagnostics.some(diagnostic => diagnostic.code === 'root-missing')
 }
 
 /** sessionStorage access can throw (sandboxed frames, disabled storage); degrade to no persistence. */
@@ -115,7 +144,7 @@ export function createSuiteNoticeStore(options: SuiteNoticeOptions): SuiteNotice
   const now = options.now ?? (() => Date.now())
   const listeners = new Set<() => void>()
   const dismissed = readDismissed(storage)
-  const startedMissing = boot?.level === 'L3'
+  let startedMissing = boot?.level === 'L3'
   let baseline: Baseline | undefined
   let notices: readonly SuiteNotice[] = []
   let snapshot: SuiteNoticeSnapshot = { notices, active: undefined, startedMissing }
@@ -132,15 +161,16 @@ export function createSuiteNoticeStore(options: SuiteNoticeOptions): SuiteNotice
   }
 
   const emit = (state: AmphoreusState, kind: SuiteNoticeKind, level: SuiteLevel, sha: string | undefined): void => {
+    const generation = state.suite?.generation ?? state.revision
     const notice: SuiteNotice = {
-      id: suiteNoticeId(level, sha),
+      id: suiteNoticeId(kind, level, sha, generation),
       kind,
       label: state.suite?.fingerprint?.label ?? '',
-      generation: state.suite?.generation ?? state.revision,
+      generation,
       level,
       diagnosticsCount: state.suite?.diagnostics.length ?? 0,
       at: state.suite?.parsedAt ?? now(),
-      staleSessions: countStaleSessions(state),
+      staleSessions: countStaleSessions(state, new Set(options.archivedSessionIds?.() ?? [])),
     }
     notices = [notice, ...notices.filter(item => item.id !== notice.id)].slice(0, MAX_NOTICES)
     publish()
@@ -153,12 +183,25 @@ export function createSuiteNoticeStore(options: SuiteNoticeOptions): SuiteNotice
     const state = current.state
     const level: SuiteLevel = state.suite?.level ?? 'L3'
     const sha = state.suite?.fingerprint?.manifestSha256
+    const noWatcher = suiteHasNoWatcher(state, boot?.level)
+    if (noWatcher !== startedMissing) {
+      // boot.level is the level at page serve, not at process start: a runtime
+      // parse-exception also boots L3 while the watcher is alive. The diagnostic
+      // decides, so the reparse button stays available in that case.
+      startedMissing = noWatcher
+      publish()
+    }
     if (baseline === undefined) {
       // The first ready state is the reference. Boot contributes only its
       // level: a level that moved between first paint and first fetch is real.
       const bootLevel = boot?.level
       baseline = { sha, level }
-      if (bootLevel !== undefined && bootLevel !== 'loading' && bootLevel !== level) {
+      if (level === 'L3') {
+        // Without a root the host has no watcher and this state never changes
+        // on its own, so the first state is the only chance to say so. The id
+        // is stable (generation cannot move) and dismissal survives reloads.
+        emit(state, 'missing', level, sha)
+      } else if (bootLevel !== undefined && bootLevel !== 'loading' && bootLevel !== level) {
         emit(state, classifySuiteChange(bootLevel, level), level, sha)
       }
       return

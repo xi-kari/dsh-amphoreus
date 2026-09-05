@@ -10,6 +10,7 @@ import {
   countStaleSessions,
   createSuiteNoticeStore,
   SUITE_NOTICE_STORAGE_KEY,
+  suiteHasNoWatcher,
   type SuiteNoticeStorage,
 } from '../src/client/suite-notice-store.ts'
 
@@ -29,8 +30,15 @@ interface StateOptions {
   readonly generation?: number
   readonly parsedAt?: number
   readonly diagnostics?: number
+  /** Diagnostic code for every generated diagnostic (default router-missing). */
+  readonly diagnosticCode?: 'router-missing' | 'root-missing' | 'parse-exception'
   readonly label?: string
-  readonly bindings?: readonly { readonly state: 'pending' | 'done' | 'skipped' | 'failed'; readonly boundAt: number }[]
+  readonly bindings?: readonly {
+    readonly state: 'pending' | 'done' | 'skipped' | 'failed'
+    readonly boundAt: number
+    readonly at?: number
+    readonly sessionId?: string
+  }[]
   readonly suite?: boolean
 }
 
@@ -52,7 +60,7 @@ function stateOf(options: StateOptions = {}): AmphoreusState {
     dispatch: [],
     pipelines: [],
     diagnostics: Array.from({ length: options.diagnostics ?? 0 }, (_, index) => ({
-      code: 'router-missing' as never,
+      code: (options.diagnosticCode ?? 'router-missing') as never,
       severity: 'warn' as const,
       detail: `d${index}`,
     })),
@@ -64,11 +72,11 @@ function stateOf(options: StateOptions = {}): AmphoreusState {
     seats: [],
     seatDirs: [],
     bindings: (options.bindings ?? []).map((binding, index) => ({
-      sessionId: `s${index}`,
+      sessionId: binding.sessionId ?? `s${index}`,
       skillName: 'amphoreus-anaxa',
       boundAt: binding.boundAt,
       source: 'seat-new',
-      injection: { state: binding.state },
+      injection: binding.at === undefined ? { state: binding.state } : { state: binding.state, at: binding.at },
     })),
     memory: [],
     observations: [],
@@ -153,7 +161,7 @@ test('a manifest sha change emits one updated notice with label, generation and 
   assert.equal(active.level, 'L0')
   assert.equal(active.diagnosticsCount, 1)
   assert.equal(active.at, 5_000)
-  assert.equal(active.id, 'L0:bbb')
+  assert.equal(active.id, 'updated:L0:bbb:2')
   assert.equal(store.getSnapshot().notices.length, 1)
   store.dispose()
 })
@@ -181,7 +189,8 @@ test('degraded, missing and recovered transitions each emit their own kind', () 
   // Same sha, level flips to L3 (root vanished): level alone is a change.
   model.ready(stateOf({ sha: undefined, level: 'L3', generation: 3, suite: true }))
   assert.equal(store.getSnapshot().active?.kind, 'missing')
-  assert.equal(store.getSnapshot().active?.id, 'L3:none')
+  assert.equal(store.getSnapshot().active?.id, 'missing:L3:none:3')
+  assert.equal(store.getSnapshot().startedMissing, false, 'a root that vanished at runtime still has a watcher')
 
   // suite undefined entirely is treated as L3 too and is not a new notice.
   model.ready(stateOf({ suite: false, generation: 4 }))
@@ -196,12 +205,70 @@ test('degraded, missing and recovered transitions each emit their own kind', () 
   store.dispose()
 })
 
-test('boot level contributes to the baseline: L3 boot then L0 first fetch is a recovery; startedMissing is exposed', () => {
+test('root missing at startup: the first L3 state seeds a missing notice with a stable id, stays silent afterwards, and dismissal survives reload', () => {
+  const storage = fakeStorage()
+  const model = fakeModel()
+  const store = createSuiteNoticeStore({ model, boot: { revision: 0, level: 'L3' }, storage })
+  assert.equal(store.getSnapshot().startedMissing, true, 'boot L3 is the pre-fetch signal')
+  let changes = 0
+  store.subscribe(() => { changes += 1 })
+  const missing = stateOf({ level: 'L3', generation: 0, diagnostics: 1, diagnosticCode: 'root-missing' })
+  model.ready(missing)
+  const active = store.getSnapshot().active
+  assert.ok(active !== undefined, 'the only genuine-restart case must render')
+  assert.equal(active.kind, 'missing')
+  assert.equal(active.id, 'missing:L3:none:0')
+  assert.equal(active.staleSessions, 0)
+  assert.equal(store.getSnapshot().startedMissing, true, 'root-missing diagnostic confirms there is no watcher')
+  assert.equal(changes, 1)
+  // Without a watcher the state never changes; refreshes republish the same thing.
+  model.publish({ phase: 'ready', state: missing, refreshing: true })
+  model.ready(stateOf({ level: 'L3', generation: 0, diagnostics: 1, diagnosticCode: 'root-missing' }))
+  assert.equal(changes, 1)
+  assert.equal(store.getSnapshot().notices.length, 1)
+  store.dismiss(active.id)
+  assert.equal(store.getSnapshot().active, undefined)
+  store.dispose()
+
+  // Reload of the same process: identical id, still dismissed.
+  const reloaded = fakeModel()
+  const store2 = createSuiteNoticeStore({ model: reloaded, boot: { revision: 0, level: 'L3' }, storage })
+  reloaded.ready(stateOf({ level: 'L3', generation: 0, diagnostics: 1, diagnosticCode: 'root-missing' }))
+  assert.equal(store2.getSnapshot().active, undefined)
+  assert.equal(store2.getSnapshot().notices.length, 1)
+  store2.dispose()
+
+  // suite undefined entirely (host store failed) with boot L3 is the same case.
+  const noSuite = fakeModel()
+  const store3 = createSuiteNoticeStore({ model: noSuite, boot: { revision: 0, level: 'L3' } })
+  noSuite.ready(stateOf({ suite: false, generation: 0 }))
+  assert.equal(store3.getSnapshot().active?.kind, 'missing')
+  assert.equal(store3.getSnapshot().startedMissing, true)
+  store3.dispose()
+})
+
+test('a page served after a runtime parse-exception boots L3 but keeps the watcher: startedMissing clears, reparse stays possible', () => {
+  const model = fakeModel()
+  const store = createSuiteNoticeStore({ model, boot: { revision: 4, level: 'L3' } })
+  assert.equal(store.getSnapshot().startedMissing, true)
+  const broken = stateOf({ sha: 'aaa', level: 'L3', generation: 4, diagnostics: 1, diagnosticCode: 'parse-exception' })
+  model.ready(broken)
+  assert.equal(store.getSnapshot().active?.kind, 'missing')
+  assert.equal(store.getSnapshot().startedMissing, false, 'parse-exception is not root-missing')
+  assert.equal(suiteHasNoWatcher(broken, 'L3'), false)
+  assert.equal(suiteHasNoWatcher(stateOf({ level: 'L3', diagnostics: 1, diagnosticCode: 'root-missing' }), 'L0'), true)
+  assert.equal(suiteHasNoWatcher(stateOf({ suite: false }), 'L3'), true)
+  assert.equal(suiteHasNoWatcher(stateOf({ suite: false }), 'L0'), false)
+  store.dispose()
+})
+
+test('boot level contributes to the baseline: L3 boot then L0 first fetch is a recovery; startedMissing follows the fetched state', () => {
   const model = fakeModel()
   const store = createSuiteNoticeStore({ model, boot: { revision: 1, level: 'L3' } })
   assert.equal(store.getSnapshot().startedMissing, true)
   model.ready(stateOf({ sha: 'aaa', level: 'L0' }))
   assert.equal(store.getSnapshot().active?.kind, 'recovered')
+  assert.equal(store.getSnapshot().startedMissing, false)
   store.dispose()
 
   const loadingBoot = fakeModel()
@@ -226,7 +293,7 @@ test('dismiss hides the active notice, persists by id in storage, and survives a
   model.ready(stateOf({ sha: 'aaa' }))
   model.ready(stateOf({ sha: 'bbb', generation: 2 }))
   const id = store.getSnapshot().active?.id
-  assert.equal(id, 'L0:bbb')
+  assert.equal(id, 'updated:L0:bbb:2')
   let changes = 0
   store.subscribe(() => { changes += 1 })
   store.dismiss(id!)
@@ -235,22 +302,39 @@ test('dismiss hides the active notice, persists by id in storage, and survives a
   assert.equal(store.getSnapshot().notices.length, 1, 'dismissed notices stay in history')
   store.dismiss(id!)
   assert.equal(changes, 1, 'dismiss is idempotent')
-  assert.deepEqual(JSON.parse(storage.data.get(SUITE_NOTICE_STORAGE_KEY)!), ['L0:bbb'])
+  assert.deepEqual(JSON.parse(storage.data.get(SUITE_NOTICE_STORAGE_KEY)!), ['updated:L0:bbb:2'])
 
-  // A later different sha shows again; the old dismissed id stays hidden if re-emitted.
+  // A later different sha shows again, and a revert to a dismissed sha is a fresh event (distinct generation).
   model.ready(stateOf({ sha: 'ccc', generation: 3 }))
-  assert.equal(store.getSnapshot().active?.id, 'L0:ccc')
+  assert.equal(store.getSnapshot().active?.id, 'updated:L0:ccc:3')
   model.ready(stateOf({ sha: 'bbb', generation: 4 }))
-  assert.equal(store.getSnapshot().active, undefined, 'a previously dismissed id remains dismissed')
+  assert.equal(store.getSnapshot().active?.id, 'updated:L0:bbb:4', 'a revert is a real change and must show')
   store.dispose()
 
-  // Page reload: same storage, fresh store, sha bbb baseline then ccc -> visible; bbb -> hidden.
+  // Page reload: same storage, fresh store; the earlier dismissal only covers its own emission.
   const reloaded = fakeModel()
   const store2 = createSuiteNoticeStore({ model: reloaded, boot: { revision: 4, level: 'L0' }, storage })
+  reloaded.ready(stateOf({ sha: 'bbb', generation: 4 }))
+  assert.equal(store2.getSnapshot().active, undefined, 'first ready is the baseline')
   reloaded.ready(stateOf({ sha: 'ccc', generation: 5 }))
-  reloaded.ready(stateOf({ sha: 'bbb', generation: 6 }))
-  assert.equal(store2.getSnapshot().active, undefined)
+  assert.equal(store2.getSnapshot().active?.id, 'updated:L0:ccc:5')
+  store2.dismiss('updated:L0:ccc:5')
+  assert.deepEqual(JSON.parse(storage.data.get(SUITE_NOTICE_STORAGE_KEY)!), ['updated:L0:bbb:2', 'updated:L0:ccc:5'])
   store2.dispose()
+})
+
+test('dismissing an updated notice never hides a later recovered notice at the same sha', () => {
+  const model = fakeModel()
+  const store = createSuiteNoticeStore({ model, boot: { revision: 1, level: 'L0' } })
+  model.ready(stateOf({ sha: 'aaa' }))
+  model.ready(stateOf({ sha: 'ccc', generation: 2 }))
+  store.dismiss(store.getSnapshot().active!.id)
+  model.ready(stateOf({ sha: 'ccc', level: 'L1', generation: 3, diagnostics: 1 }))
+  assert.equal(store.getSnapshot().active?.kind, 'degraded')
+  model.ready(stateOf({ sha: 'ccc', level: 'L0', generation: 4 }))
+  assert.equal(store.getSnapshot().active?.kind, 'recovered', 'recovery confirmation must be visible')
+  assert.equal(store.getSnapshot().active?.id, 'recovered:L0:ccc:4')
+  store.dispose()
 })
 
 test('corrupt or throwing storage degrades to in-memory dismissal', () => {
@@ -259,7 +343,7 @@ test('corrupt or throwing storage degrades to in-memory dismissal', () => {
   const store = createSuiteNoticeStore({ model, boot: { revision: 1, level: 'L0' }, storage: corrupt })
   model.ready(stateOf({ sha: 'aaa' }))
   model.ready(stateOf({ sha: 'bbb', generation: 2 }))
-  assert.equal(store.getSnapshot().active?.id, 'L0:bbb')
+  assert.equal(store.getSnapshot().active?.id, 'updated:L0:bbb:2')
   store.dispose()
 
   const throwing: SuiteNoticeStorage = {
@@ -270,33 +354,42 @@ test('corrupt or throwing storage degrades to in-memory dismissal', () => {
   const store2 = createSuiteNoticeStore({ model: model2, boot: { revision: 1, level: 'L0' }, storage: throwing })
   model2.ready(stateOf({ sha: 'aaa' }))
   model2.ready(stateOf({ sha: 'bbb', generation: 2 }))
-  store2.dismiss('L0:bbb')
+  store2.dismiss('updated:L0:bbb:2')
   assert.equal(store2.getSnapshot().active, undefined)
   store2.dispose()
 })
 
-test('staleSessions counts only done injections bound before the parse', () => {
+test('staleSessions counts done injections written before the parse, by injection time, excluding archived sessions', () => {
   const state = stateOf({
     sha: 'bbb',
     parsedAt: 5_000,
     bindings: [
-      { state: 'done', boundAt: 1_000 },
-      { state: 'done', boundAt: 4_999 },
-      { state: 'done', boundAt: 5_000 },
-      { state: 'done', boundAt: 6_000 },
+      { state: 'done', boundAt: 1_000, at: 1_500 },
+      { state: 'done', boundAt: 1_000 }, // legacy record without injection.at falls back to boundAt
+      { state: 'done', boundAt: 4_999, at: 4_999 },
+      { state: 'done', boundAt: 5_000, at: 5_000 },
+      { state: 'done', boundAt: 6_000, at: 6_000 },
+      // Opened before the parse, first message after it: the injector wrote the NEW card.
+      { state: 'done', boundAt: 1_000, at: 6_000 },
       { state: 'pending', boundAt: 1_000 },
-      { state: 'skipped', boundAt: 1_000 },
-      { state: 'failed', boundAt: 1_000 },
+      { state: 'skipped', boundAt: 1_000, at: 1_000 },
+      { state: 'failed', boundAt: 1_000, at: 1_000 },
+      { state: 'done', boundAt: 1_000, at: 1_000, sessionId: 'archived-1' },
     ],
   })
-  assert.equal(countStaleSessions(state), 2)
+  assert.equal(countStaleSessions(state), 4)
+  assert.equal(countStaleSessions(state, new Set(['archived-1'])), 3)
   assert.equal(countStaleSessions(stateOf({ suite: false })), 0)
 
   const model = fakeModel()
-  const store = createSuiteNoticeStore({ model, boot: { revision: 1, level: 'L0' } })
+  let archived: readonly string[] = []
+  const store = createSuiteNoticeStore({ model, boot: { revision: 1, level: 'L0' }, archivedSessionIds: () => archived })
   model.ready(stateOf({ sha: 'aaa' }))
   model.ready(state)
-  assert.equal(store.getSnapshot().active?.staleSessions, 2)
+  assert.equal(store.getSnapshot().active?.staleSessions, 4)
+  archived = ['archived-1', 's0']
+  model.ready({ ...state, suite: { ...state.suite!, generation: 3, fingerprint: { ...state.suite!.fingerprint!, manifestSha256: 'ccc' } } })
+  assert.equal(store.getSnapshot().active?.staleSessions, 2, 'archived ids are read at emission time')
   store.dispose()
 })
 
@@ -325,6 +418,10 @@ test('banner source: role=status, polite live region, portal gate, no ctx/fetch/
   assert.match(bannerSource, /model\.reparse\(\)/)
   assert.match(bannerSource, /snapshot\.startedMissing && <span[^>]*>\{t\('suite\.restartHint'\)\}/)
   assert.match(bannerSource, /!snapshot\.startedMissing/, 'reparse is hidden when the host has no watcher')
+  // A reparse failure is keyed to the notice it belongs to and never lingers under the next notice.
+  assert.match(bannerSource, /setError\(\{ id: notice\.id, message: errorMessage\(reparseError\) \}\)/)
+  assert.match(bannerSource, /const errorText = error\?\.id === notice\.id \? error\.message : undefined/)
+  assert.match(bannerSource, /\{errorText === undefined \? null : <span className=\{css\.error\}>\{errorText\}<\/span>\}/)
   assert.doesNotMatch(bannerSource, /\bctx\b|fetch\(|appendChild|localStorage|sessionStorage|EventSource/)
   assert.doesNotMatch(storeSource, /new EventSource|fetch\(|document\./)
   for (const word of FIREWALL_WORDS) {
@@ -356,7 +453,8 @@ test('banner CSS positions absolute top-center above the portal panel using only
 test('index wires the store once at client-services and registers the banner inside the single shell.overlay callback', () => {
   assert.equal((clientSource.match(/const suiteNotice = createSuiteNoticeStore\(/g) ?? []).length, 1)
   assert.equal((clientSource.match(/ctx\.slots\.inject\('shell\.overlay'/g) ?? []).length, 1)
-  assert.equal((clientSource.match(/name: 'shell\.overlay'/g) ?? []).length, 2)
+  // The list slot accepts further entries from other features; only our own registration is pinned.
+  assert.ok((clientSource.match(/name: 'shell\.overlay'/g) ?? []).length >= 2)
   assert.equal((clientSource.match(/id: 'amphoreus-suite-notice'/g) ?? []).length, 1)
   const overlay = clientSource.indexOf("ctx.slots.inject('shell.overlay'")
   const view = clientSource.indexOf("ctx.slots.inject('conversation.view'")
@@ -369,6 +467,7 @@ test('index wires the store once at client-services and registers the banner ins
   assert.ok(store > clientSource.indexOf('const portal = createPortalStore()') && store < overlay)
   assert.match(clientSource, /boot: window\.__AMPHOREUS_BOOT__,/)
   assert.match(clientSource, /storage: safeSessionStorage\(\),/)
+  assert.match(clientSource, /archivedSessionIds: \(\) => ctx\.workspaces\.list\.getSnapshot\(\)\.archivedSessionIds,/)
   assert.match(clientSource, /ctx\.effect\(\(\) => \(\) => suiteNotice\.dispose\(\), 'amphoreus: suite notice'\)/)
   assert.doesNotMatch(clientSource, /new EventSource/)
 })

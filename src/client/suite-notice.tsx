@@ -30,12 +30,14 @@ export function SuiteNoticeBanner({ store, model, portalOpen, subscribePortal, t
   const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot)
   const portalIsOpen = useSyncExternalStore(subscribePortal, portalOpen)
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string>()
+  // Keyed to the notice so a failure reported for one notice never lingers under the next.
+  const [error, setError] = useState<{ readonly id: string; readonly message: string }>()
   const notice = snapshot.active
 
   if (notice === undefined || portalIsOpen) return null
+  const errorText = error?.id === notice.id ? error.message : undefined
 
-  // Reparse is a no-op on the host when no watcher exists (root missing at startup).
+  // Reparse is a no-op on the host when no watcher exists (root missing when the resolver started).
   const canReparse = (notice.kind === 'degraded' || notice.kind === 'missing') && !snapshot.startedMissing
   const showStale = notice.kind !== 'missing' && notice.staleSessions > 0
   const headline = notice.kind === 'updated'
@@ -53,7 +55,7 @@ export function SuiteNoticeBanner({ store, model, portalOpen, subscribePortal, t
     try {
       await model.reparse()
     } catch (reparseError) {
-      setError(errorMessage(reparseError))
+      setError({ id: notice.id, message: errorMessage(reparseError) })
     } finally {
       setBusy(false)
     }
@@ -72,7 +74,7 @@ export function SuiteNoticeBanner({ store, model, portalOpen, subscribePortal, t
         <strong>{headline}</strong>
         {showStale && <span className={css.hint}>{t('suite.sessionsStale', { n: notice.staleSessions })}</span>}
         {snapshot.startedMissing && <span className={css.restart}>{t('suite.restartHint')}</span>}
-        {error === undefined ? null : <span className={css.error}>{error}</span>}
+        {errorText === undefined ? null : <span className={css.error}>{errorText}</span>}
       </div>
       <div className={css.actions}>
         {canReparse && (

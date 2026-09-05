@@ -247,6 +247,7 @@ export function apply(ctx: ClientContext): void {
     model,
     boot: window.__AMPHOREUS_BOOT__,
     storage: safeSessionStorage(),
+    archivedSessionIds: () => ctx.workspaces.list.getSnapshot().archivedSessionIds,
   })
   ctx.effect(() => () => suiteNotice.dispose(), 'amphoreus: suite notice')
   const bootWorkbench = window.__AMPHOREUS_BOOT__?.workbench
