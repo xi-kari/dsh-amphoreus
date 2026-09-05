@@ -158,6 +158,7 @@ export const zh = {
   'seat.command.hint': '席位名，或 all 打开总览',
   'seat.notFound': '没有名为「{name}」的已部署席位',
   'seat.hotkeyHint': '快捷键 {key}',
+  'seat.imagesUnsupported': '/seat 不能带图片，请先移除图片再切换席位',
 } as const
 
 export type AmphoreusKey = keyof typeof zh
@@ -321,6 +322,7 @@ export const en: Record<AmphoreusKey, string> = {
   'seat.command.hint': 'seat name, or all for the overview',
   'seat.notFound': 'No deployed seat named "{name}"',
   'seat.hotkeyHint': 'Hotkey {key}',
+  'seat.imagesUnsupported': '/seat cannot carry images; remove them before switching seats',
 }
 
 export const NS = 'amphoreus'

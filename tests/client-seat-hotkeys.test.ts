@@ -52,7 +52,9 @@ test('isEditableTarget and digitOf classify targets and keys', () => {
   assert.equal(isEditableTarget(null), false)
   assert.equal(isEditableTarget(undefined), false)
   assert.equal(digitOf({ key: '3', code: 'Digit3' }), 3)
-  assert.equal(digitOf({ key: '0', code: 'Numpad0' }), 0)
+  // Numpad codes are rejected: Alt+Numpad is Windows Alt-code character entry.
+  assert.equal(digitOf({ key: '0', code: 'Numpad0' }), undefined)
+  assert.equal(digitOf({ key: '2', code: 'Numpad2' }), undefined)
   // Alt+digit on some layouts reports a symbol in `key`; `code` still carries the digit.
   assert.equal(digitOf({ key: '™', code: 'Digit2' }), 2)
   assert.equal(digitOf({ key: '7' }), 7)
@@ -143,6 +145,34 @@ test('typing a digit into the composer is left alone; Alt+digit from an editable
   assert.deepEqual(entered, ['amphoreus-aglaea', 'amphoreus-anaxa'])
 })
 
+test('editable targets: Alt+Numpad (Windows Alt-codes) and Alt+digit yielding a glyph (macOS Option) pass through untouched', async () => {
+  const win = fakeWindow()
+  let entered = 0
+  let toggled = 0
+  installSeatHotkeys({
+    target: win.target,
+    seats: () => seats,
+    enter: async () => { entered += 1 },
+    togglePortal: () => { toggled += 1 },
+  })
+  const editable = { tagName: 'DIV', isContentEditable: true }
+  const events = [
+    win.fire({ key: '2', code: 'Numpad2', altKey: true, target: editable }),
+    win.fire({ key: '0', code: 'Numpad0', altKey: true, target: editable }),
+    win.fire({ key: '¡', code: 'Digit1', altKey: true, target: editable }),
+    win.fire({ key: '™', code: 'Digit2', altKey: true, target: { tagName: 'TEXTAREA' } }),
+  ]
+  await settle()
+  for (const event of events) assert.equal(event.prevented, false)
+  assert.equal(entered, 0)
+  assert.equal(toggled, 0)
+  // Outside editable targets the layout-independent `code` still wins over a symbol `key`.
+  const body = win.fire({ key: '™', code: 'Digit2', altKey: true })
+  assert.equal(body.prevented, true)
+  await settle()
+  assert.equal(entered, 1)
+})
+
 test('a seat start in flight debounces repeated presses for that seat only, and errors reach onError', async () => {
   const win = fakeWindow()
   let release: (() => void) | undefined
@@ -202,8 +232,9 @@ test('Alt+0 toggles the portal without touching seats, even with no seats deploy
   })
   const zero = win.fire({ key: '0', code: 'Digit0', altKey: true })
   assert.equal(zero.prevented, true)
-  win.fire({ key: '0', code: 'Numpad0', altKey: true })
-  assert.equal(toggled, 2)
+  const numpad = win.fire({ key: '0', code: 'Numpad0', altKey: true })
+  assert.equal(numpad.prevented, false)
+  assert.equal(toggled, 1)
   const one = win.fire({ key: '1', code: 'Digit1', altKey: true })
   assert.equal(one.prevented, false)
 })

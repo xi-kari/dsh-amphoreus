@@ -105,6 +105,11 @@ export function createSeatCommandSource(deps: SeatCommandDeps): InputTriggerSour
       }
     },
     matchSpace: (_session, token) => token === `/${SEAT_COMMAND_NAME}` ? claim() : undefined,
-    matchEnter: async (_session, line) => parseSeatLine(line) === undefined ? undefined : claim(),
+    matchEnter: async (_session, line, _signal, envelope) => {
+      if (parseSeatLine(line) === undefined) return undefined
+      // The claim declares no image support; refuse the whole envelope so the composer keeps text + images intact.
+      if (envelope.images > 0) throw new Error(deps.t('seat.imagesUnsupported'))
+      return claim()
+    },
   }
 }

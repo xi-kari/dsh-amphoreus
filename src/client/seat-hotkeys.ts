@@ -49,10 +49,17 @@ export function isEditableTarget(target: unknown): boolean {
   return typeof element.tagName === 'string' && EDITABLE_TAGS.has(element.tagName.toUpperCase())
 }
 
-/** Digit 0-9 carried by the event (layout-independent `code` first, `key` as fallback), or undefined. */
+/**
+ * Top-row digit 0-9 carried by the event (layout-independent `code` first, `key` as fallback), or undefined.
+ * Numpad codes are deliberately NOT accepted: on Windows, Alt + numpad digits is the OS Alt-code character
+ * entry, which accumulates regardless of preventDefault and would both switch seats and insert a glyph.
+ */
 export function digitOf(event: Pick<SeatHotkeyEvent, 'key' | 'code'>): number | undefined {
-  const fromCode = event.code === undefined ? null : /^(?:Digit|Numpad)(\d)$/u.exec(event.code)
-  if (fromCode !== null) return Number(fromCode[1])
+  if (event.code !== undefined && event.code !== '') {
+    // A physical code is authoritative: Numpad*, KeyA, … never count, even when `key` happens to be a digit.
+    const fromCode = /^Digit(\d)$/u.exec(event.code)
+    return fromCode === null ? undefined : Number(fromCode[1])
+  }
   return /^\d$/u.test(event.key) ? Number(event.key) : undefined
 }
 
@@ -66,7 +73,10 @@ export function installSeatHotkeys(deps: SeatHotkeyDeps): () => void {
   const inflight = new Set<string>()
   const listener = (event: SeatHotkeyEvent): void => {
     if (event.isComposing === true || event.repeat === true || event.defaultPrevented === true) return
-    if (isEditableTarget(event.target) && !event.altKey) return
+    if (isEditableTarget(event.target)) {
+      // Plain digits are text; Alt+digit that yields a glyph (macOS Option+1 → '¡') is text input too.
+      if (!event.altKey || !/^\d$/u.test(event.key)) return
+    }
     const digit = chordDigit(event)
     if (digit === undefined) return
     if (digit === 0) {

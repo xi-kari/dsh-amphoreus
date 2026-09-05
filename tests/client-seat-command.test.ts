@@ -66,7 +66,7 @@ function claimOf(outcome: PickOutcome): CommandClaim {
 }
 
 test('locale keys exist in both dictionaries', () => {
-  for (const key of ['seat.command.section', 'seat.command.hint', 'seat.notFound', 'seat.hotkeyHint'] as const) {
+  for (const key of ['seat.command.section', 'seat.command.hint', 'seat.notFound', 'seat.hotkeyHint', 'seat.imagesUnsupported'] as const) {
     assert.equal(typeof zh[key], 'string')
     assert.equal(typeof en[key], 'string')
   }
@@ -113,6 +113,20 @@ test('matchSpace claims the bare /seat token only; matchEnter claims any /seat l
   claimOf(await source.matchEnter?.(session, '/seat', signal, { images: 0 }))
   assert.equal(await source.matchEnter?.(session, '/model', signal, { images: 0 }), undefined)
   assert.equal(await source.matchEnter?.(session, 'hello /seat', signal, { images: 0 }), undefined)
+})
+
+test('matchEnter refuses an envelope with images (throws, no enter) so the composer keeps text and attachments', async () => {
+  const { source, entered, portal } = harness()
+  const signal = new AbortController().signal
+  await assert.rejects(
+    async () => source.matchEnter?.(session, '/seat anaxa', signal, { images: 1 }),
+    (error: unknown) => error instanceof Error && error.message === zh['seat.imagesUnsupported'],
+  )
+  await assert.rejects(async () => source.matchEnter?.(session, '/seat all', signal, { images: 2 }))
+  // Lines this source does not own are still left alone regardless of images.
+  assert.equal(await source.matchEnter?.(session, '/model', signal, { images: 1 }), undefined)
+  assert.equal(entered.length, 0)
+  assert.equal(portal(), 0)
 })
 
 test('claim.submit enters a resolved seat and reports success so the composer commits the draft', async () => {
