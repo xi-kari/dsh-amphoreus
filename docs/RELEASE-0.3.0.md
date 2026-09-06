@@ -25,11 +25,11 @@ dsh plugin --profile web add dsh-amphoreus@0.3.0
 
 ## 验证
 
-- 插件全量回归：590 项测试、589 通过、0 失败、1 跳过（`AMPHOREUS_REAL_SUITE` 未设置时的环境门）。
+- 插件全量回归：595 项测试、595 通过、0 失败、0 跳过（`AMPHOREUS_REAL_SUITE` 指向 δ-me13 skill v1.7.0 `0594030` 的 `skills/`）。
 - 发布产物验证：`npm run verify:dist` OK。
 - 七个功能分支各经两轮对抗评审与修复后按并集策略合并；合并后审计 20 条发现、6 条确认并已修复（`7fd2ed8`）。
-- npm 发布 SHA：待发布后回填。
-- Git tag SHA：待发布后回填。
+- npm 发布：`dsh-amphoreus@0.3.0`，gitHead = `5f3c468e8813d8e5c279452487675d874329d976`，dist-tag `alpha`（`latest` 随后指向 0.3.0）；108 文件、unpacked 1,371,865 B、packed 352,433 B，shasum `a58576714b12fbd836a8cedc461047081bfb4624`；本地 `npm pack` 与 registry tarball sha256 一致（`d89b233d83dd330f676a…`）。
+- Git tag：`v0.3.0` → `5f3c468e8813d8e5c279452487675d874329d976`；release workflow run `34002755334` success（gitHead 与 tag 一致，跳过重复发布）；CI run `34000458048` ubuntu/windows 双绿。
 
 ## 使用边界
 

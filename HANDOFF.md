@@ -9,7 +9,7 @@
 
 ## 0. 一句话现状
 
-当前版本为 **dsh-amphoreus 0.3.0**（`package.json` 已置 0.3.0；npm／tag 在发布前仍是 0.2.2，发布后回填 `docs/RELEASE-0.3.0.md` 与 BUILD-LOG）。外部套件为 [xi-kari/delta-me13-skill](https://github.com/xi-kari/delta-me13-skill)（CI 钉 `6e4f4746`），`sync.source` 默认同源。当前门：`npm test` 590 项／589 通过／1 跳过（`AMPHOREUS_REAL_SUITE` 环境门），`npm run verify:dist` OK；HEAD `7fd2ed8` 为合并后审计修复。
+当前版本为 **dsh-amphoreus 0.3.0**（`package.json` 已置 0.3.0；npm `alpha`=0.3.0（`latest` 随后切换）、tag `v0.3.0` = `5f3c468`，详见 `docs/RELEASE-0.3.0.md` 与 BUILD-LOG）。外部套件为 [xi-kari/delta-me13-skill](https://github.com/xi-kari/delta-me13-skill)（CI 钉 `6e4f4746`），`sync.source` 默认同源。当前门：`npm test` 590 项／589 通过／1 跳过（`AMPHOREUS_REAL_SUITE` 环境门），`npm run verify:dist` OK；HEAD `7fd2ed8` 为合并后审计修复。
 
 自 0.2.2 起新增子系统：席位视觉语法层与主页壁纸、δ-me13 品牌、逐席代码配色、自定义席位壁纸、贴纸运行时 `/amphoreus/stickers/`，以及七项并行建设的功能——首次运行向导（`setup-wizard`）、席位预设（`seat-presets`）、席位记忆（`seat-memory`，含 `/remember`）、视觉方案导出／导入（`visual-scheme`）、席位切换（`seat-switch`，Alt+数字／`/seat`）、套件更新提示（`suite-notice`）、席位音效（`seat-sounds`）。逐项行为以 `docs/features/*.md` 为权威，发布说明见 `docs/RELEASE-0.3.0.md`。
 
