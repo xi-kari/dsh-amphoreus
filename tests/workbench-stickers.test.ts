@@ -13,12 +13,14 @@ vm.runInContext(source.slice(source.indexOf('function inlineMarkdown('), source.
 const render = (value: string): string => vm.runInContext(`renderMarkdown(${JSON.stringify(value)})`, context)
 
 test('workbench displays same-origin skill stickers between dialogue and the receipt', () => {
-  for (const url of ['/amphoreus/stickers/cyrene-roger.webp', 'http://127.0.0.1:3080/amphoreus/stickers/cyrene-roger.webp']) {
-    for (const target of [url, `<${url}>`]) {
-      const html = render(`收到。\n![昔涟·收到](${target})\n昔涟卡｜读取：common.md、persona.md｜档位：标准`)
-      assert.match(html, /<p>收到。<\/p><img class="dialogue-sticker"/)
-      assert.match(html, /src="\/amphoreus\/stickers\/cyrene-roger.webp" alt="昔涟·收到"/)
-      assert.match(html, /<p>昔涟卡｜读取/)
+  for (const ext of ['webp', 'gif', 'png']) {
+    for (const url of [`/amphoreus/stickers/cyrene-roger.${ext}`, `http://127.0.0.1:3080/amphoreus/stickers/cyrene-roger.${ext}`]) {
+      for (const target of [url, `<${url}>`]) {
+        const html = render(`收到。\n![昔涟·收到](${target})\n昔涟卡｜读取：common.md、persona.md｜档位：标准`)
+        assert.match(html, /<p>收到。<\/p><img class="dialogue-sticker"/)
+        assert.match(html, new RegExp(`src="/amphoreus/stickers/cyrene-roger.${ext}" alt="昔涟·收到"`))
+        assert.match(html, /<p>昔涟卡｜读取/)
+      }
     }
   }
 })
@@ -43,6 +45,7 @@ test('workbench never fetches arbitrary files, remote images or malformed sticke
     '/amphoreus/stickers/../private.webp', '/amphoreus/stickers/%2e%2e.webp',
     '/amphoreus/stickers/cyrene.webp?token=secret', '/amphoreus/stickers/cyrene.webp#fragment',
     '/amphoreus/assets/private.webp',
+    '/amphoreus/stickers/cyrene.jpg', '/amphoreus/stickers/cyrene.svg', '/amphoreus/stickers/cyrene.GIF', '/amphoreus/stickers/cyrene.webp.png',
   ]) {
     assert.doesNotMatch(render(`![角色](<${target}>)`), /<img\b/, target)
   }

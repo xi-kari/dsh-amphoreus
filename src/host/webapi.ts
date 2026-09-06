@@ -587,14 +587,14 @@ export class AmphoreusWebApi {
       if (path.startsWith('/amphoreus/stickers/')) {
         if (!method(request, response, 'GET')) return
         const tail = decodeTail(path, '/amphoreus/stickers/')
-        const match = tail === undefined ? null : /^([a-z0-9]+(?:-[a-z0-9]+)*)\.webp$/u.exec(tail)
+        const match = tail === undefined ? null : /^([a-z0-9]+(?:-[a-z0-9]+)*)\.(webp|gif|png)$/u.exec(tail)
         const root = this.#resolver.current()?.root?.canonical
-        const body = root === undefined || match === null ? undefined : await readSticker(root, match[1]!)
-        if (body === undefined || this.#resolver.current()?.root?.canonical !== root) {
+        const asset = root === undefined || match === null ? undefined : await readSticker(root, match[1]!)
+        if (asset === undefined || asset.ext !== match![2] || this.#resolver.current()?.root?.canonical !== root) {
           json(response, 404, { error: 'sticker not found' })
           return
         }
-        send(response, 200, 'image/webp', body, { 'content-length': String(body.length) })
+        send(response, 200, asset.mime, asset.body, { 'content-length': String(asset.body.length) })
         return
       }
       if (path.startsWith('/amphoreus/assets/')) {

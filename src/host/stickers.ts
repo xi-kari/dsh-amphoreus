@@ -3,6 +3,29 @@ import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { z } from 'zod'
 
 const KEY = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u
+const FILE = /^[a-z0-9]+(?:-[a-z0-9]+)*\.(?:webp|gif|png)$/u
+
+export type StickerExtension = 'webp' | 'gif' | 'png'
+export interface StickerFormat {
+  readonly ext: StickerExtension
+  readonly mime: string
+}
+
+/** Served formats; the manifest extension decides which magic bytes the file must carry. */
+export const STICKER_FORMATS: Readonly<Record<StickerExtension, StickerFormat & { readonly sniff: (body: Buffer) => boolean }>> = {
+  webp: { ext: 'webp', mime: 'image/webp', sniff: isWebP },
+  gif: { ext: 'gif', mime: 'image/gif', sniff: isGif },
+  png: { ext: 'png', mime: 'image/png', sniff: isPng },
+}
+
+/** Format declared by a manifest file name; undefined for anything outside the served extensions. */
+export function stickerFormatOf(file: string): StickerFormat | undefined {
+  if (!FILE.test(file)) return undefined
+  const ext = file.slice(file.lastIndexOf('.') + 1) as StickerExtension
+  const format = STICKER_FORMATS[ext]
+  return format === undefined ? undefined : { ext: format.ext, mime: format.mime }
+}
+
 const CatalogSchema = z.object({
   version: z.literal(1),
   speakers: z.array(z.object({
@@ -15,35 +38,47 @@ const CatalogSchema = z.object({
     key: z.string().max(96).regex(KEY),
     speaker: z.string().max(96).regex(KEY),
     label: z.string().max(120).optional(),
-    file: z.string().max(101).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*\.webp$/u),
+    file: z.string().max(101).regex(FILE),
   })),
 })
 
-export type StickerCatalog = z.infer<typeof CatalogSchema>
+type ManifestCatalog = z.infer<typeof CatalogSchema>
+export type StickerItem = ManifestCatalog['items'][number] & { readonly ext: StickerExtension }
+export type StickerCatalog = Omit<ManifestCatalog, 'items'> & { readonly items: StickerItem[] }
 
-/** Fresh external metadata, limited to registered images that can be served. */
+export interface StickerAsset {
+  readonly body: Buffer
+  readonly mime: string
+  readonly ext: StickerExtension
+}
+
+/** Fresh external metadata, limited to registered images whose bytes match their declared extension. */
 export async function loadStickerCatalog(root: string): Promise<StickerCatalog | undefined> {
   const loaded = await readCatalog(root)
   if (loaded === undefined) return undefined
-  const items: StickerCatalog['items'] = []
+  const items: StickerItem[] = []
   for (const item of loaded.catalog.items) {
+    const format = stickerFormatOf(item.file)
+    if (format === undefined) continue
     const header = await readContainedFile(loaded.root, loaded.directory, item.file, 12)
-    if (header !== undefined && isWebP(header)) items.push(item)
+    if (header !== undefined && STICKER_FORMATS[format.ext].sniff(header)) items.push({ ...item, ext: format.ext })
   }
   return { ...loaded.catalog, items }
 }
 
 /** Reads a manifest key; caller-controlled filesystem paths are never accepted. */
-export async function readSticker(root: string, key: string): Promise<Buffer | undefined> {
+export async function readSticker(root: string, key: string): Promise<StickerAsset | undefined> {
   if (!KEY.test(key) || key.length > 96) return undefined
   const loaded = await readCatalog(root)
   const item = loaded?.catalog.items.find(candidate => candidate.key === key)
   if (loaded === undefined || item === undefined) return undefined
+  const format = stickerFormatOf(item.file)
+  if (format === undefined) return undefined
   const body = await readContainedFile(loaded.root, loaded.directory, item.file)
-  return body !== undefined && isWebP(body) ? body : undefined
+  return body !== undefined && STICKER_FORMATS[format.ext].sniff(body) ? { body, mime: format.mime, ext: format.ext } : undefined
 }
 
-async function readCatalog(root: string): Promise<{ root: string; directory: string; catalog: StickerCatalog } | undefined> {
+async function readCatalog(root: string): Promise<{ root: string; directory: string; catalog: ManifestCatalog } | undefined> {
   try {
     const canonical = await realpath(root)
     const directory = join(canonical, 'amphoreus', 'assets', 'stickers')
@@ -95,6 +130,18 @@ async function readContainedFile(root: string, directory: string, file: string, 
 
 function isWebP(body: Buffer): boolean {
   return body.length >= 12 && body.toString('ascii', 0, 4) === 'RIFF' && body.toString('ascii', 8, 12) === 'WEBP'
+}
+
+function isGif(body: Buffer): boolean {
+  if (body.length < 6) return false
+  const header = body.toString('ascii', 0, 6)
+  return header === 'GIF87a' || header === 'GIF89a'
+}
+
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+
+function isPng(body: Buffer): boolean {
+  return body.length >= PNG_SIGNATURE.length && body.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)
 }
 
 function samePath(left: string, right: string): boolean {

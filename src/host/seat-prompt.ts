@@ -17,6 +17,7 @@ export interface SeatStickerReferences {
   readonly script: string
   readonly manifest: string
   readonly urlPrefix: string
+  /** Served file names (`<key>.<ext>`), exactly as the sticker route accepts them. */
   readonly keys: readonly string[]
 }
 
@@ -42,7 +43,7 @@ export async function loadSeatStickerReferences(root: string, origin: string | u
       script: script.path,
       manifest: manifest.path,
       urlPrefix: `${origin}/amphoreus/stickers/`,
-      keys: catalog.items.map(item => item.key),
+      keys: catalog.items.map(item => `${item.key}.${item.ext}`),
     }
   } catch {
     return undefined
@@ -75,8 +76,8 @@ export function seatPromptAssembly(
       `选择脚本：${stickers.script}`,
       `表情 manifest：${stickers.manifest}`,
       '按需读取表情索引，并运行选择脚本时使用 --format json。只采用 status 为 ok 或 fallback、实际发言者相符且 key 在下列已确认可服务清单中的结果；选择失败时按共享合同省略图片，不猜测其他角色或不存在的键。',
-      `已确认可服务的表情键：${stickers.keys.join('、')}`,
-      `将确认后的 key 编码为 URL 路径段，使用 ![角色·表情](<${stickers.urlPrefix}<key>.webp>) 单独一行输出；此 HTTP 地址属于当前已注册的本地技能资源入口。不得使用脚本返回的本地 path 或 markdown 作为图片地址，也不上传素材或猜测远程图址。`,
+      `已确认可服务的表情文件（<key>.<扩展名>，扩展名以 manifest 登记为准，不得改写；GIF 仅当 manifest 列出时才可用）：${stickers.keys.join('、')}`,
+      `将确认后的文件名原样作为 URL 路径段，使用 ![角色·表情](<${stickers.urlPrefix}<文件名>>) 单独一行输出；此 HTTP 地址属于当前已注册的本地技能资源入口。不得使用脚本返回的本地 path 或 markdown 作为图片地址，也不上传素材或猜测远程图址。`,
     ]),
     ...(binding.source === 'dispatch' ? [
       '这是工作台为本席建立的独立派发会话。若问题面向全体，本入口采用各席独立作答，工作台会分别收集各席的回复；你只回答自己的部分，不在本会话重新召集或代演其他角色，也不根据本会话只显示你一人而推断其他席位缺席。遵循用户要求的篇幅；简单会议自介直接发言，不展开另一场会议或重复登记在场名单。圆桌、陪聊与工作场的输出形式遵循本轮读取的共享合同。',

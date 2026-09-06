@@ -826,7 +826,7 @@ function dialogueSticker(line) {
       path = url.pathname
     } catch { return escapeHtml(image[1]) }
   }
-  if (!/^\/amphoreus\/stickers\/[a-z0-9]+(?:-[a-z0-9]+)*\.webp$/.test(path)) return escapeHtml(image[1])
+  if (!/^\/amphoreus\/stickers\/[a-z0-9]+(?:-[a-z0-9]+)*\.(?:webp|gif|png)$/.test(path)) return escapeHtml(image[1])
   return `<img class="dialogue-sticker" src="${path}" alt="${escapeHtml(image[1])}" width="128" height="128" loading="lazy" decoding="async" referrerpolicy="no-referrer">`
 }
 

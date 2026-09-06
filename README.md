@@ -249,11 +249,11 @@ git clone https://github.com/xi-kari/delta-me13-skill.git
 
 解析失败时界面明确显示「套件格式未识别，已降级」，不会静默沿用旧结果；新加入的技能卡自动出席，移除的技能卡变为「未部署」且保留已有会话。
 
-同名技能由首个有效根提供。CI 与发布质量门使用 [δ-me13 skill 的固定提交](https://github.com/xi-kari/delta-me13-skill/tree/6e4f4746f824d656b8bbd9ad7275566e78fd7753)（`6e4f4746f824d656b8bbd9ad7275566e78fd7753`），执行上游静态校验与插件的真实套件合同测试。运行本地套件测试时，将 `AMPHOREUS_REAL_SUITE` 设为实际 `skills/` 目录，再执行 `npm test`；本地未提交修改只由该本地测试覆盖，不属于固定提交的 CI 结果。
+同名技能由首个有效根提供。CI 与发布质量门使用 [δ-me13 skill 的固定提交](https://github.com/xi-kari/delta-me13-skill/tree/0594030294bb7ec490c52efaa50201e93e0ffc49)（`0594030294bb7ec490c52efaa50201e93e0ffc49`），执行上游静态校验与插件的真实套件合同测试。运行本地套件测试时，将 `AMPHOREUS_REAL_SUITE` 设为实际 `skills/` 目录，再执行 `npm test`；本地未提交修改只由该本地测试覆盖，不属于固定提交的 CI 结果。
 
 ### 对话表情
 
-对话表情依赖外部套件的 `amphoreus/references/stickers.md`、`amphoreus/assets/stickers/manifest.json` 及同目录的 WebP 小图。插件从当前有效技能根只读加载这些文件，通过当前 DSH 服务的 `/amphoreus/stickers/<key>.webp` 提供浏览器可访问的图片；原生对话使用包含当前服务地址的绝对 HTTP(S) URL，工作台也支持同源图片地址。无需新增配置键，技能正文、索引与图片均不进入插件 npm 包。
+对话表情依赖外部套件的 `amphoreus/references/stickers.md`、`amphoreus/assets/stickers/manifest.json` 及同目录的小图，格式可为 WebP／GIF／PNG，以 manifest 中每项 `file` 的扩展名为准（文件字节必须与扩展名一致，GIF 在对话中按动图播放）。插件从当前有效技能根只读加载这些文件，通过当前 DSH 服务的 `/amphoreus/stickers/<key>.<扩展名>` 提供浏览器可访问的图片，扩展名必须与 manifest 登记完全一致，插件不做格式猜测或转换；原生对话使用包含当前服务地址的绝对 HTTP(S) URL，工作台也支持同源图片地址。无需新增配置键，技能正文、索引与图片均不进入插件 npm 包。详见 [docs/features/stickers.md](docs/features/stickers.md)。
 
 角色按外部技能合同选择自己的表情；可在对话中说“关表情”或“不要图片”，之后用“开表情”恢复。静音、缺席角色、缺少素材或资源不可访问时照常完成文字回复。表情数量和选图由技能及实际模型输出决定，插件不会自动替每条回复添加图片。
 
@@ -389,6 +389,6 @@ npm run assets:check -- "<assetsRoot>"
 - [建设交接](HANDOFF.md)
 - [历史审计](docs/AUDIT-2026-09-04.md)
 - [端到端验收清单](docs/E2E-CHECKLIST.md)
-- 功能说明 `docs/features/`：[首次运行向导](docs/features/setup-wizard.md)、[席位预设](docs/features/seat-presets.md)、[席位记忆](docs/features/seat-memory.md)、[视觉方案导出／导入](docs/features/visual-scheme.md)、[席位切换](docs/features/seat-switch.md)、[套件更新提示](docs/features/suite-notice.md)、[席位音效](docs/features/seat-sounds.md)
+- 功能说明 `docs/features/`：[首次运行向导](docs/features/setup-wizard.md)、[席位预设](docs/features/seat-presets.md)、[席位记忆](docs/features/seat-memory.md)、[视觉方案导出／导入](docs/features/visual-scheme.md)、[席位切换](docs/features/seat-switch.md)、[套件更新提示](docs/features/suite-notice.md)、[席位音效](docs/features/seat-sounds.md)、[对话表情](docs/features/stickers.md)
 
 设计底账另存，不随 npm 包分发。

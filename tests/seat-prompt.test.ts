@@ -151,3 +151,19 @@ test('assembly hook passes the binding to the memory reader and falls back to th
   const plain = (await callback(prompt(), context, async () => prompt())).sections[0]!.text
   assert.doesNotMatch(plain, /席位记忆/)
 })
+
+test('seat prompt names the exact served sticker file per key and keeps the manifest-extension URL template', () => {
+  const stickers = {
+    index: '/skills/amphoreus/references/stickers.md', script: '/skills/amphoreus/scripts/stickers.py',
+    manifest: '/skills/amphoreus/assets/stickers/manifest.json', urlPrefix: 'http://127.0.0.1:3080/amphoreus/stickers/',
+    keys: ['cyrene.webp', 'phainon-ehe.gif', 'anaxa-still.png'],
+  }
+  const identity = seatPromptAssembly(prompt(), binding, '那刻夏', undefined, stickers).sections[0]!.text
+  assert.match(identity, /已确认可服务的表情文件（<key>\.<扩展名>，扩展名以 manifest 登记为准，不得改写；GIF 仅当 manifest 列出时才可用）：cyrene\.webp、phainon-ehe\.gif、anaxa-still\.png/)
+  assert.match(identity, /!\[角色·表情\]\(<http:\/\/127\.0\.0\.1:3080\/amphoreus\/stickers\/<文件名>>\) 单独一行输出/)
+  assert.doesNotMatch(identity, /<key>\.webp/)
+  assert.match(identity, /--format json/)
+  assert.match(identity, /不得使用脚本返回的本地 path 或 markdown 作为图片地址/)
+  const silent = seatPromptAssembly(prompt(), binding, '那刻夏').sections[0]!.text
+  assert.match(silent, /当前未确认可供浏览器呈现的技能表情资源入口/)
+})
