@@ -3,6 +3,7 @@ import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-api-session-controller/client'
 import type {} from '@deepseek-ai/dsh-api-session-controller/remote'
 import type {} from '@deepseek-ai/dsh-api-settings-controller/remote'
+import type { SettingsNamespaceView } from '@deepseek-ai/dsh-settings/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-chat/client'
@@ -196,7 +197,7 @@ export function apply(ctx: ClientContext): void {
       describeDefaultModel: async () => {
         const described = await scope.remote.settings.describe()
         if (!described.ok) return described
-        const view = described.value.namespaces.find(namespace => namespace.ns === 'agent-default-model')
+        const view = described.value.namespaces.find((namespace: SettingsNamespaceView) => namespace.ns === 'agent-default-model')
         return { ok: true, value: view === undefined ? undefined : { user: parseDefaultModelUser(view.user), revision: view.revision } }
       },
       restoreDefaultModel: (section, expectedRevision) => scope.remote.settings.replace('agent-default-model', {
