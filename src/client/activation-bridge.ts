@@ -13,7 +13,7 @@ export interface DeferredPromptOptions {
   readonly requestedActivation: boolean
   readonly deferredActivations: Set<string>
   readonly currentSession: () => string | undefined
-  readonly binding: (sessionId: string) => { readonly session: PromptTarget } | undefined
+  readonly retain: (sessionId: string, options: SessionRetainOptions) => SessionLease<{ readonly session: PromptTarget }>
   readonly reply: () => void
   readonly open: (sessionId: string) => void
 }
@@ -23,11 +23,12 @@ export async function promptWithDeferredActivation(options: DeferredPromptOption
   const needsActivation = options.currentSession() !== options.sessionId
   if ((needsActivation || options.requestedActivation) && !deferred) throw new Error('缺少延迟激活意图')
 
-  const binding = options.binding(options.sessionId)
-  if (binding === undefined) throw new Error('会话不可用')
-  const result = await binding.session.prompt([{ type: 'text', text: options.text }], 'queue')
-  if (!result.ok) throw new Error(result.error?.message ?? '发送失败')
-
-  options.reply()
-  if (needsActivation) options.open(options.sessionId)
+  await withSessionReference(options, options.sessionId, async binding => {
+    const result = await binding.session.prompt([{ type: 'text', text: options.text }], 'queue')
+    if (!result.ok) throw new Error(result.error?.message ?? '发送失败')
+    options.reply()
+    if (needsActivation) options.open(options.sessionId)
+  })
 }
+import type { SessionRetainOptions } from '@deepseek-ai/dsh-api-session-controller/client'
+import { withSessionReference, type SessionLease } from './session-reference.ts'

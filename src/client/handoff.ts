@@ -1,17 +1,17 @@
+import type { SessionBinding, SessionRetainOptions } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { ObservationRecord } from '../host/store.ts'
 import { putBinding, startSeatSession, type SeatActionDeps } from './seat-actions.ts'
+import { withSessionReference, type SessionLease } from './session-reference.ts'
+
+interface DispatchSessionBinding {
+  readonly session: Pick<SessionBinding['session'], 'prompt'>
+}
 
 export interface HandoffDeps extends SeatActionDeps {
   readonly sessions: SeatActionDeps['sessions'] & {
     fork(options: { sessionId: string; atSeq?: number; increaseTitle?: boolean }): Promise<string>
-    binding(id: string): {
-      session: {
-        prompt(
-          content: { type: 'text'; text: string }[],
-          mode: 'queue' | 'steer',
-        ): Promise<{ ok: boolean; error?: { message?: string } }>
-      }
-    } | undefined
+    binding(id: string): DispatchSessionBinding | undefined
+    retain(id: string, options: SessionRetainOptions): SessionLease<DispatchSessionBinding>
   }
 }
 
@@ -78,18 +78,6 @@ export const putObservation = (
   body,
 )
 
-async function awaitBinding(
-  deps: HandoffDeps,
-  sessionId: string,
-): Promise<NonNullable<ReturnType<HandoffDeps['sessions']['binding']>>> {
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    const binding = deps.sessions.binding(sessionId)
-    if (binding !== undefined) return binding
-    await new Promise(resolve => setTimeout(resolve, 100))
-  }
-  throw new Error('会话未就绪')
-}
-
 export interface DispatchInput {
   readonly skillName: string
   readonly text: string
@@ -120,8 +108,9 @@ export async function dispatchTask(deps: HandoffDeps, input: DispatchInput): Pro
     ...(input.pipeline ? { pipeline: input.pipeline } : {}),
     ...(input.station === undefined ? {} : { station: input.station }),
   })
-  const binding = await awaitBinding(deps, sessionId)
-  const result = await binding.session.prompt([{ type: 'text', text }], 'queue')
+  const result = await withSessionReference(deps.sessions, sessionId, binding => (
+    binding.session.prompt([{ type: 'text', text }], 'queue')
+  ))
   if (!result.ok) throw new Error(result.error?.message ?? '发送失败')
   if (input.open === true) deps.sessions.open(sessionId)
   return sessionId

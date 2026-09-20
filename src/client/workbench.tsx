@@ -6,6 +6,9 @@
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ChatSnapshot } from '@deepseek-ai/dsh-client-ui-chat/client'
+import type { SessionBinding, SessionRetainOptions } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { SessionLease } from './session-reference.ts'
+import { subscribeRetainedSession } from './retained-subscription.ts'
 import { useCallback, useEffect, useRef, type RefObject } from 'react'
 import type { AmphoreusState, GrammarMessage, MagazineModeMessage, ThemeTokensMessage } from '../shared/api.ts'
 import { heroVisualOf } from '../shared/heroes.ts'
@@ -38,10 +41,6 @@ export interface SessionListSnapshot {
     readonly cwd?: string
     readonly blank?: boolean
     readonly running?: boolean
-    readonly completed?: boolean
-    readonly projectionValues?: {
-      readonly turnOutline?: readonly { readonly response?: string }[]
-    }
   } | undefined>
   readonly current: string | undefined
 }
@@ -51,6 +50,7 @@ export interface SessionsFace {
   fork(opts: { sessionId: string; atSeq?: number; increaseTitle?: boolean }): Promise<string>
   open(id: string): void
   binding(id: string): { session: SessionFeedFace } | undefined
+  retain(id: string, options: SessionRetainOptions): SessionLease<SessionBinding>
   readonly list: ObservableSnapshot<SessionListSnapshot>
 }
 
@@ -368,8 +368,7 @@ export function useWorkbenchBridge(
     let lastLive = ''
     let messageTimer: number | undefined
     let liveFrame: number | undefined
-    let stopFeed = (): void => {}
-    let stopFace = (): void => {}
+    let stopReference = (): void => {}
     let resendMessages: (() => void) | undefined
     let resendLive: (() => void) | undefined
 
@@ -380,10 +379,9 @@ export function useWorkbenchBridge(
       liveFrame = undefined
     }
     const detach = (): void => {
-      stopFeed()
-      stopFace()
-      stopFeed = () => {}
-      stopFace = () => {}
+      const release = stopReference
+      stopReference = () => {}
+      release()
       clearScheduled()
       if (resendMessages !== undefined && pushMessagesRef.current === resendMessages) pushMessagesRef.current = () => {}
       if (resendLive !== undefined && pushLiveRef.current === resendLive) pushLiveRef.current = () => {}
@@ -394,65 +392,71 @@ export function useWorkbenchBridge(
       const id = sessions.list.getSnapshot().current
       if (id === followedId) return
 
+      followedId = id
       detach()
-      followedId = undefined
       lastNodes = undefined
       lastHasMore = undefined
       lastRunning = undefined
       lastLive = ''
       if (id === undefined) return
 
-      const feed = conversationFeed(id)
-      const face = sessionFace(id)
-      if (feed === undefined || face === undefined) return
+      stopReference = subscribeRetainedSession(
+        () => sessions.retain(id, { source: 'amphoreusWorkbench' }),
+        () => {
+          const feed = conversationFeed(id)
+          const face = sessionFace(id)
+          if (feed === undefined || face === undefined) throw new Error('工作台会话订阅不可用')
 
-      const postMessages = (force = false): void => {
-        const chat = feed.getSnapshot()
-        if (chat === undefined) return
-        const nodes = chat.legacy.nodes
-        const hasMore = face.getSnapshot().hasMore
-        if (!force && nodes === lastNodes && hasMore === lastHasMore) return
-        lastNodes = nodes
-        lastHasMore = hasMore
-        reply({ type: 'amphoreus:messages', ...feedFromChat(id, chat, ++revisionRef.current, hasMore) })
-      }
-      const postLive = (force = false): void => {
-        const running = face.getSnapshot().running
-        const text = liveTextOf(feed.getSnapshot())
-        if (!force && running === lastRunning && text === lastLive) return
-        lastRunning = running
-        lastLive = text
-        reply({
-          type: 'amphoreus:live-reply',
-          sessionId: id,
-          running,
-          text: text.slice(0, HARD_TEXT_CAP),
-        })
-      }
-      const onFeedChange = (): void => {
-        if (messageTimer === undefined) {
-          messageTimer = window.setTimeout(() => {
-            messageTimer = undefined
-            postMessages()
-          }, 120)
-        }
-        if (liveFrame === undefined) {
-          liveFrame = requestAnimationFrame(() => {
-            liveFrame = undefined
-            postLive()
-          })
-        }
-      }
+          const postMessages = (force = false): void => {
+            const chat = feed.getSnapshot()
+            if (chat === undefined) return
+            const nodes = chat.legacy.nodes
+            const hasMore = face.getSnapshot().hasMore
+            if (!force && nodes === lastNodes && hasMore === lastHasMore) return
+            lastNodes = nodes
+            lastHasMore = hasMore
+            reply({ type: 'amphoreus:messages', ...feedFromChat(id, chat, ++revisionRef.current, hasMore) })
+          }
+          const postLive = (force = false): void => {
+            const running = face.getSnapshot().running
+            const text = liveTextOf(feed.getSnapshot())
+            if (!force && running === lastRunning && text === lastLive) return
+            lastRunning = running
+            lastLive = text
+            reply({
+              type: 'amphoreus:live-reply',
+              sessionId: id,
+              running,
+              text: text.slice(0, HARD_TEXT_CAP),
+            })
+          }
+          const onFeedChange = (): void => {
+            if (messageTimer === undefined) {
+              messageTimer = window.setTimeout(() => {
+                messageTimer = undefined
+                postMessages()
+              }, 120)
+            }
+            if (liveFrame === undefined) {
+              liveFrame = requestAnimationFrame(() => {
+                liveFrame = undefined
+                postLive()
+              })
+            }
+          }
 
-      stopFeed = feed.subscribe(onFeedChange)
-      stopFace = face.subscribe(onFeedChange)
-      followedId = id
-      resendMessages = () => postMessages(true)
-      resendLive = () => postLive(true)
-      pushMessagesRef.current = resendMessages
-      pushLiveRef.current = resendLive
-      postMessages()
-      postLive()
+          const stopFeed = feed.subscribe(onFeedChange)
+          const stopFace = face.subscribe(onFeedChange)
+          resendMessages = () => postMessages(true)
+          resendLive = () => postLive(true)
+          pushMessagesRef.current = resendMessages
+          pushLiveRef.current = resendLive
+          postMessages()
+          postLive()
+          return () => { stopFeed(); stopFace() }
+        },
+        error => console.warn('[dsh-amphoreus] workbench subscription failed:', error),
+      )
     }
 
     const stopList = sessions.list.subscribe(follow)
@@ -552,6 +556,7 @@ export function useWorkbenchBridge(
                 conversationFeed,
                 sessionFace,
                 followSession,
+                retainSession: (id, signal) => sessions.retain(id, { source: 'amphoreusOperation', signal }),
                 sessionList: sessions.list,
                 emit: progress => reply({ type: 'amphoreus:conference-progress', ...progress }),
               }, { text: data.text, targets })
@@ -651,7 +656,7 @@ export function useWorkbenchBridge(
                 requestedActivation: data.activate === true,
                 deferredActivations: deferredActivationsRef.current,
                 currentSession: () => sessions.list.getSnapshot().current,
-                binding: id => sessions.binding(id),
+                retain: (id, options) => sessions.retain(id, options),
                 reply: () => reply({ type: 'amphoreus:message-sent', requestId: data.requestId, session: summaryOf(targetId) }),
                 open: id => sessions.open(id),
               })

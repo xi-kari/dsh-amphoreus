@@ -90,7 +90,7 @@ export function seatPromptAssembly(
       replaced = true
       return { ...section, text: identity }
     }
-    if (section.name === 'deployment:persona') {
+    if (section.name === 'deployment:persona' || section.name === 'deployment:persona-prefix') {
       return { ...section, text: section.text.replace(DEFAULT_PERSONA_OPENER, '') }
     }
     return section

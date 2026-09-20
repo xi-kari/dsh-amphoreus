@@ -3,6 +3,7 @@ import type { SessionFollowFrame, SessionHistoryRecord } from '@deepseek-ai/dsh-
 import type { SessionEvent } from '@deepseek-ai/dsh-session/types'
 import type { AmphoreusState } from '../shared/api.ts'
 import { feedFromChat, HARD_TEXT_CAP, liveTextOf } from './conversation-feed.ts'
+import type { SessionLease } from './session-reference.ts'
 
 export type ConferenceSeatPhase = 'queued' | 'dispatching' | 'running' | 'done' | 'failed'
 
@@ -33,16 +34,13 @@ interface ConferenceSessionFace extends Snapshot<{
 interface ConferenceSessionList extends Snapshot<{
   readonly byId: Record<string, {
     readonly running?: boolean
-    readonly completed?: boolean
-    readonly projectionValues?: {
-      readonly turnOutline?: readonly { readonly response?: string }[]
-    }
   } | undefined>
 }> {}
 
 export interface ConferenceDeps {
   readonly dispatch: (target: ConferenceTarget, text: string) => Promise<string>
   readonly followSession?: (sessionId: string, signal: AbortSignal) => AsyncIterable<SessionFollowFrame>
+  readonly retainSession?: (sessionId: string, signal: AbortSignal) => SessionLease<unknown>
   readonly conversationFeed: (sessionId: string) => Snapshot<ChatSnapshot | undefined> | undefined
   readonly sessionFace: (sessionId: string) => ConferenceSessionFace | undefined
   readonly sessionList?: ConferenceSessionList
@@ -198,7 +196,7 @@ async function watchJournal(
         response = ''
         terminal = undefined
         for (const record of frame.records) accept(record)
-      } else {
+      } else if (frame.type === 'event') {
         accept(frame)
       }
       if (terminal !== undefined) {
@@ -235,6 +233,24 @@ async function watchReply(
     await watchJournal(deps, conferenceId, target, sessionId, signal)
     return
   }
+  if (deps.retainSession === undefined) throw new Error('会话持有通道不可用')
+  const reference = deps.retainSession(sessionId, signal)
+  try {
+    await reference.ready
+    signal.throwIfAborted()
+    await watchFeedReply(deps, conferenceId, target, sessionId, signal)
+  } finally {
+    reference.release()
+  }
+}
+
+async function watchFeedReply(
+  deps: ConferenceDeps,
+  conferenceId: string,
+  target: ConferenceTarget,
+  sessionId: string,
+  signal: AbortSignal,
+): Promise<void> {
   const { feed, face } = await waitForChannels(deps, sessionId, signal)
   const textLimit = Math.min(HARD_TEXT_CAP, positiveInteger(deps.textLimit, 8_000))
 

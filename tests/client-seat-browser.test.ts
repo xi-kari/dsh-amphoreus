@@ -5,6 +5,7 @@ import vm from 'node:vm'
 import { JsxEmit, ModuleKind, ScriptTarget, transpileModule } from 'typescript'
 import * as seatModel from '../src/client/seat-model.ts'
 import * as workspaceRouting from '../src/client/workspace-routing.ts'
+import * as sessionAdapter from '../src/client/session-adapter.ts'
 import { zh } from '../src/client/locales.ts'
 
 interface Element {
@@ -27,12 +28,21 @@ function harness(options: {
 } = {}) {
   const state: unknown[] = []
   let cursor = 0
-  const sessions = Object.fromEntries(Array.from({ length: options.seats ?? 0 }, (_, index) => [
-    `seat-${index}`, { displayTitle: `Seat ${index}`, updatedAt: 100 - index, blank: index === 0 },
+  const sessions: Record<string, {
+    id: string
+    displayTitle: string
+    updatedAt: number
+    blank: boolean
+    retainedBy: { mainView?: number; amphoreusWorkbench?: number }
+  }> = Object.fromEntries(Array.from({ length: options.seats ?? 0 }, (_, index) => [
+    `seat-${index}`, {
+      id: `seat-${index}`, displayTitle: `Seat ${index}`, updatedAt: 100 - index, blank: index === 0,
+      retainedBy: index === 0 ? { mainView: 1 } : {},
+    },
   ]))
-  if (options.directoryBlank) sessions.blank = { displayTitle: '', updatedAt: 0, blank: true }
-  if (options.internalUnbound) sessions['internal-blank'] = { displayTitle: 'Internal draft', updatedAt: 0, blank: true }
-  const list = { ids: Object.keys(sessions), byId: sessions, current: 'seat-0' }
+  if (options.directoryBlank) sessions.blank = { id: 'blank', displayTitle: '', updatedAt: 0, blank: true, retainedBy: {} }
+  if (options.internalUnbound) sessions['internal-blank'] = { id: 'internal-blank', displayTitle: 'Internal draft', updatedAt: 0, blank: true, retainedBy: {} }
+  const list = { ids: Object.keys(sessions), byId: sessions }
   const workspaces = {
     archivedSessionIds: [] as string[],
     items: [
@@ -69,6 +79,7 @@ function harness(options: {
     'react/jsx-runtime': { jsx, jsxs: jsx },
     './seat-model.ts': seatModel,
     './workspace-routing.ts': workspaceRouting,
+    './session-adapter.ts': sessionAdapter,
     './seat-browser.module.css': { default: new Proxy({}, { get: (_target, key) => key }) },
   }
   const context = vm.createContext({
@@ -92,6 +103,7 @@ function harness(options: {
     t: (key: keyof typeof zh) => zh[key],
   }
   return {
+    list,
     workspaces,
     render: (): Element => { cursor = 0; return context.exports.SeatBrowser(props) },
   }
@@ -118,6 +130,21 @@ function button(tree: Element, label: string): Element {
 }
 
 const settle = () => new Promise(resolve => setImmediate(resolve))
+
+test('active conversation follows the main-view reference without treating a workbench reference as selection', () => {
+  const app = harness({ seats: 2 })
+  elements(app.render()).find(item => item.type === 'button' && text(item.props.children).startsWith('昔涟'))!.props.onClick()
+  let tree = app.render()
+  assert.equal(button(tree, 'Seat 0').props['data-active'], true)
+  assert.equal(button(tree, 'Seat 1').props['data-active'], undefined)
+  app.list.byId['seat-0']!.retainedBy = { amphoreusWorkbench: 1 }
+  app.list.byId['seat-1']!.retainedBy = { mainView: 1 }
+  tree = app.render()
+  assert.equal(button(tree, 'Seat 0').props['data-active'], undefined)
+  assert.equal(button(tree, 'Seat 1').props['data-active'], true)
+  app.list.byId['seat-1']!.retainedBy = {}
+  assert.equal(elements(app.render()).some(item => item.props['data-active'] === true), false)
+})
 
 test('all seat conversations, including blanks and entries after the first five, have visible archive controls', () => {
   const app = harness({ seats: 7 })

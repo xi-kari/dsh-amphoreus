@@ -1,7 +1,5 @@
 export interface SessionArchiveDeps {
   readonly archive: (sessionId: string) => Promise<void>
-  readonly current: () => string | undefined
-  readonly clear: () => void
 }
 
 export function assertSessionUnarchived(sessionId: string, archivedIds: readonly string[]): void {
@@ -15,7 +13,6 @@ export function createSessionArchiveAction(deps: SessionArchiveDeps): (sessionId
     if (existing !== undefined) return existing
     const attempt = Promise.resolve().then(async () => {
       await deps.archive(sessionId)
-      if (deps.current() === sessionId) deps.clear()
     }).finally(() => { pending.delete(sessionId) })
     pending.set(sessionId, attempt)
     return attempt

@@ -41,8 +41,8 @@ export function openDirectSeatChat(
   } catch { /* The live view request still works without browser storage. */ }
   if (previous.view === WORKBENCH_VIEW_ID) deps.requests.request(sessionId)
   else deps.requests.clear(sessionId)
-  deps.activateChat(sessionId)
   deps.open(sessionId)
+  deps.activateChat(sessionId)
 }
 
 export interface SeatActionDeps {

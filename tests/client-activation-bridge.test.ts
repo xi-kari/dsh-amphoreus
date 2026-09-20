@@ -44,14 +44,14 @@ function delivery(options: {
     requestedActivation: options.requestedActivation,
     deferredActivations,
     currentSession: () => options.current,
-    binding: () => ({
+    retain: () => ({ ready: Promise.resolve({
       session: {
         prompt: async () => {
           trace.push('prompt')
           return options.result
         },
       },
-    }),
+    }), release: () => trace.push('release') }),
     reply: () => trace.push('reply'),
     open: () => trace.push('open'),
   })
@@ -71,19 +71,19 @@ test('parent current is authoritative and stale activate=false fails closed with
 test('failed prompt admission leaves the current session untouched', async () => {
   const attempt = delivery({ current: 'another-session', requestedActivation: false, withIntent: true, result: { ok: false, error: { message: 'rejected' } } })
   await assert.rejects(attempt.operation, /rejected/)
-  assert.deepEqual(attempt.trace, ['prompt'])
+  assert.deepEqual(attempt.trace, ['prompt', 'release'])
   assert.equal(attempt.deferredActivations.size, 0)
 })
 
 test('successful admission replies before opening the target session', async () => {
   const attempt = delivery({ current: 'another-session', requestedActivation: true, withIntent: true, result: { ok: true } })
   await attempt.operation
-  assert.deepEqual(attempt.trace, ['prompt', 'reply', 'open'])
+  assert.deepEqual(attempt.trace, ['prompt', 'reply', 'open', 'release'])
   assert.equal(attempt.deferredActivations.size, 0)
 })
 
 test('current-session prompts need no deferred activation and do not reopen', async () => {
   const attempt = delivery({ current: 'target-session', requestedActivation: false, withIntent: false, result: { ok: true } })
   await attempt.operation
-  assert.deepEqual(attempt.trace, ['prompt', 'reply'])
+  assert.deepEqual(attempt.trace, ['prompt', 'reply', 'release'])
 })

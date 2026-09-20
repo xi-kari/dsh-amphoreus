@@ -3,9 +3,8 @@
  * When a session bound to a seat starts, append the seat's skill card at its
  * first accepted pre-step exactly the way dsh-tool-skill would for a typed
  * `/name`: same ctx.skills.get lookup, same renderSkillContent body, same
- * skill-invocation source. Session-start is notification-only here: it records
- * the lifecycle source but never performs an asynchronous inbox injection that
- * could miss an already-claimed first request. Dedup against a user-typed
+ * skill-invocation source. Agent creation records the lifecycle source while
+ * the accepted pre-step owns the model-facing card input. Dedup against a user-typed
  * gesture rides the binding's injection state plus a same-step message scan.
  * Never injects the router card; resumes repair uncommitted first injections, honors
  * config.autoInvoke.sources for clear/compact.
@@ -126,7 +125,7 @@ export function registerInjector(ctx: Context, options: InjectorOptions): () => 
       .catch(error => { ctx.logger.warn(`amphoreus injector (committed): ${String(error)}`) })
   })
 
-  // Fork inheritance must be visible before agent/session-start can race the
+  // Fork inheritance must be visible before agent/created can race the
   // durable table write. Resumed sessions fail the exact fresh-fork equality.
   const disposeCreated = ctx.on('session/created', session => {
     try {
@@ -164,11 +163,11 @@ export function registerInjector(ctx: Context, options: InjectorOptions): () => 
     }
   })
 
-  // Session-start is an emit notification, so asynchronous work started here
-  // cannot gate the first inbox claim. Record only the source; pre-step below
-  // is the single transaction boundary that commits model-facing card input.
-  const disposeStart = ctx.on('agent/session-start', ({ agent, source }) => {
+  // Creation is awaited by the host. Keep input in the accepted pre-step so
+  // cancelled or rejected steps cannot consume the first skill invocation.
+  const disposeStart = ctx.on('agent/created', ({ agent, source }) => {
     sessionStartSources.set(agent.session.id, source)
+    return undefined
   })
 
   // Pre-step proposes input; only session/event confirms that it was accepted.

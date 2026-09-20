@@ -18,13 +18,13 @@
 
 ## 兼容性
 
-本版本兼容基线为 **dsh-v0.1.2-alpha.4**，Node.js 要求为 **22.19+ 或 24+**。运行 DSH 本体时请钉定版本：
+本版本兼容基线为 **dsh-v0.1.6-alpha.2**，Node.js 要求为 **22.19+ 或 24+**。运行 DSH 本体时请钉定版本：
 
 ```bash
-npx @deepseek-ai/dsh@0.1.2-alpha.4 web
+npx @deepseek-ai/dsh@0.1.6-alpha.2 web
 ```
 
-安装本插件时可使用 `dsh-amphoreus@alpha`，或精确版本 `dsh-amphoreus@0.3.0`。宿主与插件的 npm 标签分别管理，升级 DSH 本体前请确认兼容范围。
+安装本插件时可使用 `dsh-amphoreus@alpha`，或精确版本 `dsh-amphoreus@0.4.0`。宿主与插件的 npm 标签分别管理，升级 DSH 本体前请确认兼容范围。
 
 ## 安装
 
@@ -35,14 +35,14 @@ npx @deepseek-ai/dsh@0.1.2-alpha.4 web
 ```bash
 dsh plugin --profile web add dsh-amphoreus@alpha
 # 或钉定版本
-dsh plugin --profile web add dsh-amphoreus@0.3.0
+dsh plugin --profile web add dsh-amphoreus@0.4.0
 ```
 
 ### tarball
 
 ```bash
-npm pack dsh-amphoreus@0.3.0 --registry https://registry.npmjs.org
-dsh plugin --profile web add ./dsh-amphoreus-0.3.0.tgz
+npm pack dsh-amphoreus@0.4.0 --registry https://registry.npmjs.org
+dsh plugin --profile web add ./dsh-amphoreus-0.4.0.tgz
 ```
 
 ### GitHub

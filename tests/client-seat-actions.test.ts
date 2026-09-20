@@ -138,28 +138,30 @@ test('a failed seat Workspace registration rolls the prebinding back', async () 
   assert.deepEqual(order, ['PUT', 'workspace', 'DELETE'])
 })
 
-test('direct seat chat selects chat before opening and keeps its existing draft', () => {
+test('direct seat chat opens its generation before activating chat and keeps its existing draft', () => {
   const sessionId = 'session-direct'
   const values = new Map<string, string>([
     [WORKBENCH_TAB_KEY, WORKBENCH_VIEW_ID],
     [`${CONVERSATION_PREF_PREFIX}.${sessionId}`, JSON.stringify({ draft: 'unsent text', view: WORKBENCH_VIEW_ID, viewRequest: { view: WORKBENCH_VIEW_ID, focus: 'old' } })],
   ])
   const order: string[] = []
+  let retained = false
   const requests = createDirectChatRequests()
   requests.subscribe(() => { if (requests.getSnapshot() !== undefined) order.push('request-chat') })
   openDirectSeatChat({
     store: { getItem: key => values.get(key) ?? null, setItem: (key, value) => { values.set(key, value) } },
     closePortal: () => { order.push('close-portal') },
-    activateChat: id => { assert.equal(id, sessionId); order.push('activate-chat') },
+    activateChat: id => { assert.ok(retained, 'chat requires a retained generation'); assert.equal(id, sessionId); order.push('activate-chat') },
     requests,
     open: id => {
       assert.equal(id, sessionId)
       assert.equal(values.get(WORKBENCH_TAB_KEY), 'chat')
       assert.deepEqual(JSON.parse(values.get(`${CONVERSATION_PREF_PREFIX}.${sessionId}`)!), { draft: 'unsent text', view: 'chat', viewRequest: null })
       order.push('open')
+      retained = true
     },
   }, sessionId)
-  assert.deepEqual(order, ['close-portal', 'request-chat', 'activate-chat', 'open'])
+  assert.deepEqual(order, ['close-portal', 'request-chat', 'open', 'activate-chat'])
   assert.equal(requests.getSnapshot(), sessionId)
   requests.clear('another-session')
   assert.equal(requests.getSnapshot(), sessionId)

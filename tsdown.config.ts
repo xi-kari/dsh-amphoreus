@@ -1,6 +1,6 @@
 /**
- * Out-of-tree build for dsh-amphoreus, mirroring the alpha.4 client-bundle
- * contract of `packages/client/tsdown.client.ts` (dsh-v0.1.2-alpha.4):
+ * Out-of-tree build for dsh-amphoreus, mirroring the client-bundle
+ * contract of `packages/client/tsdown.client.ts`:
  *  - host half: ESM `lib/index.js`, production dependencies external, rest inlined;
  *  - browser half: CJS closure factory `lib/client.js` wrapped in
  *    `window.__ModuleLoader__.load({ id, factory })`, platform modules external,
@@ -29,6 +29,7 @@ export const PLATFORM_MODULES = [
   '@deepseek-ai/dsh-client-store',
   '@deepseek-ai/dsh-client-ui-slots',
   '@deepseek-ai/dsh-client-ui-primitives',
+  '@deepseek-ai/dsh-client-ui-dockkit',
 ] as const
 
 const INLINE_SAFE = /^(?:@deepseek-ai\/dsh-(?:file-reference|session|llm|tools|brand|deque|typert-protocol|util-crypto|util-values|util-workspace-path)(?:\/|$)|@deepseek-ai\/dsh-token-meter\/client$|@deepseek-ai\/dsh-agent-presets\/display$)/

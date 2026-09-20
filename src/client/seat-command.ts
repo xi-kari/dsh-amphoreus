@@ -79,6 +79,7 @@ export async function submitSeatArgs(deps: SeatCommandDeps, args: string): Promi
 export function createSeatCommandSource(deps: SeatCommandDeps): InputTriggerSource {
   const claim = (): PickOutcome => ({
     claim: {
+      name: SEAT_COMMAND_NAME,
       token: SEAT_COMMAND_TOKEN,
       hint: deps.t('seat.command.hint'),
       submit: args => submitSeatArgs(deps, args),
@@ -99,6 +100,7 @@ export function createSeatCommandSource(deps: SeatCommandDeps): InputTriggerSour
       const label = pick.candidate.name.slice(SEAT_COMMAND_NAME.length + 1)
       return {
         claim: {
+          name: SEAT_COMMAND_NAME,
           token: `${SEAT_COMMAND_TOKEN}${label} `,
           submit: args => submitSeatArgs(deps, args.trim() === '' ? value : args),
         },
@@ -107,8 +109,8 @@ export function createSeatCommandSource(deps: SeatCommandDeps): InputTriggerSour
     matchSpace: (_session, token) => token === `/${SEAT_COMMAND_NAME}` ? claim() : undefined,
     matchEnter: async (_session, line, _signal, envelope) => {
       if (parseSeatLine(line) === undefined) return undefined
-      // The claim declares no image support; refuse the whole envelope so the composer keeps text + images intact.
-      if (envelope.images > 0) throw new Error(deps.t('seat.imagesUnsupported'))
+      // Refuse attachments so switching seats preserves the complete draft.
+      if (envelope.attachments > 0) throw new Error(deps.t('seat.imagesUnsupported'))
       return claim()
     },
   }

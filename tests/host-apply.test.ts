@@ -147,7 +147,7 @@ test('apply() with in-memory domains registers every feature listener and dispos
       'off:command', 'off:session/event', 'off:session/created', // seat-memory
       'off:webserver/index-inject', // firstframe
       'off:system-prompt/assemble', // seat-prompt
-      'off:session/created', 'off:agent/session-start', 'off:agent/pre-step', 'off:agent/disposed', 'off:session/event', // injector
+      'off:session/created', 'off:agent/created', 'off:agent/pre-step', 'off:agent/disposed', 'off:session/event', // injector
       'off:domain/changed', 'off:route', // webapi
       'close:amphoreus_canvas', 'close:amphoreus', // stores
     ])

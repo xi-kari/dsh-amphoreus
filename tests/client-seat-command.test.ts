@@ -104,34 +104,36 @@ test('candidates: one row per visible deployed seat plus seat all, leading posit
 test('matchSpace claims the bare /seat token only; matchEnter claims any /seat line and leaves other lines alone', async () => {
   const { source } = harness()
   const space = claimOf(source.matchSpace?.(session, '/seat'))
+  assert.equal(space.name, 'seat')
   assert.equal(space.token, SEAT_COMMAND_TOKEN)
   assert.equal(space.hint, zh['seat.command.hint'])
   assert.equal(source.matchSpace?.(session, '/seats'), undefined)
   assert.equal(source.matchSpace?.(session, '/model'), undefined)
   const signal = new AbortController().signal
-  claimOf(await source.matchEnter?.(session, '/seat 那刻夏', signal, { images: 0 }))
-  claimOf(await source.matchEnter?.(session, '/seat', signal, { images: 0 }))
-  assert.equal(await source.matchEnter?.(session, '/model', signal, { images: 0 }), undefined)
-  assert.equal(await source.matchEnter?.(session, 'hello /seat', signal, { images: 0 }), undefined)
+  const enter = claimOf(await source.matchEnter?.(session, '/seat 那刻夏', signal, { attachments: 0 }))
+  assert.equal(enter.name, 'seat')
+  claimOf(await source.matchEnter?.(session, '/seat', signal, { attachments: 0 }))
+  assert.equal(await source.matchEnter?.(session, '/model', signal, { attachments: 0 }), undefined)
+  assert.equal(await source.matchEnter?.(session, 'hello /seat', signal, { attachments: 0 }), undefined)
 })
 
-test('matchEnter refuses an envelope with images (throws, no enter) so the composer keeps text and attachments', async () => {
+test('matchEnter refuses an envelope with attachments (throws, no enter) so the composer keeps text and attachments', async () => {
   const { source, entered, portal } = harness()
   const signal = new AbortController().signal
   await assert.rejects(
-    async () => source.matchEnter?.(session, '/seat anaxa', signal, { images: 1 }),
+    async () => source.matchEnter?.(session, '/seat anaxa', signal, { attachments: 1 }),
     (error: unknown) => error instanceof Error && error.message === zh['seat.imagesUnsupported'],
   )
-  await assert.rejects(async () => source.matchEnter?.(session, '/seat all', signal, { images: 2 }))
+  await assert.rejects(async () => source.matchEnter?.(session, '/seat all', signal, { attachments: 2 }))
   // Lines this source does not own are still left alone regardless of images.
-  assert.equal(await source.matchEnter?.(session, '/model', signal, { images: 1 }), undefined)
+  assert.equal(await source.matchEnter?.(session, '/model', signal, { attachments: 1 }), undefined)
   assert.equal(entered.length, 0)
   assert.equal(portal(), 0)
 })
 
 test('claim.submit enters a resolved seat and reports success so the composer commits the draft', async () => {
   const { source, entered, portal } = harness()
-  const claim = claimOf(await source.matchEnter?.(session, '/seat anaxa', new AbortController().signal, { images: 0 }))
+  const claim = claimOf(await source.matchEnter?.(session, '/seat anaxa', new AbortController().signal, { attachments: 0 }))
   assert.deepEqual(await claim.submit('anaxa', actx, []), { kind: 'success' })
   assert.deepEqual(await claim.submit('阿格莱雅', actx, []), { kind: 'success' })
   assert.deepEqual(entered, ['amphoreus-anaxa', 'amphoreus-aglaea'])
@@ -166,10 +168,12 @@ test('menu pick yields a claim carrying the picked seat; Enter with no extra tex
     span: { start: 0, end: 1, draftRev: 1 },
   })
   const claim = claimOf(source.onPick(pick(1)))
+  assert.equal(claim.name, 'seat')
   assert.equal(claim.token, '/seat 那刻夏 ')
   assert.deepEqual(await claim.submit('', actx, []), { kind: 'success' })
   assert.deepEqual(entered, ['amphoreus-anaxa'])
   const portalClaim = claimOf(source.onPick(pick(2)))
+  assert.equal(portalClaim.name, 'seat')
   assert.equal(portalClaim.token, '/seat all ')
   assert.deepEqual(await portalClaim.submit('', actx, []), { kind: 'success' })
   assert.equal(portal(), 1)

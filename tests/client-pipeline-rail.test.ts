@@ -108,9 +108,29 @@ test('rail registration uses the strict session utility slot and shared dependen
   assert.match(registration, /locale: NS/u)
   assert.match(registration, /inject: \(sessionId: string\) => \(\{/u)
   assert.match(registration, /model,\s*seatDeps,\s*sessionId,/u)
-  assert.match(registration, /ctx\.sessions\.list as unknown as/u)
-  assert.match(registration, /\)\.getSnapshot\(\)\.byId\[id\]\?\.cwd/u)
-  assert.match(registration, /\.byId\[id\]\?\.cwd/u)
+  assert.match(client, /const sessions: ISessions = ctx(?:\.sessions|\.get\('sessions'\))/u)
+  assert.match(client, /const sessionsFace = createSessionAdapter\(sessions, ctx\.uiWorkspace\)/u)
+  const model = {}
+  const seatDeps = {}
+  let byId: Record<string, { cwd?: string }> = { fixture: { cwd: 'D:/first' } }
+  let injected!: { model: unknown; seatDeps: unknown; sessionId: string; cwdOf(id: string): string | undefined }
+  vm.runInNewContext(transpileModule(registration, {
+    compilerOptions: { module: ModuleKind.None, target: ScriptTarget.ES2024 },
+  }).outputText, {
+    ctx: { slots: {
+      inject: (_slot: string, register: () => void) => register(),
+      register: (options: { inject(id: string): typeof injected }) => { injected = options.inject('fixture') },
+    } },
+    sessionsFace: { list: { getSnapshot: () => ({ byId }) } },
+    model, seatDeps, NS: 'amphoreus', PipelineRail: {},
+  })
+  assert.equal(injected.model, model)
+  assert.equal(injected.seatDeps, seatDeps)
+  assert.equal(injected.sessionId, 'fixture')
+  assert.equal(injected.cwdOf('fixture'), 'D:/first')
+  byId = { fixture: { cwd: 'D:/updated' } }
+  assert.equal(injected.cwdOf('fixture'), 'D:/updated')
+  assert.equal(injected.cwdOf('missing'), undefined)
   assert.equal(client.match(/const seatDeps: HandoffDeps = \{/gu)?.length, 1)
 })
 

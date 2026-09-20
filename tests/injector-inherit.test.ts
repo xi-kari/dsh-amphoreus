@@ -263,7 +263,7 @@ test('listener: pre-step reads inheritedPending while the binding put is still q
       ],
     }))
     assert.equal(table.puts[0]?.injection.state, 'pending')
-    context.emit('agent/session-start', { agent: fakeAgent(injected), source: 'startup' })
+    await context.emit('agent/created', { agent: fakeAgent(injected), source: 'startup' })
     const preStep = context.emit('agent/pre-step', {
       agent: fakeAgent(injected),
       messages: [],
@@ -317,7 +317,7 @@ test('listener: pre-step reads inheritedPending and persists done after the queu
   }
 })
 
-test('listener: a first prompt racing session-start receives the card in its accepted pre-step', async () => {
+test('listener: a first prompt after agent creation receives the card in its accepted pre-step', async () => {
   const { context, table, dispose } = injectorFixture()
   const nextGate = deferred()
   const injected: unknown[] = []
@@ -334,7 +334,7 @@ test('listener: a first prompt racing session-start receives the card in its acc
   }))
 
   try {
-    context.emit('agent/session-start', { agent, source: 'startup' })
+    await context.emit('agent/created', { agent, source: 'startup' })
     const proposed = context.emit('agent/pre-step', {
       agent,
       messages: [userMessage],
@@ -344,9 +344,8 @@ test('listener: a first prompt racing session-start receives the card in its acc
       return { kind: 'enter', messages: [userMessage] }
     }) as Promise<{ kind: string; messages: any[] }>
 
-    // Let the notification-style session-start listener settle while the
-    // accepted pre-step is deliberately held downstream. A correct injector
-    // must still commit the card only through this pre-step decision.
+    // Hold the accepted pre-step downstream. Creation must not inject a card
+    // outside this decision or consume it before acceptance.
     await new Promise(resolve => setImmediate(resolve))
     nextGate.resolve()
     const decision = await proposed
@@ -387,7 +386,7 @@ test('listener: startup, clear, compact, and resume sources gate the sole pre-st
     }))
     try {
       const agent = fakeAgent(injected)
-      context.emit('agent/session-start', { agent, source: row.source })
+      await context.emit('agent/created', { agent, source: row.source })
       const decision = await context.emit('agent/pre-step', {
         agent,
         messages: [],
@@ -422,7 +421,7 @@ test('listener: a same-step explicit invocation wins without a second automatic 
   }))
 
   try {
-    context.emit('agent/session-start', { agent, source: 'startup' })
+    await context.emit('agent/created', { agent, source: 'startup' })
     const decision = await context.emit('agent/pre-step', {
       agent,
       messages: [],
@@ -455,7 +454,7 @@ test('listener: rejected and synchronous puts warn and clear the pending fallbac
       table.controls.push(control)
       context.emit('session/created', createdSession())
       await table.idle()
-      context.emit('agent/session-start', { agent: fakeAgent(injected), source: 'startup' })
+      await context.emit('agent/created', { agent: fakeAgent(injected), source: 'startup' })
       await new Promise(resolve => setImmediate(resolve))
       assert.equal(injected.length, 0)
       assert.equal(table.values.has(CHILD_ID), false)
@@ -486,7 +485,7 @@ test('listener: disposing clears an in-flight pending fallback and unregisters a
   const injected: unknown[] = []
   table.controls.push({ gate: gate.promise })
   context.emit('session/created', createdSession())
-  const retainedStart = context.registered.get('agent/session-start')!
+  const retainedStart = context.registered.get('agent/created')!
 
   dispose()
   assert.equal(context.active.size, 0)
@@ -502,7 +501,7 @@ function pendingFixture() {
   const fixture = injectorFixture()
   const agent = fakeAgent([])
   fixture.table.values.set(CHILD_ID, parentBinding({ sessionId: CHILD_ID, source: 'seat-new', injection: { state: 'pending' } }))
-  fixture.context.emit('agent/session-start', { agent, source: 'startup' })
+  fixture.context.emit('agent/created', { agent, source: 'startup' })
   return { ...fixture, agent }
 }
 
@@ -625,7 +624,7 @@ test('listener: resumed pending sessions recover accepted logs within the curren
       })
     }
     try {
-      context.emit('agent/session-start', { agent, source: 'resume' })
+      await context.emit('agent/created', { agent, source: 'resume' })
       const decision = await propose(context, agent)
       await table.idle()
       assert.equal(decision.messages.length, logged === 'accepted' ? 0 : 1, logged)
@@ -643,7 +642,7 @@ test('listener: completed logged cards and inherited bindings never inject on re
       agent.session.snapshotEvents().push({ type: 'user/message', seq: 0, time: NOW, data: { source: { kind: 'skill-invocation', name: SKILL } } })
     }
     try {
-      context.emit('agent/session-start', { agent, source: 'resume' })
+      await context.emit('agent/created', { agent, source: 'resume' })
       assert.equal((await propose(context, agent)).messages.length, 0)
       assert.equal(context.skillReads, 0)
     } finally { dispose() }
@@ -662,7 +661,7 @@ test('listener: a persisted done state without an accepted log card recovers the
       })
     }
     try {
-      context.emit('agent/session-start', { agent, source: 'resume' })
+      await context.emit('agent/created', { agent, source: 'resume' })
       const decision = await propose(context, agent)
       assert.equal(decision.messages.length, 1, logged)
       assert.equal(table.values.get(CHILD_ID)?.injection.state, 'pending', logged)
@@ -688,7 +687,7 @@ test('listener: a failed status write does not repeat an accepted card and resta
     const restarted = new FakeContext()
     const disposeRestarted = registerInjector(restarted as unknown as Context, { config: config(), stores: stores(table) })
     try {
-      restarted.emit('agent/session-start', { agent, source: 'resume' })
+      await restarted.emit('agent/created', { agent, source: 'resume' })
       assert.equal((await propose(restarted, agent)).messages.length, 0)
       assert.equal(restarted.skillReads, 0)
       assert.equal(table.values.get(CHILD_ID)?.injection.state, 'done')

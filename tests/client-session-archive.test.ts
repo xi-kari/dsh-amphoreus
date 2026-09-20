@@ -20,9 +20,7 @@ test('archiving the current blank session clears it once without creating anothe
   const calls: string[] = []
   let current: string | undefined = 'blank'
   const archive = createSessionArchiveAction({
-    archive: async id => { calls.push(`archive:${id}`) },
-    current: () => current,
-    clear: () => { calls.push('clear'); current = undefined },
+    archive: async id => { calls.push(`archive:${id}`); if (current === id) { calls.push('clear'); current = undefined } },
   })
   await archive('blank')
   assert.deepEqual(calls, ['archive:blank', 'clear'])
@@ -34,8 +32,6 @@ test('duplicate clicks share one operation, while different sessions can be arch
   const calls: string[] = []
   const archive = createSessionArchiveAction({
     archive: async id => { calls.push(`archive:${id}`); await gate.promise },
-    current: () => undefined,
-    clear: () => assert.fail('no selected session to clear'),
   })
   const first = archive('one')
   assert.equal(archive('one'), first)
@@ -52,8 +48,6 @@ test('a session selected while the archive is in flight remains selected', async
   let current = 'old'
   const archive = createSessionArchiveAction({
     archive: async () => gate.promise,
-    current: () => current,
-    clear: () => assert.fail('the newly selected session must stay open'),
   })
   const attempt = archive('old')
   current = 'new'
@@ -67,9 +61,7 @@ test('host archive failure preserves navigation and can be retried', async () =>
   const calls: string[] = []
   const failure = new Error('host unavailable')
   const archive = createSessionArchiveAction({
-    archive: async () => { if (++attempts === 1) throw failure },
-    current: () => 'one',
-    clear: () => { calls.push('clear') },
+    archive: async () => { if (++attempts === 1) throw failure; calls.push('clear') },
   })
   await assert.rejects(archive('one'), error => error === failure)
   assert.deepEqual(calls, [])
@@ -95,8 +87,7 @@ test('client wiring archives only through the official Workspace service without
   const context = vm.createContext({
     createSessionArchiveAction,
     ctx: {
-      workspaces: { archiveSession: async (id: string) => { archived.push(id) } },
-      sessions: { clear: () => { current = undefined } },
+      uiWorkspace: { archiveSession: async (id: string) => { archived.push(id); if (current === id) current = undefined } },
     },
     sessionsFace: { list: { getSnapshot: () => ({ current }) } },
     fetch: async () => assert.fail('session archive must not hide workbench branches or delete bindings'),

@@ -1,6 +1,6 @@
 /** dsh-amphoreus browser half. Components receive injected faces, never ctx. */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
-import type {} from '@deepseek-ai/dsh-api-session-controller/client'
+import type { ISessions } from '@deepseek-ai/dsh-api-session-controller/client'
 import type {} from '@deepseek-ai/dsh-api-session-controller/remote'
 import type {} from '@deepseek-ai/dsh-api-settings-controller/remote'
 import type { SettingsNamespaceView } from '@deepseek-ai/dsh-settings/types'
@@ -38,7 +38,8 @@ import { AmphoreusSettings } from './settings.tsx'
 import { AmphoreusClientModel } from './state.ts'
 import { readRememberedTab, seedConversationView, WORKBENCH_VIEW_ID } from './tabmemory.ts'
 import { createSeatLayer, readDswTokens, registerGlobalTheme, registerSeatTheme } from './theme.ts'
-import { WorkbenchView, type SessionsFace, type WorkbenchViewInjected } from './workbench.tsx'
+import { WorkbenchView, type WorkbenchViewInjected } from './workbench.tsx'
+import { createSessionAdapter } from './session-adapter.ts'
 import { createWorkspacesSource } from './workspaces-source.ts'
 import { currentOrdinaryWorkspace, orphanSeatWorkspacePath, syncWorkspaceSession, waitForReadySnapshot } from './workspace-routing.ts'
 import { heroVisualById } from '../shared/heroes.ts'
@@ -68,6 +69,8 @@ export const inject = ['slots', 'locale', 'theme', 'sessions', 'uiConversation',
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'amphoreus: dictionaries')
   const model = new AmphoreusClientModel()
+  const sessions: ISessions = ctx.get('sessions') as ClientContext['sessions'] & ISessions
+  const sessionsFace = createSessionAdapter(sessions, ctx.uiWorkspace)
   const themeBridge = {
     read: readDswTokens,
     isDark: () => ctx.theme.getTheme().active.colorScheme === 'dark',
@@ -84,7 +87,7 @@ export function apply(ctx: ClientContext): void {
   const seatTheme = registerSeatTheme(
     ctx,
     model,
-    ctx.sessions as unknown as Parameters<typeof registerSeatTheme>[2],
+    sessionsFace,
     seatLayer,
   )
   ctx.effect(() => () => seatTheme.dispose(), 'amphoreus: seat wallpaper')
@@ -121,20 +124,14 @@ export function apply(ctx: ClientContext): void {
   const enterSeatQueue = createEnterSeatQueue()
   const directChatRequests = createDirectChatRequests()
   const workspaces = createWorkspacesSource(
-    ctx.sessions.list as unknown as Parameters<typeof createWorkspacesSource>[0],
+    sessionsFace.list,
     model,
     ctx.workspaces.list,
   )
-  const sessionsFace = ctx.sessions as unknown as SessionsFace
   const archiveSession = createSessionArchiveAction({
-    archive: sessionId => ctx.workspaces.archiveSession(sessionId as SessionId),
-    current: () => sessionsFace.list.getSnapshot().current,
-    clear: () => (ctx.sessions as unknown as { clear(): void }).clear(),
+    archive: sessionId => ctx.uiWorkspace.archiveSession(sessionId as SessionId),
   })
-  const sessionList = ctx.sessions.list as unknown as {
-    getSnapshot(): { phase: 'pending' | 'ready' }
-    subscribe(listener: () => void): () => void
-  }
+  const sessionList = sessionsFace.list
   const ensureWorkspaceAt = async (path: string): Promise<string> => (
     await ctx.workspaces.create({ path })
   ).workspaceId
@@ -167,6 +164,7 @@ export function apply(ctx: ClientContext): void {
       open: sessionId => sessionsFace.open(sessionId),
       fork: options => sessionsFace.fork(options),
       binding: sessionId => sessionsFace.binding(sessionId),
+      retain: (sessionId, options) => sessionsFace.retain(sessionId, options),
     },
   }
   // Seat presets: three independent tiers landed on a fresh blank seat session
@@ -209,19 +207,12 @@ export function apply(ctx: ClientContext): void {
       }, expectedRevision),
     }), 'amphoreus: seat preset default-model restore')
   })
-  type SessionFeed = Exclude<ReturnType<WorkbenchViewInjected['sessionFace']>, undefined>
-  const sessionAdapter = ctx.sessions as unknown as {
-    binding(id: SessionId): { session: SessionFeed } | undefined
-  }
   const conversationFeed: NonNullable<WorkbenchViewInjected['conversationFeed']> = sessionId => {
-    try {
-      return ctx.uiConversation.binding(sessionId as SessionId).target('chat')
-    } catch {
-      return undefined
-    }
+    const binding = sessions.binding(sessionId as SessionId)
+    return binding === undefined ? undefined : ctx.uiConversation.binding(binding).target('chat')
   }
   const sessionFace: NonNullable<WorkbenchViewInjected['sessionFace']> = sessionId => (
-    sessionAdapter.binding(sessionId as SessionId)?.session
+    sessionsFace.binding(sessionId)?.session
   )
   const followSession: NonNullable<WorkbenchViewInjected['followSession']> = (sessionId, signal) => (
     ctx.remote.session.follow({ address: { kind: 'session', sessionId: sessionId as SessionId }, maxMessages: 50 }, signal)
@@ -237,7 +228,7 @@ export function apply(ctx: ClientContext): void {
       waitForReadySnapshot(sessionList, '会话'),
       waitForReadySnapshot(ctx.workspaces.list, '工作区'),
     ])
-    const summary = sessionsFace.list.getSnapshot().byId[sessionId]
+    const summary = sessionsFace.list.getSnapshot().byId[sessionId as SessionId]
     const seatDir = orphanSeatWorkspacePath(
       ctx.workspaces.list.getSnapshot().items, sessionId, summary?.cwd, seatDeps.seatDirOf(skillName),
     )
@@ -286,7 +277,7 @@ export function apply(ctx: ClientContext): void {
     if (skill === undefined) return true
     const view = seatViewsFrom(
       model.getSnapshot(),
-      sessionsFace.list.getSnapshot() as unknown as Parameters<typeof seatViewsFrom>[1],
+      sessionsFace.list.getSnapshot(),
       ctx.workspaces.list.getSnapshot(),
     ).find(candidate => candidate.skillName === skill)
     if (view !== undefined && view.sessionIds.length > 0) await openBoundSeatSession(view.sessionIds[0]!, skill)
@@ -306,7 +297,7 @@ export function apply(ctx: ClientContext): void {
   // Seat switching (Alt+digit hotkeys + `/seat <name>`): same landing as the sidebar — chat view of the latest bound session, or a fresh seat session.
   const currentSeatViews = (): SeatView[] => seatViewsFrom(
     model.getSnapshot(),
-    sessionsFace.list.getSnapshot() as unknown as Parameters<typeof seatViewsFrom>[1],
+    sessionsFace.list.getSnapshot(),
     ctx.workspaces.list.getSnapshot(),
   )
   // Stays busy until the snapshot shows the new session, so hotkey / `/seat` presses cannot double-start a seat.
@@ -357,10 +348,7 @@ export function apply(ctx: ClientContext): void {
       const defaultViewOf = (): 'chat' | 'workbench' =>
         model.getSnapshot().state?.effectiveConfig.workbench.defaultView
           ?? bootWorkbench?.defaultView ?? 'chat'
-      const list = ctx.sessions.list as unknown as {
-        getSnapshot(): { current: string | undefined }
-        subscribe(fn: () => void): () => void
-      }
+      const list = sessionsFace.list
       let last = list.getSnapshot().current
       if (last !== undefined) seedConversationView(localStorage, last, defaultViewOf())
       return list.subscribe(() => {
@@ -427,10 +415,7 @@ export function apply(ctx: ClientContext): void {
       },
       startDirectorySession: workspaceId => ctx.uiWorkspace.startSession(workspaceId as WorkspaceId),
       removeDirectoryWorkspace: async workspaceId => {
-        const result = await (ctx.workspaces as unknown as {
-          delete(id: WorkspaceId): Promise<{ ok: boolean; error?: { message?: string } }>
-        }).delete(workspaceId as WorkspaceId)
-        if (!result.ok) throw new Error(result.error?.message ?? '移除目录工作区失败')
+        await ctx.workspaces.delete(workspaceId as WorkspaceId)
       },
       createDirectoryWorkspace: async fallbackPrompt => {
         let path: string | null
@@ -461,9 +446,7 @@ export function apply(ctx: ClientContext): void {
       model,
       seatDeps,
       sessionId,
-      cwdOf: (id: string) => (ctx.sessions.list as unknown as {
-        getSnapshot(): { byId: Record<string, { cwd?: string } | undefined> }
-      }).getSnapshot().byId[id]?.cwd,
+      cwdOf: (id: string) => sessionsFace.list.getSnapshot().byId[id as SessionId]?.cwd,
     }),
   }, PipelineRail))
   ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
@@ -529,7 +512,7 @@ export function apply(ctx: ClientContext): void {
       locale: NS,
       label: () => t('view.workbench'),
       inject: (): WorkbenchViewInjected => ({
-        sessions: ctx.sessions as unknown as WorkbenchViewInjected['sessions'],
+        sessions: sessionsFace,
         workspaces,
         conversationFeed,
         sessionFace,

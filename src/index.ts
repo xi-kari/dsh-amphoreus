@@ -19,6 +19,7 @@ import type { WorkbenchStatus } from './shared/api.ts'
 // @anchor host-imports
 import { registerSeatPermission } from './host/seat-permission.ts'
 import { registerSeatMemory } from './host/memory.ts'
+import { inspectColdSession, listColdHeaders, type ColdPersistence } from './host/session-replay.ts'
 /** Effective assets root: the runtime pref chosen in the setup wizard wins over cordis.patch.yml. */
 function effectiveAssetsRoot(config: AmphoreusConfig, stores: AmphoreusStores | undefined): string {
   const saved = stores?.main.global.get().prefs.assetsRoot ?? ''
@@ -94,19 +95,11 @@ export function apply(ctx: Context, config: AmphoreusConfig): void {
           workbenchStatus = { kind: 'unavailable', reason: `工作台初始化失败：${String(error)}` }
         })
       if (config.workbench.autoProjection) {
-        interface ColdHeader { id: string; cwd?: string; parentSession?: string }
         const sessions = (ctx as Context & {
           sessions: { list(): ProjectableSession[]; get(id: string): unknown }
         }).sessions
         const persistence = (ctx as Context & {
-          sessionPersistence: {
-            list(signal?: AbortSignal): Promise<ColdHeader[]>
-            inspect(id: string, signal?: AbortSignal): Promise<{
-              meta: ColdHeader
-              inheritedEventCount: number
-              events: readonly ProjectableEvent[]
-            }>
-          }
+          sessionPersistence: ColdPersistence
         }).sessionPersistence
         const replay = (session: ProjectableSession): void => {
           try {
@@ -155,7 +148,7 @@ export function apply(ctx: Context, config: AmphoreusConfig): void {
         startColdReplay = () => {
           const signal = coldReplayAbort.signal
           coldReplayTask = (async () => {
-            const headers = await persistence.list(signal)
+            const headers = await listColdHeaders(persistence, signal)
             if (signal.aborted) return
             const cold = headers.filter(header => header.cwd !== undefined && sessions.get(header.id) === undefined)
             // Register the complete parent graph before any asynchronous inspect finishes,
@@ -165,7 +158,7 @@ export function apply(ctx: Context, config: AmphoreusConfig): void {
               if (signal.aborted) return
               await Promise.all(cold.slice(index, index + COLD_REPLAY_CONCURRENCY).map(async header => {
                 try {
-                  const inspection = await persistence.inspect(header.id, signal)
+                  const inspection = await inspectColdSession(persistence, header.id, signal)
                   if (signal.aborted || projectionDisposed) return
                   replay({
                     id: header.id,

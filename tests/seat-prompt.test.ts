@@ -51,6 +51,22 @@ test('custom deployment persona remains intact and identity is added if the harn
   assert.equal(changed.sections[1]!.text, 'Project-specific role and constraints.')
 })
 
+test('persona prefix drops only the default opener and preserves suffix and custom persona prose', () => {
+  const original = prompt()
+  original.sections = [
+    { name: 'harness:identity', text: 'You are an AI agent powered by DeepSeek Harness.' },
+    { name: 'deployment:persona-prefix', text: 'You are a coding agent powered by the {{model}} model. Keep project contracts.' },
+    { name: 'deployment:persona-suffix', text: 'Your working directory is {{cwd}}.' },
+  ]
+  const before = structuredClone(original)
+  const changed = seatPromptAssembly(original, binding, '那刻夏')
+  assert.equal(changed.sections[1]!.text, 'Keep project contracts.')
+  assert.strictEqual(changed.sections[2], original.sections[2])
+  assert.deepEqual(original, before)
+  original.sections[1]!.text = 'A custom project persona.'
+  assert.equal(seatPromptAssembly(original, binding, '那刻夏').sections[1]!.text, 'A custom project persona.')
+})
+
 test('seat references use explicit skill-root paths and a dispatch speaks only for its own seat', () => {
   const references = { skill: '/skills/amphoreus-anaxa/SKILL.md', persona: '/skills/amphoreus-anaxa/persona.md', common: '/skills/amphoreus/references/common.md', relations: '/skills/amphoreus/references/relations.md' }
   const changed = seatPromptAssembly(prompt(), { ...binding, source: 'dispatch' }, '那刻夏', references)

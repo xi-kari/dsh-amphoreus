@@ -81,6 +81,68 @@ async function until(predicate: () => boolean): Promise<void> {
   throw new Error('condition was not reached')
 }
 
+test('conference feed monitoring holds one ready reference through terminal reply and releases it', async () => {
+  const progress: ConferenceProgress[] = []
+  const feed = new MutableSnapshot<ChatSnapshot | undefined>(emptyChat())
+  const face = new MutableSnapshot({ running: true, hasMore: false })
+  let retained = false
+  let released = 0
+  let opened!: () => void
+  const run = startConference({
+    dispatch: async () => 'session-catalog-only',
+    retainSession: () => {
+      retained = true
+      return {
+        ready: new Promise(resolve => { opened = () => resolve(undefined) }),
+        release: () => { released += 1; retained = false },
+      }
+    },
+    conversationFeed: () => {
+      assert.equal(retained, true)
+      return feed
+    },
+    sessionFace: () => face,
+    emit: event => progress.push(event),
+  }, { text: '共同回答', targets: [target(1)] })
+  await until(() => opened !== undefined || progress.some(event => event.phase === 'failed'))
+  assert.equal(retained, true)
+  assert.equal(released, 0)
+  opened()
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(released, 0)
+  feed.set(answeredChat('回答'))
+  face.set({ running: false, hasMore: false })
+  await run.completed
+  assert.equal(released, 1)
+  assert.deepEqual(progress.filter(event => event.phase === 'done').map(event => event.text), ['回答'])
+})
+
+test('conference feed cancellation releases a reference still opening', async () => {
+  let released = 0
+  let retained = false
+  const run = startConference({
+    dispatch: async () => 'session-opening',
+    retainSession: (_id, signal) => {
+      retained = true
+      return {
+        ready: new Promise((_resolve, reject) => {
+          signal.addEventListener('abort', () => reject(signal.reason), { once: true })
+        }),
+        release: () => { released += 1 },
+      }
+    },
+    conversationFeed: () => undefined,
+    sessionFace: () => undefined,
+    emit: () => {},
+    channelWaitMs: 5,
+  }, { text: '共同回答', targets: [target(1)] })
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(retained, true)
+  run.cancel()
+  await run.completed
+  await until(() => released === 1)
+})
+
 test('conferenceTargets uses only the trusted deployed snapshot, sorts it, and deduplicates skills', () => {
   const state = {
     seats: [
@@ -107,6 +169,7 @@ test('startConference sends one identical prompt per target, keeps at most three
   let maxActive = 0
 
   const run = startConference({
+    retainSession: () => ({ ready: Promise.resolve(undefined), release: () => {} }),
     concurrency: 3,
     createId: () => 'conference-fixed',
     dispatch: async (seat, text) => {
@@ -163,6 +226,7 @@ test('startConference reports one target failure without suppressing successful 
   const targets = [1, 2, 3].map(target)
 
   const run = startConference({
+    retainSession: () => ({ ready: Promise.resolve(undefined), release: () => {} }),
     createId: () => 'conference-partial',
     dispatch: async seat => {
       if (seat.skillName.endsWith('-2')) throw new Error('席位队列拒绝')
@@ -204,6 +268,7 @@ test('an unopened background session waits for durable success and preserves tex
   let finishTurn!: () => void
   const turnEnd = new Promise<void>(resolve => { finishTurn = resolve })
   const run = startConference({
+    retainSession: () => ({ ready: Promise.resolve(undefined), release: () => {} }),
     dispatch: async () => {
       sessionList.set({ byId: { 'session-background': { running: true } } })
       return 'session-background'
@@ -212,6 +277,13 @@ test('an unopened background session waits for durable success and preserves tex
     sessionFace: () => staleFace,
     sessionList,
     followSession: async function * () {
+      yield {
+        type: 'assistant-stream',
+        frame: {
+          type: 'end', attemptId: 'attempt-live' as never, revision: 1,
+          index: 0, outcome: { kind: 'abandoned' },
+        },
+      } satisfies SessionFollowFrame
       yield journalSnapshot([
         journalEvent('turn/start', { turn: 1 }),
         journalEvent('assistant/message', { message: { content: [{ type: 'text', text: fullReply }] } }),
@@ -253,6 +325,7 @@ test('an unopened background session waits for durable success and preserves tex
 test('background turn errors take precedence over partial text and allow the next seat to run', async () => {
   const progress: ConferenceProgress[] = []
   const run = startConference({
+    retainSession: () => ({ ready: Promise.resolve(undefined), release: () => {} }),
     concurrency: 1,
     dispatch: async seat => seat.skillName,
     conversationFeed: () => undefined,
@@ -283,6 +356,7 @@ test('non-success terminal reasons never become successful conference replies', 
   for (const reason of ['aborted', 'blocked', 'max-tokens', 'interrupted']) {
     const progress: ConferenceProgress[] = []
     const run = startConference({
+      retainSession: () => ({ ready: Promise.resolve(undefined), release: () => {} }),
       dispatch: async () => 'session-ended',
       conversationFeed: () => undefined,
       sessionFace: () => undefined,
@@ -303,6 +377,7 @@ test('non-success terminal reasons never become successful conference replies', 
 test('a completed turn without assistant text reports an explicit failure', async () => {
   const progress: ConferenceProgress[] = []
   const run = startConference({
+    retainSession: () => ({ ready: Promise.resolve(undefined), release: () => {} }),
     dispatch: async () => 'session-empty',
     conversationFeed: () => undefined,
     sessionFace: () => undefined,
@@ -325,6 +400,7 @@ test('cancelling a pending journal aborts and closes its iterator without publis
   let closed = false
   let journalSignal: AbortSignal | undefined
   const run = startConference({
+    retainSession: () => ({ ready: Promise.resolve(undefined), release: () => {} }),
     dispatch: async () => 'session-following',
     conversationFeed: () => undefined,
     sessionFace: () => undefined,
@@ -356,6 +432,7 @@ test('a journal timeout aborts its iterator and reports the timeout reason', asy
   const progress: ConferenceProgress[] = []
   let closed = false
   const run = startConference({
+    retainSession: () => ({ ready: Promise.resolve(undefined), release: () => {} }),
     dispatch: async () => 'session-timeout',
     conversationFeed: () => undefined,
     sessionFace: () => undefined,
@@ -380,6 +457,7 @@ test('a journal timeout aborts its iterator and reports the timeout reason', asy
 test('terminal feed errors override outline text even while the running flag is stale', async () => {
   const progress: ConferenceProgress[] = []
   const run = startConference({
+    retainSession: () => ({ ready: Promise.resolve(undefined), release: () => {} }),
     dispatch: async () => 'session-error',
     conversationFeed: () => new MutableSnapshot(failedChat('接口连接失败')),
     sessionFace: () => new MutableSnapshot({ running: true, hasMore: false }),
@@ -410,6 +488,7 @@ test('a paused animation frame clock does not block settlement or dispatch of th
   const progress: ConferenceProgress[] = []
   let calls = 0
   const run = startConference({
+    retainSession: () => ({ ready: Promise.resolve(undefined), release: () => {} }),
     concurrency: 1,
     dispatch: async () => { calls += 1; return `session-${calls}` },
     conversationFeed: () => feed,
@@ -433,6 +512,7 @@ test('cancelling a conference settles every unfinished seat and stops later disp
   let calls = 0
   const targets = [1, 2, 3].map(target)
   const run = startConference({
+    retainSession: () => ({ ready: Promise.resolve(undefined), release: () => {} }),
     concurrency: 1,
     dispatch: async () => {
       calls += 1
@@ -460,6 +540,7 @@ test('cancelling while dispatch is pending settles immediately and suppresses a 
   let resolveDispatch!: (sessionId: string) => void
   const dispatchPending = new Promise<string>(resolve => { resolveDispatch = resolve })
   const run = startConference({
+    retainSession: () => ({ ready: Promise.resolve(undefined), release: () => {} }),
     concurrency: 1,
     dispatch: () => dispatchPending,
     conversationFeed: () => undefined,

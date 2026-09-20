@@ -12,6 +12,7 @@ import {
   type SeatView,
 } from './seat-model.ts'
 import type { AmphoreusClientModel } from './state.ts'
+import { currentSessionId } from './session-adapter.ts'
 import css from './seat-browser.module.css'
 import { unboundSeatWorkspaces, withoutSeatWorkspaces } from './workspace-routing.ts'
 
@@ -53,6 +54,7 @@ export function SeatBrowser({
 }: SeatBrowserProps) {
   const snap = useSyncExternalStore(model.subscribe, model.getSnapshot)
   const list = useSessions(state => state)
+  const current = currentSessionId(list)
   const workspaces = useWorkspaces(state => state)
   const [seatsExpanded, setSeatsExpanded] = useState(true)
   const [directoriesExpanded, setDirectoriesExpanded] = useState(true)
@@ -69,10 +71,10 @@ export function SeatBrowser({
   const removingIds = useRef(new Set<string>())
   const [error, setError] = useState<string>()
 
-  const views = seatViewsFrom(snap, list as unknown as Parameters<typeof seatViewsFrom>[1], workspaces)
+  const views = seatViewsFrom(snap, list, workspaces)
   const archived = new Set(workspaces.archivedSessionIds)
   const bindings = bindingIndex(snap.state?.bindings ?? [])
-  const currentSeat = currentSeatOf(bindings, list.current)
+  const currentSeat = currentSeatOf(bindings, current)
   const deployed = views.filter(view => !view.hidden && view.deployed)
   const undeployed = views.filter(view => !view.hidden && !view.deployed)
   const suiteMissing = snap.state?.suite === undefined || snap.state.suite.level === 'L3'
@@ -174,7 +176,7 @@ export function SeatBrowser({
           className={css.sessionRow}
           type="button"
           title={title}
-          data-active={list.current === sessionId || undefined}
+          data-active={current === sessionId || undefined}
           disabled={pending}
           onClick={() => run(() => openSession(sessionId, skillName))}
         >

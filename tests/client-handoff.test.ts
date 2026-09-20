@@ -25,7 +25,7 @@ interface FetchCall {
 
 type SessionOverrides = Partial<Pick<
   HandoffDeps['sessions'],
-  'create' | 'open' | 'fork' | 'binding'
+  'create' | 'open' | 'fork' | 'binding' | 'retain'
 >>
 
 function deps(sessionOverrides: SessionOverrides = {}): HandoffDeps {
@@ -40,6 +40,12 @@ function deps(sessionOverrides: SessionOverrides = {}): HandoffDeps {
         session: {
           prompt: async () => ({ ok: true }),
         },
+      }),
+      retain: id => ({
+        ready: Promise.resolve(sessionOverrides.binding?.(id) ?? {
+          session: { prompt: async () => ({ ok: true }) },
+        }),
+        release: () => {},
       }),
       ...sessionOverrides,
     },
@@ -206,22 +212,61 @@ test('an observation failure leaves the created binding intact and never prompts
   assert.equal(opens, 0)
 })
 
-test('a delayed client binding is retried before the queued prompt', async () => {
-  let reads = 0
-  let prompts = 0
+test('dispatch retains a catalog-only session, awaits opening, and releases after prompt settlement', async () => {
+  const order: string[] = []
+  let completeOpen!: () => void
+  let completePrompt!: () => void
   const fixture = deps({
-    binding: () => {
-      reads += 1
-      if (reads === 1) return undefined
-      return { session: { prompt: async () => { prompts += 1; return { ok: true } } } }
+    binding: () => { throw new Error('catalog-only session has no borrowed binding') },
+    retain: (_id, options) => {
+      assert.equal(options.source, 'amphoreusOperation')
+      order.push('retain')
+      return {
+        ready: new Promise(resolve => {
+          completeOpen = () => resolve({ session: {
+            prompt: async () => {
+              order.push('prompt')
+              await new Promise<void>(resolvePrompt => { completePrompt = resolvePrompt })
+              return { ok: true }
+            },
+          } })
+        }),
+        release: () => { order.push('release') },
+      }
     },
   })
-  await withFetch(async (_input, init) => response(init?.method === 'POST' ? 201 : 200), async () => {
-    await dispatchTask(fixture, { skillName: SKILL, text: '任务', from: 'panel' })
+  await withFetch(async () => response(), async () => {
+    const dispatch = dispatchTask(fixture, { skillName: SKILL, text: '任务', from: 'panel' })
+    for (let attempt = 0; attempt < 10 && completeOpen === undefined; attempt += 1) {
+      await new Promise(resolve => setImmediate(resolve))
+    }
+    assert.deepEqual(order, ['retain'])
+    completeOpen()
+    await new Promise(resolve => setImmediate(resolve))
+    assert.deepEqual(order, ['retain', 'prompt'])
+    completePrompt()
+    await dispatch
+    assert.deepEqual(order, ['retain', 'prompt', 'release'])
   })
-  assert.equal(reads, 2)
-  assert.equal(prompts, 1)
 })
+
+for (const stage of ['ready', 'prompt'] as const) {
+  test(`dispatch releases its reference when ${stage} fails`, async () => {
+    let released = 0
+    const fixture = deps({
+      retain: () => ({
+        ready: stage === 'ready'
+          ? Promise.reject(new Error('open failed'))
+          : Promise.resolve({ session: { prompt: async () => { throw new Error('prompt failed') } } }),
+        release: () => { released += 1 },
+      }),
+    })
+    await withFetch(async () => response(), async () => {
+      await assert.rejects(dispatchTask(fixture, { skillName: SKILL, text: '任务', from: 'panel' }), /failed/)
+    })
+    assert.equal(released, 1)
+  })
+}
 
 test('a rejected prompt preserves dispatch records and suppresses open or binding rollback', async () => {
   const methods: string[] = []

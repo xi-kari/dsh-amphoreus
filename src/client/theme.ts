@@ -1,5 +1,5 @@
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
-import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { SelectedSessionList } from './session-adapter.ts'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type { ThemeTokenOverrides } from '@deepseek-ai/dsh-client-ui-theme/client'
 import { CUSTOM_WALLPAPER_PLACEMENT_DEFAULTS, type AmphoreusState, type CustomWallpaperInfo } from '../shared/api.ts'
@@ -270,7 +270,7 @@ const CANCELED = Symbol('seat-wallpaper-canceled')
 export function registerSeatTheme(
   _ctx: ClientContext,
   model: AmphoreusClientModel,
-  sessions: { readonly list: ObservableSnapshot<SessionListState> },
+  sessions: { readonly list: ObservableSnapshot<SelectedSessionList> },
   seatLayer: SeatLayer,
 ): SeatThemeController {
   let disposed = false

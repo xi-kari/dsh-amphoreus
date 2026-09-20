@@ -24,7 +24,7 @@ export const GLOBAL_SEAT_HERO = 'cyrene'
 export interface SessionListLike {
   readonly ids: readonly string[]
   readonly byId: Record<string, { updatedAt: number } | undefined>
-  readonly current?: string
+  readonly current?: string | undefined
 }
 
 export interface WorkspaceSnapshotLike {
