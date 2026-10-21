@@ -24,7 +24,7 @@
 npx @deepseek-ai/dsh@0.1.6-alpha.2 web
 ```
 
-安装本插件时可使用 `dsh-amphoreus@alpha`，或精确版本 `dsh-amphoreus@0.4.1`。宿主与插件的 npm 标签分别管理，升级 DSH 本体前请确认兼容范围。
+安装本插件时可使用 `dsh-amphoreus@alpha`，或精确版本 `dsh-amphoreus@0.4.2`。宿主与插件的 npm 标签分别管理，升级 DSH 本体前请确认兼容范围。
 
 ## 安装
 
@@ -35,14 +35,14 @@ npx @deepseek-ai/dsh@0.1.6-alpha.2 web
 ```bash
 dsh plugin --profile web add dsh-amphoreus@alpha
 # 或钉定版本
-dsh plugin --profile web add dsh-amphoreus@0.4.1
+dsh plugin --profile web add dsh-amphoreus@0.4.2
 ```
 
 ### tarball
 
 ```bash
-npm pack dsh-amphoreus@0.4.1 --registry https://registry.npmjs.org
-dsh plugin --profile web add ./dsh-amphoreus-0.4.1.tgz
+npm pack dsh-amphoreus@0.4.2 --registry https://registry.npmjs.org
+dsh plugin --profile web add ./dsh-amphoreus-0.4.2.tgz
 ```
 
 ### GitHub
@@ -356,7 +356,7 @@ npm run assets:check -- "<assetsRoot>"
 
 `npm run dev:link` 在 Windows 上以 junction 链接本地 DSH 依赖。改宿主代码后重启 `dsh web`；改浏览器代码后先 build，再刷新页面。含空格的本地 link 安装仍使用“安装”一节中的 profile 内 `pnpm add` 方法。
 
-维护者先运行 `npm run release:check`，再用 `npm publish --dry-run --tag alpha --access public --registry https://registry.npmjs.org` 核对发布内容。正式发布必须显式指定 `--tag alpha --access public --registry https://registry.npmjs.org`。未配置 CI 发布凭据时，先在本机完成 npm 发布，再推送与版本一致的 Git tag；发布 workflow 会校验 registry 的版本、`gitHead` 与 `alpha` 指向。
+维护者使用普通 Git clone 作为发布目录，先运行 `npm run release:check`，再用 `npm publish --dry-run --tag alpha --access public --registry https://registry.npmjs.org` 核对发布内容。发布前检查会用当前 npm 的实际 manifest 准备逻辑核对 `gitHead` 与 HEAD；缺失或不一致时停止，Git worktree 应先转入普通 clone。正式发布必须显式指定 `--tag alpha --access public --registry https://registry.npmjs.org`，保留 `prepublishOnly` 检查。未配置 CI 发布凭据时，先在本机完成 npm 发布并回读来源和校验值，再推送与版本一致的 Git tag；发布 workflow 会校验 registry 的版本、`gitHead` 与 `alpha` 指向。
 
 ## 已知限制
 
@@ -385,6 +385,7 @@ npm run assets:check -- "<assetsRoot>"
 
 ## 相关文档
 
+- [0.4.2 发布说明](docs/RELEASE-0.4.2.md)
 - [0.4.1 发布说明](docs/RELEASE-0.4.1.md)
 - [0.3.0 发布说明](docs/RELEASE-0.3.0.md)
 - [0.2.2 发布说明](docs/RELEASE-0.2.2.md)
