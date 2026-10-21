@@ -24,7 +24,7 @@
 npx @deepseek-ai/dsh@0.1.6-alpha.2 web
 ```
 
-安装本插件时可使用 `dsh-amphoreus@alpha`，或精确版本 `dsh-amphoreus@0.4.0`。宿主与插件的 npm 标签分别管理，升级 DSH 本体前请确认兼容范围。
+安装本插件时可使用 `dsh-amphoreus@alpha`，或精确版本 `dsh-amphoreus@0.4.1`。宿主与插件的 npm 标签分别管理，升级 DSH 本体前请确认兼容范围。
 
 ## 安装
 
@@ -35,14 +35,14 @@ npx @deepseek-ai/dsh@0.1.6-alpha.2 web
 ```bash
 dsh plugin --profile web add dsh-amphoreus@alpha
 # 或钉定版本
-dsh plugin --profile web add dsh-amphoreus@0.4.0
+dsh plugin --profile web add dsh-amphoreus@0.4.1
 ```
 
 ### tarball
 
 ```bash
-npm pack dsh-amphoreus@0.4.0 --registry https://registry.npmjs.org
-dsh plugin --profile web add ./dsh-amphoreus-0.4.0.tgz
+npm pack dsh-amphoreus@0.4.1 --registry https://registry.npmjs.org
+dsh plugin --profile web add ./dsh-amphoreus-0.4.1.tgz
 ```
 
 ### GitHub
@@ -227,7 +227,7 @@ npm run derive -- --assets-root "<dir>" --data-dir "<DSH_HOME>/amphoreus"
 获取技能套件，并让 `skillRoots` 指向克隆目录中的 `skills/`：
 
 ```bash
-git clone https://github.com/xi-kari/delta-me13-skill.git
+git clone --branch v1.8.0 https://github.com/xi-kari/delta-me13-skill.git
 ```
 
 例如，在 profile 的插件配置中设置：
@@ -244,12 +244,14 @@ git clone https://github.com/xi-kari/delta-me13-skill.git
 
 更新方式：
 
-1. 在套件仓库执行 `git pull --ff-only`；使用复制安装时，同步整个技能目录。
+1. 在套件仓库执行 `git fetch origin tag v1.8.0`，确认没有未保存的修改后执行 `git checkout --detach v1.8.0`；使用复制安装时，从 [v1.8.0 原生技能包](https://github.com/xi-kari/delta-me13-skill/releases/tag/v1.8.0) 同步整个技能目录。
 2. 在 DSH 设置中打开「δ-me13」，点击「重新解析套件」，核对当前目录和 Git 指纹。
+
+插件与技能套件分别更新：升级 npm 插件不会下载或覆盖 `skillRoots`。v1.8.0 的工作方法内核来自外部 `common.md`，保留各卡的角色表达与现有调用入口。更新套件后请建立新席位会话；已有会话首轮注入的旧卡正文不会被追溯替换。
 
 解析失败时界面明确显示「套件格式未识别，已降级」，不会静默沿用旧结果；新加入的技能卡自动出席，移除的技能卡变为「未部署」且保留已有会话。
 
-同名技能由首个有效根提供。CI 与发布质量门使用 [δ-me13 skill 的固定提交](https://github.com/xi-kari/delta-me13-skill/tree/0594030294bb7ec490c52efaa50201e93e0ffc49)（`0594030294bb7ec490c52efaa50201e93e0ffc49`），执行上游静态校验与插件的真实套件合同测试。运行本地套件测试时，将 `AMPHOREUS_REAL_SUITE` 设为实际 `skills/` 目录，再执行 `npm test`；本地未提交修改只由该本地测试覆盖，不属于固定提交的 CI 结果。
+同名技能由首个有效根提供。CI 与发布质量门使用 [δ-me13 skill v1.8.0 的固定提交](https://github.com/xi-kari/delta-me13-skill/tree/4ecfa005d61db118518deff8512aaeadd04cc478)（`4ecfa005d61db118518deff8512aaeadd04cc478`），执行上游静态校验与插件的真实套件合同测试。运行本地套件测试时，将 `AMPHOREUS_REAL_SUITE` 设为实际 `skills/` 目录，再执行 `npm test`；本地未提交修改只由该本地测试覆盖，不属于固定提交的 CI 结果。上游模型行为评测与本插件的解析、注入及资源测试分别记录，不能互相替代。
 
 ### 对话表情
 
@@ -358,7 +360,7 @@ npm run assets:check -- "<assetsRoot>"
 
 ## 已知限制
 
-1. 当前兼容范围仅为 `dsh-v0.1.2-alpha.4`。
+1. 当前兼容基线为 `dsh-v0.1.6-alpha.2`，技能套件验证基线为 δ-me13 skill `v1.8.0`。
 2. 首帧 nonce 每个进程随机生成；宿主重启后需刷新工作台。
 3. 页面加载时的首个会话通常不受 `workbench.defaultView` 影响。
 4. “记住 Tab”在插件热重载或会话回到空白态时可能被误记为“对话”；下次进入工作台 Tab 后会自愈。
@@ -383,6 +385,7 @@ npm run assets:check -- "<assetsRoot>"
 
 ## 相关文档
 
+- [0.4.1 发布说明](docs/RELEASE-0.4.1.md)
 - [0.3.0 发布说明](docs/RELEASE-0.3.0.md)
 - [0.2.2 发布说明](docs/RELEASE-0.2.2.md)
 - [0.2.1 发布说明](docs/RELEASE-0.2.1.md)

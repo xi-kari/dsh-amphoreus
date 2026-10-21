@@ -20,7 +20,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: xi-kari/delta-me13-skill
-          ref: 0594030294bb7ec490c52efaa50201e93e0ffc49
+          ref: 4ecfa005d61db118518deff8512aaeadd04cc478
           path: .suite-fixture
           sparse-checkout: skills
           persist-credentials: false
