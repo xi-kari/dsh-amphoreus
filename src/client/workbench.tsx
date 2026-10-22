@@ -485,6 +485,7 @@ export function useWorkbenchBridge(
           ].includes(data.type ?? '')) assertSessionUnarchived(data.sessionId, workspaces.getSnapshot().archivedSessionIds ?? [])
           switch (data.type) {
             case 'amphoreus:map-ready':
+              if (readyRef.current) return
               readyRef.current = true
               pushWorkspaces()
               pushState()

@@ -24,3 +24,10 @@
 .error { color: var(--dsw-alias-state-error-primary); }
 .linkButton { border: 0; background: transparent; padding: 0 6px; color: var(--dsw-alias-brand-primary); font: inherit; font-size: 11px; cursor: pointer; }
 .linkButton:disabled { cursor: not-allowed; opacity: .55; }
+
+@media (max-width: 620px) {
+  .name { min-width: 0; overflow-wrap: anywhere; }
+  .fields { grid-template-columns: minmax(0, 1fr); }
+  .select { box-sizing: border-box; width: 100%; min-height: 44px; }
+  .linkButton { min-height: 44px; max-width: 100%; overflow-wrap: anywhere; }
+}

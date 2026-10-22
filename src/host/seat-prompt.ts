@@ -21,9 +21,13 @@ export interface SeatStickerReferences {
   readonly keys: readonly string[]
 }
 
-export function stickerWebOrigin(server: { readonly host: string; readonly port: number }): string | undefined {
-  if (server.host !== '127.0.0.1' || !Number.isInteger(server.port) || server.port < 1 || server.port > 65535) return undefined
-  return `http://${server.host}:${server.port}`
+export function stickerWebOrigin(server: { readonly host: string; getOrigin(): string }): string | undefined {
+  if (server.host !== '127.0.0.1') return undefined
+  try {
+    return server.getOrigin()
+  } catch {
+    return undefined
+  }
 }
 
 export async function loadSeatStickerReferences(root: string, origin: string | undefined): Promise<SeatStickerReferences | undefined> {

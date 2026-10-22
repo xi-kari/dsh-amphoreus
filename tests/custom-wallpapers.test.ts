@@ -38,6 +38,62 @@ test('custom wallpaper kind follows the extension', () => {
   assert.equal(customWallpaperKind('wallpaper.gif'), 'image')
 })
 
+test('background mode defaults to none, persists independently of colors, and retains custom image across switches', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'amphoreus-background-'))
+  const fixture = stores()
+  const options = {
+    config: fixtureConfig(), stores: fixture.stores,
+    resolver: { current: () => undefined } as unknown as SuiteResolver,
+    nonce: NONCE, dataDir: root, probeMagick: async () => undefined,
+  }
+  const api = new AmphoreusWebApi({} as Context, options)
+  const server = createServer((request, response) => { void api.handle(request, response) })
+  server.listen(0, '127.0.0.1')
+  await once(server, 'listening')
+  const address = server.address()
+  assert.ok(address !== null && typeof address !== 'string')
+  const origin = `http://127.0.0.1:${address.port}`
+  const headers = { 'content-type': 'application/json', 'x-amphoreus-nonce': NONCE }
+  try {
+    assert.equal(api.state().effectiveConfig.wallpaper.mode, 'none')
+    assert.equal(api.state().visualBoot.wallpaper.enabled, false)
+    const patch = (backgroundMode: string) => fetch(`${origin}/amphoreus/api/prefs`, { method: 'PUT', headers, body: JSON.stringify({ backgroundMode }) })
+    assert.equal((await patch('unexpected')).status, 400)
+    assert.equal((await patch('preset')).status, 200)
+    assert.equal(fixture.read().prefs.backgroundMode, 'preset')
+    assert.equal(api.state().effectiveConfig.wallpaper.enabled, true)
+    const upload = (mime: string, body: string) => fetch(`${origin}/amphoreus/api/custom-wallpaper/global`, {
+      method: 'PUT', headers: { ...headers, 'content-type': mime }, body,
+    })
+    assert.equal((await upload('image/png', 'custom-background-bytes')).status, 200)
+    assert.equal((await patch('custom')).status, 200)
+    const custom = api.state().visualBoot.wallpaper.url
+    assert.match(custom!, /custom-wallpaper\/global/u)
+    assert.equal(api.state().visualBoot.wallpaper.sidebarUrl, custom)
+    assert.equal((await upload('video/mp4', 'video')).status, 200)
+    assert.equal(api.state().customWallpapers[0]?.kind, 'video')
+    assert.equal(api.state().effectiveConfig.wallpaper.mode, 'custom')
+    assert.equal(api.state().visualBoot.wallpaper.url, undefined)
+    assert.equal((await upload('image/png', 'custom-background-bytes')).status, 200)
+    await patch('none')
+    assert.equal(api.state().visualBoot.wallpaper.enabled, false)
+    assert.equal(api.state().visualBoot.wallpaper.url, undefined)
+    assert.equal(api.state().customWallpapers.length, 1)
+    assert.equal(api.state().effectiveConfig.seatStyle, options.config.seatStyle)
+    const restarted = new AmphoreusWebApi({} as Context, options)
+    await restarted.prepareAssets()
+    assert.equal(restarted.state().effectiveConfig.wallpaper.mode, 'none')
+    await patch('custom')
+    assert.match(restarted.state().visualBoot.wallpaper.url!, /custom-wallpaper\/global/u)
+    assert.equal((await fetch(`${origin}/amphoreus/api/custom-wallpaper/global`, { method: 'DELETE', headers })).status, 200)
+    assert.equal(api.state().visualBoot.wallpaper.url, undefined)
+  } finally {
+    server.closeAllConnections()
+    await new Promise<void>(resolve => server.close(() => resolve()))
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 test('upload replaces per seat, streams with Range, placement persists, delete clears both file and prefs', async () => {
   const root = await mkdtemp(join(tmpdir(), 'amphoreus-custom-wp-'))
   try {
@@ -64,6 +120,7 @@ test('upload replaces per seat, streams with Range, placement persists, delete c
         method: 'PUT', headers: { 'content-type': 'image/png', 'x-amphoreus-nonce': NONCE }, body: png,
       })
       assert.equal(put.status, 200)
+      assert.equal(api.state().effectiveConfig.wallpaper.mode, 'custom', 'upload applies a background even when the previous mode was none')
       const uploaded = (await put.json() as { wallpaper: { url: string; kind: string; bytes: number; placement: { fit: string; x: number } } }).wallpaper
       assert.equal(uploaded.kind, 'image')
       assert.equal(uploaded.bytes, png.length)

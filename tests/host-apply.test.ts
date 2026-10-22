@@ -54,7 +54,7 @@ function fakeDomain(trace: Trace, name: string) {
   }
 }
 
-function stubContext(trace: Trace, options: { storage: 'ok' | 'fail' }): { ctx: Context; effects: Array<{ label: string; result: Promise<unknown> }> } {
+function stubContext(trace: Trace, options: { storage: 'ok' | 'fail'; visibilityWrite?: () => Promise<void> }): { ctx: Context; effects: Array<{ label: string; result: Promise<unknown> }> } {
   const effects: Array<{ label: string; result: Promise<unknown> }> = []
   const ctx = {
     logger: {
@@ -72,7 +72,7 @@ function stubContext(trace: Trace, options: { storage: 'ok' | 'fail' }): { ctx: 
       trace.onEvents.push(event)
       return () => { trace.lines.push(`off:${event}`) }
     },
-    get: () => undefined,
+    get: (name: string) => name === 'workspaceRegistry' ? { list: () => [], setHiddenByOwner: options.visibilityWrite ?? (async () => {}) } : undefined,
     sessions: { list: () => [] },
     skills: { registerProvider: () => () => {}, get: () => undefined },
     commands: { register: () => () => { trace.lines.push('off:command') } },
@@ -94,6 +94,28 @@ function config(dataDir: string): AmphoreusConfig {
     registerProvider: false,
     workbench: { ...fixtureConfig().workbench, enabled: false },
   }
+}
+
+for (const failOn of [1, 2]) {
+  test(`visibility failure on write ${failOn} still releases routes, listeners, and stores`, async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), 'amphoreus-apply-visibility-'))
+    const trace: Trace = { lines: [], errors: [], warns: [], onEvents: [] }
+    let writes = 0
+    try {
+      const { ctx, effects } = stubContext(trace, { storage: 'ok', visibilityWrite: async () => {
+        if (++writes === failOn) throw new Error('visibility disk failure')
+      } })
+      apply(ctx, config(dataDir))
+      if (failOn === 1) await assert.rejects(effects[0]!.result, /visibility disk failure/u)
+      else {
+        const dispose = await effects[0]!.result as () => Promise<void>
+        await assert.rejects(dispose(), /visibility disk failure/u)
+      }
+      assert.ok(trace.lines.includes('off:route'))
+      assert.ok(trace.lines.includes('off:webserver/index-inject'))
+      assert.deepEqual(trace.lines.slice(-2), ['close:amphoreus_canvas', 'close:amphoreus'])
+    } finally { await rm(dataDir, { recursive: true, force: true }) }
+  })
 }
 
 test('apply() in degraded mode (storage unavailable) mounts, registers nothing that needs stores, and its disposer resolves', async () => {
@@ -145,6 +167,9 @@ test('apply() with in-memory domains registers every feature listener and dispos
       'off:session/event', 'off:session/created', // observer
       'off:session/created', // seat-permission
       'off:command', 'off:session/event', 'off:session/created', // seat-memory
+      'off:session/event', 'off:credentials/reference-updated', 'off:credentials/record-updated',
+      'off:deepseek-account/signed-out', 'off:deepseek-account/session-expired', 'off:app-boot/config-reload',
+      'close:amphoreus_widget',
       'off:webserver/index-inject', // firstframe
       'off:system-prompt/assemble', // seat-prompt
       'off:session/created', 'off:agent/created', 'off:agent/pre-step', 'off:agent/disposed', 'off:session/event', // injector

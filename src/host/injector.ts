@@ -135,7 +135,7 @@ export function registerInjector(ctx: Context, options: InjectorOptions): () => 
         childId: session.id,
         parent: bindings().get(parentId),
         childExisting: bindings().get(session.id),
-        freshFork: session.firstLiveSeq === session.inheritedEventCount,
+        freshFork: session.header.isSeeded && session.firstLifecycleSeq === session.inheritedEventCount,
         seedEvents: session.snapshotEvents(0 as SessionLogOffset, session.inheritedEventCount),
         autoInvokeEnabled: config.autoInvoke.enabled,
         now: Date.now(),

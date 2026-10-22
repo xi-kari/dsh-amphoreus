@@ -1,0 +1,145 @@
+[data-amph-grammar] [data-amph-liquid] {
+  --amph-liquid-opacity: var(--amph-liquid-pane-alpha, 1);
+  --amph-liquid-fill: color-mix(in srgb, var(--amph-liquid-base, var(--amph-material-base)) calc(var(--amph-liquid-opacity) * 100%), transparent);
+  --amph-liquid-center-light: .04;
+  --amph-liquid-soft-filter: blur(clamp(0px, calc(var(--amph-glass-blur, 14px) * .45), 12px)) saturate(1.3);
+  --amph-liquid-optics: var(--amph-liquid-refraction, blur(0px)) var(--amph-liquid-soft-filter);
+  --amph-material-primary: var(--amph-liquid-primary);
+  --amph-material-secondary: var(--amph-liquid-secondary);
+  --amph-material-ink: var(--amph-liquid-primary);
+  --dsw-alias-label-primary: var(--amph-liquid-primary);
+  --dsw-alias-label-secondary: var(--amph-liquid-secondary);
+  --dsw-alias-label-tertiary: var(--amph-liquid-secondary);
+  --dsw-alias-label-caption: var(--amph-liquid-secondary);
+  color: var(--amph-liquid-primary);
+  background-color: transparent !important;
+  background-image: none !important;
+  backdrop-filter: none;
+}
+
+[data-amph-grammar='dark'] [data-amph-liquid] {
+  --amph-liquid-center-light: .025;
+}
+
+[data-amph-grammar] :is([data-amph-inputbar], [data-amph-composer])[data-amph-liquid='composer'] {
+  --amph-liquid-opacity: var(--amph-liquid-input-alpha, 1);
+  --dsw-specific-input-major: transparent;
+  position: relative;
+  z-index: 8;
+  border: var(--amph-rim-width, 1px) var(--amph-rim-style, solid) var(--amph-glass-rim);
+  border-radius: max(20px, var(--amph-radius));
+  box-shadow: none;
+  outline: none;
+  backdrop-filter: none;
+}
+
+[data-amph-grammar] [data-amph-liquid='composer'] [data-amph-composer] {
+  --dsw-specific-input-major: transparent;
+  background: transparent;
+  border-radius: inherit;
+  box-shadow: none;
+}
+
+[data-amph-grammar] [data-amph-liquid='composer'][class*='cardWorkspaceTrigger']::after {
+  border-radius: inherit;
+}
+
+[data-amph-grammar] [data-amph-liquid='welcome'],
+[data-amph-grammar] [data-amph-liquid='controls'] {
+  box-sizing: border-box;
+  position: relative;
+  width: fit-content;
+  max-width: 100%;
+  min-width: 0;
+  border: 1px solid color-mix(in srgb, var(--amph-glass-rim) 65%, transparent);
+  box-shadow: 0 5px 18px color-mix(in srgb, var(--amph-accent) 9%, transparent);
+}
+
+[data-amph-grammar] [data-amph-liquid='welcome'] {
+  z-index: 1;
+  padding: 10px 16px;
+  border-radius: max(16px, min(24px, var(--amph-radius)));
+  text-wrap: pretty;
+}
+
+[data-amph-grammar] [data-amph-liquid='controls'] {
+  z-index: 10;
+  align-self: flex-start;
+  max-width: calc(100% - 2 * var(--dsh-composer-side-clearance));
+  margin-inline: var(--dsh-composer-side-clearance);
+  padding: 6px 8px;
+  gap: 4px;
+  border-radius: max(14px, min(24px, var(--amph-radius-sm)));
+}
+
+[data-amph-grammar] [data-amph-liquid]::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background-color: var(--amph-liquid-fill);
+  background-image: linear-gradient(130deg, rgb(255 255 255 / var(--amph-liquid-center-light)), transparent 55%);
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  backdrop-filter: var(--amph-liquid-optics);
+  box-shadow: none;
+  pointer-events: none;
+}
+
+[data-amph-grammar] [data-amph-liquid='composer']::before {
+  box-shadow: var(--amph-edge);
+}
+
+[data-amph-grammar] [data-amph-liquid]:not([class*='cardWorkspaceTrigger'])::after {
+  content: '';
+  display: block;
+  position: absolute;
+  box-sizing: border-box;
+  inset: 0;
+  width: auto;
+  height: auto;
+  margin: 0;
+  z-index: 2;
+  padding: 1px;
+  border: 0;
+  border-radius: inherit;
+  background: radial-gradient(ellipse 240px 140px at var(--amph-light-x, 24%) var(--amph-light-y, 0%), rgb(255 255 255 / .75), transparent 75%);
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  box-shadow: none;
+  transform: none;
+  opacity: var(--amph-light-active, 0);
+  pointer-events: none;
+}
+
+[data-amph-grammar] [data-amph-liquid='composer']:has(:focus-visible) {
+  border-color: var(--amph-accent);
+}
+
+[data-amph-grammar][data-amph-motion='on'] [data-amph-liquid]::before {
+  transition: background-color 240ms cubic-bezier(.16, 1, .3, 1);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  [data-amph-grammar] [data-amph-liquid] {
+    --amph-liquid-opacity: 1 !important;
+    --amph-liquid-optics: none;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more), (forced-colors: active) {
+  [data-amph-grammar] [data-amph-liquid] {
+    --amph-liquid-opacity: 1 !important;
+    --amph-liquid-optics: none;
+  }
+  [data-amph-grammar] [data-amph-liquid]:not([class*='cardWorkspaceTrigger'])::after {
+    display: none !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-amph-grammar] [data-amph-liquid]::before {
+    transition: none;
+  }
+}

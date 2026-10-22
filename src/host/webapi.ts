@@ -6,12 +6,14 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { z } from 'zod'
-import { CUSTOM_WALLPAPER_PLACEMENT_DEFAULTS, GRAMMAR_DEFAULTS, type AmphoreusAssetsStatus, type AmphoreusState, type CustomWallpaperInfo, type CustomWallpaperPlacement, type DeriveProgress, type GrammarPrefs, type PublicSuite, type WorkbenchBoot, type WorkbenchStatus } from '../shared/api.ts'
+import { CODE_BACKGROUND_DEFAULTS } from '../shared/code-background.ts'
+import { CUSTOM_WALLPAPER_PLACEMENT_DEFAULTS, GRAMMAR_DEFAULTS, WIDGET_PREF_DEFAULTS, type AmphoreusAssetsStatus, type AmphoreusState, type CustomWallpaperInfo, type CustomWallpaperPlacement, type DeriveProgress, type GrammarPrefs, type PublicSuite, type WidgetPublicState, type WorkbenchBoot, type WorkbenchStatus } from '../shared/api.ts'
+import type { WidgetAccounting, WidgetAccountingSnapshot } from './widget-accounting-types.ts'
 import { CustomWallpaperStore } from './custom-wallpapers.ts'
 import { GLOBAL_WALLPAPERS } from '../shared/heroes.ts'
 import type { AmphoreusConfig } from './config.ts'
 import { deriveAssets, probeMagick, resolveGlobalWallpaperDir, type DeriveOptions, type DeriveResult } from './derive.ts'
-import { publicWorkbench } from './firstframe.ts'
+import { createBootPayload, publicWorkbench } from './firstframe.ts'
 import { BindingSchema, CanvasSchema, MemorySchema, ObservationSchema, updateAmphoreusGlobal, type AmphoreusStores } from './store.ts'
 import type { SuiteResolver } from './bridge.ts'
 import type { SuiteSnapshot } from './suite/types.ts'
@@ -66,10 +68,22 @@ const PlacementInput = z.object({
   paused: z.boolean().optional(),
 }).strict()
 
+const CodeBackgroundInput = z.object({
+  enabled: z.boolean().optional(),
+  intensity: z.number().min(0).max(1).optional(),
+  interactive: z.boolean().optional(),
+}).strict()
+
 const PrefsInput = z.object({
   quickPhrases: z.array(z.string().max(16)).max(12).optional(),
   lastSeat: z.string().nullable().optional(),
   magazineMode: z.enum(['light', 'full']).nullable().optional(),
+  backgroundMode: z.enum(['none', 'preset', 'custom']).optional(),
+  codeBackground: CodeBackgroundInput.nullable().optional(),
+  widget: z.object({
+    enabled: z.boolean().optional(), allowTopDock: z.boolean().optional(), showTurnBubble: z.boolean().optional(),
+    autoHideSeconds: z.number().min(0).max(300).optional(),
+  }).strict().nullable().optional(),
   /** Partial grammar patch; `null` resets every knob to the defaults. */
   grammar: GrammarInput.nullable().optional(),
   /** Per-seat wallpaper placement patch: { heroId: partial | null }. */
@@ -92,8 +106,8 @@ const DeriveInput = z.object({ force: z.boolean().optional() }).strict()
 const MAX_SCHEME_BODY_BYTES = 64 * 1024
 const VISUAL_SCHEME_FILENAME = 'amphoreus-visual-scheme.json'
 /**
- * Visual scheme file (schema v1): the three visual prefs only, sparse, no wallpaper binaries.
- * Import is REPLACE semantics for exactly these keys; every other pref is left untouched.
+ * Visual scheme files contain sparse visual preferences without wallpaper binaries.
+ * Code background is replaced only when present, preserving compatibility with older files.
  */
 const VisualSchemeInput = z.object({
   version: z.literal(1),
@@ -101,6 +115,7 @@ const VisualSchemeInput = z.object({
   magazineMode: z.enum(['light', 'full']).optional(),
   grammar: GrammarInput.optional(),
   customWallpapers: z.record(HERO_ID, PlacementInput).optional(),
+  codeBackground: CodeBackgroundInput.nullable().optional(),
 }).strict()
 /** PUT /amphoreus/api/seats/<skill>/preset body: three optional tiers, or `null` to clear. */
 const SeatPresetInput = z.object({
@@ -153,6 +168,8 @@ type HostContext = Context & {
 }
 
 export interface WebApiOptions {
+  readonly widget?: WidgetAccounting
+  readonly widgetError?: boolean
   readonly config: AmphoreusConfig
   readonly stores: AmphoreusStores
   readonly resolver: SuiteResolver
@@ -229,6 +246,8 @@ class SseHub {
 }
 
 export class AmphoreusWebApi {
+  readonly #widget: WidgetAccounting | undefined
+  readonly #widgetError: boolean
   readonly nonce: string
   readonly #ctx: HostContext
   readonly #config: AmphoreusConfig
@@ -263,6 +282,8 @@ export class AmphoreusWebApi {
   #lastDerive: AmphoreusAssetsStatus['lastDerive'] = null
 
   constructor(ctx: Context, options: WebApiOptions) {
+    this.#widget = options.widget
+    this.#widgetError = options.widgetError ?? false
     this.#ctx = ctx as HostContext
     this.#config = options.config
     this.#stores = options.stores
@@ -353,7 +374,11 @@ export class AmphoreusWebApi {
     const workbench = this.#workbench?.subscribe(sessionIds => {
       this.#sse.publish('workbench-change', { sessionIds, revision: this.#workbench!.revision })
     }) ?? (() => {})
+    const widget = this.#widget?.onChange(() => {
+      this.#sse.publish('state-change', { domain: 'amphoreus_widget' })
+    }) ?? (() => {})
     return () => {
+      widget()
       workbench()
       snapshot()
       domain()
@@ -414,6 +439,13 @@ export class AmphoreusWebApi {
         json(response, 200, { ok: true, revision: this.#resolver.current()?.generation ?? 0 })
         return
       }
+      if (path === '/amphoreus/api/widget/refresh') {
+        if (!method(request, response, 'POST')) return
+        if (this.#widget === undefined) { json(response, 503, { error: 'widget accounting unavailable' }); return }
+        const snapshot = await this.#widget.refresh()
+        json(response, 200, publicWidgetState(snapshot))
+        return
+      }
       if (path === '/amphoreus/api/assets/derive') {
         await this.#deriveRoute(request, response)
         return
@@ -457,6 +489,7 @@ export class AmphoreusWebApi {
             ...(prefs.magazineMode === undefined ? {} : { magazineMode: prefs.magazineMode }),
             ...(prefs.grammar === undefined ? {} : { grammar: prefs.grammar }),
             ...(prefs.customWallpapers === undefined ? {} : { customWallpapers: prefs.customWallpapers }),
+            ...(prefs.codeBackground === undefined ? {} : { codeBackground: prefs.codeBackground }),
           }, { 'content-disposition': `attachment; filename="${VISUAL_SCHEME_FILENAME}"` })
           return
         }
@@ -479,6 +512,8 @@ export class AmphoreusWebApi {
           if (scheme.magazineMode !== undefined) prefs.magazineMode = scheme.magazineMode
           if (scheme.grammar !== undefined) prefs.grammar = scheme.grammar
           if (scheme.customWallpapers !== undefined) prefs.customWallpapers = scheme.customWallpapers
+          if (scheme.codeBackground === null) delete prefs.codeBackground
+          else if (scheme.codeBackground !== undefined) prefs.codeBackground = scheme.codeBackground
           return { ...current, prefs }
         })
         json(response, 200, { prefs: updated.prefs })
@@ -516,6 +551,11 @@ export class AmphoreusWebApi {
           }
           if (input.magazineMode === null) delete prefs.magazineMode
           else if (input.magazineMode !== undefined) prefs.magazineMode = input.magazineMode
+          if (input.backgroundMode !== undefined) prefs.backgroundMode = input.backgroundMode
+          if (input.codeBackground === null) delete prefs.codeBackground
+          else if (input.codeBackground !== undefined) prefs.codeBackground = { ...current.prefs.codeBackground, ...input.codeBackground }
+          if (input.widget === null) delete prefs.widget
+          else if (input.widget !== undefined) prefs.widget = { ...current.prefs.widget, ...input.widget }
           if (input.grammar === null) delete prefs.grammar
           else if (input.grammar !== undefined) prefs.grammar = { ...current.prefs.grammar, ...input.grammar }
           if (input.customWallpapers !== undefined) {
@@ -642,12 +682,29 @@ export class AmphoreusWebApi {
     return merged as unknown as GrammarPrefs
   }
 
+  globalCustomWallpaper(): CustomWallpaperInfo | undefined {
+    const record = this.#customWallpapers?.get('global')
+    return record === undefined ? undefined : this.#customWallpaperInfo(record)
+  }
+
   state(): AmphoreusState {
     const snapshot = this.#resolver.current()
     const global = this.#stores.main.global.get()
     return {
       revision: snapshot?.generation ?? 0,
       nonce: this.nonce,
+      ...(this.#widget === undefined ? {} : { widget: publicWidgetState(this.#widget.snapshot()) }),
+      ...(this.#widgetError ? { widgetError: 'unavailable' } : {}),
+      visualBoot: createBootPayload({
+        config: this.#config,
+        nonce: this.nonce,
+        current: () => snapshot,
+        wallpaperIndex: global.prefs.wallpaperCursor,
+        derivedWallpaper: index => this.derivedWallpaperUrl(index),
+        assetsRoot: this.#assetsRoot,
+        backgroundMode: () => global.prefs.backgroundMode ?? 'none',
+        customWallpaper: () => this.globalCustomWallpaper(),
+      }),
       suite: snapshot === undefined ? undefined : publicSuite(snapshot),
       seats: values(this.#stores.main.table('seats').entries()),
       seatDirs: this.#seatDirs.map(({ heroId, skillName, dir }) => ({ heroId, skillName, dir })),
@@ -676,7 +733,18 @@ export class AmphoreusWebApi {
         unprojectable: this.#workbench?.unprojectable() ?? [],
       },
       effectiveConfig: {
-        wallpaper: this.#config.wallpaper,
+        codeBackground: {
+          enabled: global.prefs.codeBackground?.enabled ?? CODE_BACKGROUND_DEFAULTS.enabled,
+          intensity: global.prefs.codeBackground?.intensity ?? CODE_BACKGROUND_DEFAULTS.intensity,
+          interactive: global.prefs.codeBackground?.interactive ?? CODE_BACKGROUND_DEFAULTS.interactive,
+        },
+        widget: {
+          enabled: global.prefs.widget?.enabled ?? WIDGET_PREF_DEFAULTS.enabled,
+          allowTopDock: global.prefs.widget?.allowTopDock ?? WIDGET_PREF_DEFAULTS.allowTopDock,
+          showTurnBubble: global.prefs.widget?.showTurnBubble ?? WIDGET_PREF_DEFAULTS.showTurnBubble,
+          autoHideSeconds: global.prefs.widget?.autoHideSeconds ?? WIDGET_PREF_DEFAULTS.autoHideSeconds,
+        },
+        wallpaper: { ...this.#config.wallpaper, mode: global.prefs.backgroundMode ?? 'none', enabled: (global.prefs.backgroundMode ?? 'none') !== 'none' },
         magazineMode: this.#effectiveMagazineMode(),
         magazineModeSource: global.prefs.magazineMode === undefined ? 'config' : 'prefs',
         grammar: this.#effectiveGrammar(),
@@ -1248,7 +1316,11 @@ export class AmphoreusWebApi {
     if (request.method === 'PUT') {
       const mime = (request.headers['content-type'] ?? '').split(';')[0]!.trim().toLowerCase()
       try {
-        const record = await store.put(heroId, mime, request)
+        const record = await store.put(heroId, mime, request, async () => {
+          await updateAmphoreusGlobal(this.#stores.main, current => ({
+            ...current, prefs: { ...current.prefs, backgroundMode: 'custom' },
+          }))
+        })
         this.#publishSse('state-change', { domain: 'amphoreus', table: 'custom-wallpapers', key: heroId, operation: 'put' })
         json(response, 200, { wallpaper: this.#customWallpaperInfo(record) })
       } catch (error) {
@@ -1683,6 +1755,25 @@ async function sameRoot(left: string, right: string): Promise<boolean> {
     return samePath(await canonicalizeForContainment(left), await canonicalizeForContainment(right))
   } catch {
     return samePath(left, right)
+  }
+}
+
+export function publicWidgetState(snapshot: WidgetAccountingSnapshot): WidgetPublicState {
+  const turns = [...snapshot.turns].sort((left, right) => (right.endedAt ?? right.startedAt) - (left.endedAt ?? left.startedAt)).slice(0, 50)
+  const active = [...snapshot.activeTurns].sort((left, right) => right.startedAt - left.startedAt).slice(0, 50)
+  const references = new Map<string, { source: string; asOf: string }>()
+  for (const turn of [...turns, ...active]) for (const record of turn.records) {
+    if (record.price) references.set(`${record.price.source}\n${record.price.asOf}`, { source: record.price.source, asOf: record.price.asOf })
+  }
+  const project = ({ records, ...turn }: typeof turns[number]) => ({ ...turn,
+    routes: [...new Map(records.filter(record => record.route !== null).map(record => [JSON.stringify(record.route), record.route!])).values()],
+  })
+  return {
+    ...snapshot,
+    usageDays: [...snapshot.usageDays].sort((left, right) => right.day.localeCompare(left.day)).slice(0, 7),
+    turns: turns.map(project),
+    activeTurns: active.map(project),
+    priceReferences: [...references.values()],
   }
 }
 

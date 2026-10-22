@@ -26,6 +26,25 @@ function prompt() {
   }
 }
 
+test('sticker origin requires an available loopback TCP listener and preserves its actual origin', () => {
+  const unbound = {
+    host: '127.0.0.1', port: undefined,
+    getOrigin: (): string => { throw new Error('webserver: origin read before the listener bound a port') },
+  }
+  assert.equal(seatPromptModule.stickerWebOrigin(unbound), undefined)
+  const socket = {
+    host: '/tmp/dsh.sock', port: undefined,
+    getOrigin: (): string => { throw new Error('socket listener has no browser origin') },
+  }
+  assert.equal(seatPromptModule.stickerWebOrigin(socket), undefined)
+  const listener = {
+    host: '127.0.0.1', port: 43123,
+    getOrigin: () => 'https://127.0.0.1:43123',
+  }
+  assert.equal(seatPromptModule.stickerWebOrigin(listener), 'https://127.0.0.1:43123')
+  assert.equal(seatPromptModule.stickerWebOrigin({ ...listener, host: '192.0.2.10' }), undefined)
+})
+
 test('seat prompt replaces only two default identity declarations and retains runtime contracts', () => {
   const original = prompt()
   const before = structuredClone(original)

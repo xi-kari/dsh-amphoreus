@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { Context } from '@deepseek-ai/cordis'
+import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import { buildForkSeed, Session, SessionId, SessionLogOffset, SessionSeq } from '@deepseek-ai/dsh-session'
 import type { AmphoreusConfig, SessionStartSourceName } from '../src/host/config.ts'
 import { planForkInheritance, registerInjector, type InheritSeedEvent } from '../src/host/injector.ts'
 import type { AmphoreusStores, BindingRecord } from '../src/host/store.ts'
@@ -194,6 +196,7 @@ function stores(table: QueuedBindings): AmphoreusStores {
 
 function createdSession(options: {
   readonly firstLiveSeq?: number
+  readonly firstLifecycleSeq?: number
   readonly inheritedEventCount?: number
   readonly events?: readonly InheritSeedEvent[]
   readonly snapshotFailure?: Error
@@ -202,9 +205,10 @@ function createdSession(options: {
   const events = options.events ?? [{ type: 'request/header', seq: 0, data: {} }]
   return {
     id: CHILD_ID,
-    header: { id: CHILD_ID, cwd: 'D:/fixture', parentSession: PARENT_ID },
+    header: { id: CHILD_ID, cwd: 'D:/fixture', parentSession: PARENT_ID, isSeeded: true },
     inheritedEventCount,
     firstLiveSeq: options.firstLiveSeq ?? inheritedEventCount,
+    firstLifecycleSeq: options.firstLifecycleSeq ?? options.firstLiveSeq ?? inheritedEventCount,
     snapshotEvents: (from = 0, to = events.length) => {
       if (options.snapshotFailure !== undefined) throw options.snapshotFailure
       return events.slice(from, to)
@@ -249,6 +253,75 @@ function injectorFixture(injectorConfig = config()) {
   const dispose = registerInjector(context as unknown as Context, { config: injectorConfig, stores: stores(table) })
   return { context, table, dispose }
 }
+
+for (const turnClosed of [false, true]) {
+  for (const cardInherited of [false, true]) {
+    test(`current session fork inherits its seat and restore does not rebind (closed=${turnClosed}, card=${cardInherited})`, async () => {
+      const { context, table, dispose } = injectorFixture()
+      const parent = Session.create(SessionId(PARENT_ID))
+      parent.append('turn/start', { turn: 1 })
+      parent.append('user/message', createUserMessage({
+        content: [{ type: 'text', text: 'fixture input' }],
+        source: cardInherited
+          ? { kind: 'skill-invocation', name: SKILL, form: 'instructions' }
+          : { kind: 'user' },
+      }), { surfaceOp: 'append' })
+      if (turnClosed) parent.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+      const inheritedEventCount = SessionLogOffset(parent.seq)
+      const child = Session.create(
+        SessionId(CHILD_ID),
+        buildForkSeed(parent.snapshotEvents(), SessionSeq(parent.seq - 1)),
+        { ...parent.header, id: SessionId(CHILD_ID), parentSession: parent.id, isSeeded: true },
+        inheritedEventCount,
+      )
+      assert.ok(child.firstLiveSeq > child.inheritedEventCount)
+      assert.equal(child.firstLifecycleSeq, child.inheritedEventCount)
+      try {
+        context.emit('session/created', child)
+        await table.idle()
+        const inherited = table.values.get(CHILD_ID)
+        assert.equal(inherited?.skillName, SKILL)
+        assert.equal(inherited?.source, 'fork-inherit')
+        assert.equal(inherited?.injection.state, cardInherited ? 'skipped' : 'pending')
+        if (cardInherited) assert.equal(inherited?.injection.reason, 'inherited-from-parent')
+
+        await table.delete(CHILD_ID)
+        const restored = Session.fromRestore(
+          child.id,
+          structuredClone(child.snapshotEvents()),
+          { ...child.header },
+          child.inheritedEventCount,
+          'detached',
+        )
+        assert.ok(restored.firstLifecycleSeq > restored.inheritedEventCount)
+        context.emit('session/created', restored)
+        await table.idle()
+        assert.equal(table.values.has(CHILD_ID), false)
+        assert.equal(context.warnings.length, 0)
+      } finally { dispose() }
+    })
+  }
+}
+
+test('current session empty fork inherits a seat while unseeded child lineage does not', async () => {
+  for (const isSeeded of [false, true]) {
+    const { context, table, dispose } = injectorFixture()
+    const parent = Session.create(SessionId(PARENT_ID))
+    const child = Session.create(
+      SessionId(CHILD_ID),
+      isSeeded ? [] : undefined,
+      { ...parent.header, id: SessionId(CHILD_ID), parentSession: parent.id, isSeeded },
+      SessionLogOffset(0),
+    )
+    try {
+      context.emit('session/created', child)
+      await table.idle()
+      assert.equal(table.values.has(CHILD_ID), isSeeded)
+      if (isSeeded) assert.equal(table.values.get(CHILD_ID)?.injection.state, 'pending')
+      assert.equal(context.warnings.length, 0)
+    } finally { dispose() }
+  }
+})
 
 test('listener: pre-step reads inheritedPending while the binding put is still queued', async () => {
   const { context, table, dispose } = injectorFixture()

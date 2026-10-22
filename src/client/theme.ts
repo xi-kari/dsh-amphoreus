@@ -221,29 +221,29 @@ function applyPlacement(custom: CustomWallpaperInfo | undefined): void {
   style.setProperty('--amph-wp-scale', String(p.scale))
 }
 
-/** Mount or update the seat video element inside the wallpaper layer; returns whether one is showing. */
-function syncVideo(layer: HTMLElement | null, custom: CustomWallpaperInfo | undefined): boolean {
-  if (layer === null) return false
-  let video = layer.querySelector<HTMLVideoElement>('video.amph-seat-video')
-  if (custom === undefined || custom.kind !== 'video') {
-    if (video !== null) {
-      video.pause()
-      video.removeAttribute('src')
-      video.load()
-      video.remove()
-    }
-    return false
-  }
-  if (video === null) {
-    video = document.createElement('video')
-    video.className = 'amph-seat-video'
-    video.setAttribute('aria-hidden', 'true')
-    video.playsInline = true
-    video.disablePictureInPicture = true
-    // Sits between the seat layers (z 2) and the ambient/scrim (z 3/4).
-    video.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;z-index:2;pointer-events:none;object-fit:var(--amph-wp-fit-video, cover);object-position:var(--amph-wp-x, 50%) var(--amph-wp-y, 40%);transform:scale(var(--amph-wp-scale, 1));transition:opacity 240ms ease;'
-    layer.appendChild(video)
-  }
+const videoPauseIntent = new WeakMap<HTMLVideoElement, boolean>()
+
+function releaseVideo(video: HTMLVideoElement): void {
+  videoPauseIntent.delete(video)
+  video.pause()
+  video.removeAttribute('src')
+  video.load()
+  video.remove()
+}
+
+function createWallpaperVideo(): HTMLVideoElement {
+  const video = document.createElement('video')
+  video.className = 'amph-seat-video'
+  video.setAttribute('aria-hidden', 'true')
+  video.playsInline = true
+  video.disablePictureInPicture = true
+  video.preload = 'auto'
+  video.muted = true
+  video.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;z-index:2;pointer-events:none;object-fit:var(--amph-wp-fit-video, cover);object-position:var(--amph-wp-x, 50%) var(--amph-wp-y, 40%);transform:scale(var(--amph-wp-scale, 1));transition:opacity 240ms ease;'
+  return video
+}
+
+function configureVideo(video: HTMLVideoElement, custom: CustomWallpaperInfo): void {
   const p = { ...CUSTOM_WALLPAPER_PLACEMENT_DEFAULTS, ...custom.placement }
   if (video.getAttribute('src') !== custom.url) {
     video.setAttribute('src', custom.url)
@@ -253,8 +253,27 @@ function syncVideo(layer: HTMLElement | null, custom: CustomWallpaperInfo | unde
   video.loop = p.loop
   video.playbackRate = p.playbackRate
   video.style.setProperty('--amph-wp-fit-video', p.fit)
-  if (p.paused) video.pause()
+  video.style.setProperty('--amph-wp-x', `${p.x}%`)
+  video.style.setProperty('--amph-wp-y', `${p.y}%`)
+  video.style.setProperty('--amph-wp-scale', String(p.scale))
+  videoPauseIntent.set(video, p.paused)
+  if (p.paused || document.visibilityState === 'hidden') video.pause()
   else void video.play().catch(() => { /* autoplay policy: stays on first frame */ })
+}
+
+/** Mount or update the seat video element inside the wallpaper layer; returns whether one is showing. */
+function syncVideo(layer: HTMLElement | null, custom: CustomWallpaperInfo | undefined): boolean {
+  if (layer === null) return false
+  let video = layer.querySelector<HTMLVideoElement>('video.amph-seat-video')
+  if (custom === undefined || custom.kind !== 'video') {
+    if (video !== null) releaseVideo(video)
+    return false
+  }
+  if (video === null) {
+    video = createWallpaperVideo()
+    layer.appendChild(video)
+  }
+  configureVideo(video, custom)
   return true
 }
 
@@ -279,6 +298,7 @@ export function registerSeatTheme(
   let pendingKey: string | null = null
   let activeSlot: 0 | 1 = 0
   let disposeCurrent = NOOP
+  let appliedIntent: string | null | undefined
   const initialSessionId: string | undefined = sessions.list.getSnapshot().current
   let lastSessionId = initialSessionId
   const firstFrameHeroId = document.body.dataset.amphoreusSeat
@@ -297,15 +317,26 @@ export function registerSeatTheme(
     return layer instanceof HTMLElement ? layer : null
   }
 
+  const syncVideoVisibility = (): void => {
+    if (disposed) return
+    const videos = [...wallpaperLayer()?.querySelectorAll<HTMLVideoElement>('video.amph-seat-video') ?? []]
+    const active = videos.at(-1)
+    for (const video of videos) {
+      if (document.visibilityState === 'hidden' || video !== active || videoPauseIntent.get(video) !== false) video.pause()
+      else void video.play().catch(() => {})
+    }
+  }
+  document.addEventListener?.('visibilitychange', syncVideoVisibility)
+
   const clearTransition = (): void => {
     const dispose = disposeCurrent
     disposeCurrent = NOOP
     dispose()
   }
 
-  const resetWallpaperSurface = (plan: SeatVisualPlan): void => {
+  const resetSeatSurface = (preserveVideo = false): void => {
     const layer = wallpaperLayer()
-    syncVideo(layer, undefined)
+    if (!preserveVideo) syncVideo(layer, undefined)
     applyPlacement(undefined)
     if (layer !== null) {
       for (const slot of [0, 1] as const) {
@@ -315,17 +346,23 @@ export function registerSeatTheme(
         delete seat.dataset.incoming
         seat.style.backgroundImage = ''
       }
-      const globalUrl = window.__AMPHOREUS_BOOT__?.wallpaper.url
-      if (globalUrl === undefined) layer.style.removeProperty('--amphoreus-wallpaper-url')
-      else layer.style.setProperty('--amphoreus-wallpaper-url', cssUrl(globalUrl))
     }
     activeSlot = 0
+  }
+
+  const resetWallpaperSurface = (plan: SeatVisualPlan): void => {
+    resetSeatSurface()
+    const layer = wallpaperLayer()
+    const state = model.getSnapshot().state
+    const boot = state?.visualBoot ?? window.__AMPHOREUS_BOOT__
+    const globalUrl = state?.effectiveConfig.wallpaper.enabled === false || state?.effectiveConfig.wallpaper.mode === 'none'
+      ? undefined : boot?.wallpaper.url
+    if (layer !== null) layer.style.setProperty('--amphoreus-wallpaper-url', globalUrl === undefined ? 'none' : cssUrl(globalUrl))
     document.body.style.setProperty('--amphoreus-dark-mask', String(plan.darkMask))
     document.body.style.setProperty('--amphoreus-light-mask', String(plan.lightMask))
   }
 
   const forgetSeat = (): void => {
-    seatLayer.apply(null)
     try {
       localStorage.removeItem('dsh-amphoreus:last-seat')
     } catch {}
@@ -342,23 +379,28 @@ export function registerSeatTheme(
     } catch {}
   }
 
-  const planFor = (state: AmphoreusState, hero: HeroVisual | null, homeSeed: string | undefined): SeatVisualPlan => {
+  const planFor = (state: AmphoreusState, hero: HeroVisual | null, ownerHeroId: string | undefined, homeSeed: string | undefined): SeatVisualPlan => {
     const wallpaper = state.effectiveConfig.wallpaper
+    const mode = wallpaper.mode ?? 'none'
     const derivedVersion = state.assets.lastDerive?.at
-    const custom = hero === null ? undefined : (state.customWallpapers ?? []).find(item => item.heroId === hero.heroId)
-    const candidates = hero !== null && wallpaper.enabled && wallpaper.perSeat
-      ? seatWallpaperCandidates(hero, {
+    const custom = mode !== 'custom' || !wallpaper.enabled ? undefined
+      : (ownerHeroId === undefined ? undefined : (state.customWallpapers ?? []).find(item => item.heroId === ownerHeroId))
+        ?? (state.customWallpapers ?? []).find(item => item.heroId === 'global')
+    const customUrl = custom?.kind === 'image' ? custom.url : state.visualBoot?.wallpaper.url
+    const candidates = wallpaper.enabled && mode !== 'none' && custom?.kind !== 'video'
+      ? mode === 'custom' ? customUrl === undefined ? [] : [customUrl]
+        : hero !== null && wallpaper.perSeat ? seatWallpaperCandidates(hero, {
         derived: state.assets.derived,
         assetsConfigured: state.effectiveConfig.assetsConfigured,
         ...(derivedVersion === undefined ? {} : { derivedVersion }),
         ...(homeSeed === undefined ? {} : { homeSeed }),
-        // A custom IMAGE joins the decode chain first; a custom VIDEO is mounted separately.
-        ...(custom !== undefined && custom.kind === 'image' ? { customUrl: custom.url } : {}),
-      })
+        }) : []
       : []
     return {
       key: JSON.stringify([
         hero?.heroId ?? null,
+        ownerHeroId ?? null,
+        mode,
         wallpaper.enabled,
         wallpaper.perSeat,
         wallpaper.darkMask,
@@ -413,6 +455,87 @@ export function registerSeatTheme(
     throw lastError ?? new Error('席位壁纸没有可用候选')
   }
 
+  const loadVideo = async (custom: CustomWallpaperInfo, ownGeneration: number): Promise<HTMLVideoElement | typeof CANCELED> => {
+    const video = createWallpaperVideo()
+    let cancel = NOOP
+    try {
+      return await new Promise<HTMLVideoElement | typeof CANCELED>((resolve, reject) => {
+        let settled = false
+        let timer: number | undefined
+        const finish = (error?: Error, canceled = false): void => {
+          if (settled) return
+          settled = true
+          if (timer !== undefined) window.clearTimeout(timer)
+          video.removeEventListener('loadeddata', ready)
+          video.removeEventListener('error', failed)
+          if (error !== undefined || canceled || stale(ownGeneration)) releaseVideo(video)
+          if (canceled || stale(ownGeneration)) resolve(CANCELED)
+          else if (error !== undefined) reject(error)
+          else resolve(video)
+        }
+        const ready = (): void => {
+          if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) finish()
+        }
+        const failed = (): void => finish(new Error('视频首帧无法加载；保留此前壁纸'))
+        cancel = () => finish(undefined, true)
+        disposeCurrent = cancel
+        video.addEventListener('loadeddata', ready)
+        video.addEventListener('error', failed)
+        timer = window.setTimeout(() => finish(new Error('视频首帧加载超时；保留此前壁纸')), 15_000)
+        video.setAttribute('src', custom.url)
+        video.load()
+      })
+    } finally {
+      if (disposeCurrent === cancel) disposeCurrent = NOOP
+    }
+  }
+
+  const fadeVideo = async (layer: HTMLElement, incoming: HTMLVideoElement, custom: CustomWallpaperInfo, ownGeneration: number): Promise<boolean> => {
+    const outgoing = layer.querySelector<HTMLVideoElement>('video.amph-seat-video')
+    const resumeOutgoing = outgoing !== null && !outgoing.paused
+    const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')
+    const isStatic = (): boolean => reducedMotion?.matches === true || document.visibilityState === 'hidden'
+    incoming.style.opacity = isStatic() ? '1' : '0'
+    if (isStatic()) incoming.style.transition = 'none'
+    layer.appendChild(incoming)
+    outgoing?.pause()
+    configureVideo(incoming, custom)
+    if (!isStatic()) void incoming.offsetWidth
+    incoming.style.opacity = '1'
+    let cancel = NOOP
+    try {
+      return await new Promise<boolean>(resolve => {
+        let settled = false
+        let timer: number | undefined
+        const finish = (completed: boolean): void => {
+          if (settled) return
+          settled = true
+          if (timer !== undefined) window.clearTimeout(timer)
+          document.removeEventListener?.('visibilitychange', completeIfStatic)
+          reducedMotion?.removeEventListener?.('change', completeIfStatic)
+          if (completed && !stale(ownGeneration)) {
+            if (isStatic()) incoming.style.transition = 'none'
+            incoming.style.opacity = '1'
+            if (outgoing !== null) releaseVideo(outgoing)
+          } else {
+            releaseVideo(incoming)
+            if (!disposed && resumeOutgoing && document.visibilityState !== 'hidden') void outgoing?.play().catch(() => {})
+          }
+          resolve(completed && !stale(ownGeneration))
+        }
+        const completeIfStatic = (): void => { if (isStatic()) finish(true) }
+        cancel = () => finish(false)
+        disposeCurrent = cancel
+        if (isStatic()) { finish(true); return }
+        timer = window.setTimeout(() => finish(true), 240)
+        document.addEventListener?.('visibilitychange', completeIfStatic)
+        reducedMotion?.addEventListener?.('change', completeIfStatic)
+      })
+    } finally {
+      if (disposeCurrent === cancel) disposeCurrent = NOOP
+    }
+  }
+
   const fadeWallpaper = async (
     layer: HTMLElement,
     url: string,
@@ -425,20 +548,33 @@ export function registerSeatTheme(
 
     incoming.style.backgroundImage = cssUrl(url)
     incoming.dataset.incoming = ''
+    const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')
+    const isStatic = (): boolean => reducedMotion?.matches === true || document.visibilityState === 'hidden'
+    if (isStatic()) {
+      incoming.dataset.active = ''
+      return { incoming, outgoing, nextSlot }
+    }
     void incoming.offsetWidth
     incoming.dataset.active = ''
 
     let settled = false
+    let timer: number | undefined
     let release!: (completed: boolean) => void
     const wait = new Promise<boolean>(resolve => { release = resolve })
     const finish = (completed: boolean): void => {
       if (settled) return
       settled = true
+      if (timer !== undefined) window.clearTimeout(timer)
+      document.removeEventListener?.('visibilitychange', completeIfStatic)
+      reducedMotion?.removeEventListener?.('change', completeIfStatic)
       release(completed)
     }
-    const timer = window.setTimeout(() => finish(true), 260)
+    const completeIfStatic = (): void => { if (isStatic()) finish(true) }
+    timer = window.setTimeout(() => finish(true), 260)
+    document.addEventListener?.('visibilitychange', completeIfStatic)
+    reducedMotion?.addEventListener?.('change', completeIfStatic)
     const cancel = (): void => {
-      window.clearTimeout(timer)
+      if (settled) return
       delete incoming.dataset.active
       delete incoming.dataset.incoming
       incoming.style.backgroundImage = ''
@@ -453,15 +589,32 @@ export function registerSeatTheme(
 
   const applyHero = async (plan: SeatVisualPlan, ownGeneration: number): Promise<void> => {
     const hero = plan.hero
-    if (hero === null) return
     try {
       const layer = wallpaperLayer()
+      if (plan.custom?.kind === 'video' && layer !== null) {
+        if (stale(ownGeneration)) return
+        const active = layer.querySelector<HTMLVideoElement>('video.amph-seat-video')
+        if (active?.getAttribute('src') !== plan.custom.url) {
+          const video = await loadVideo(plan.custom, ownGeneration)
+          if (video === CANCELED) return
+          if (stale(ownGeneration)) { releaseVideo(video); return }
+          if (!await fadeVideo(layer, video, plan.custom, ownGeneration)) return
+        } else syncVideo(layer, plan.custom)
+        if (stale(ownGeneration)) return
+        resetSeatSurface(true)
+        applyPlacement(plan.custom)
+        layer.style.setProperty('--amphoreus-wallpaper-url', 'none')
+        document.body.style.setProperty('--amphoreus-dark-mask', String(plan.darkMask))
+        document.body.style.setProperty('--amphoreus-light-mask', String(plan.lightMask))
+        appliedKey = plan.key
+        return
+      }
       if (plan.candidates.length === 0 || layer === null) {
         if (stale(ownGeneration)) return
         resetWallpaperSurface(plan)
+        applyPlacement(plan.custom)
+        syncVideo(layer, plan.custom)
         if (stale(ownGeneration)) return
-        seatLayer.apply(hero.heroId)
-        rememberSeat(hero.heroId)
         appliedKey = plan.key
         return
       }
@@ -479,16 +632,14 @@ export function registerSeatTheme(
       // Custom wallpaper: placement variables for images; a <video> for clips (poster stays the still below).
       applyPlacement(plan.custom)
       syncVideo(layer, plan.custom)
-      const factor = seatMaskFactor(hero.palette.mode)
+      const factor = hero === null ? 1 : seatMaskFactor(hero.palette.mode)
       document.body.style.setProperty('--amphoreus-dark-mask', String(clampMask(plan.darkMask * factor)))
       document.body.style.setProperty('--amphoreus-light-mask', String(clampMask(plan.lightMask * factor)))
-      seatLayer.apply(hero.heroId)
-      rememberSeat(hero.heroId)
       appliedKey = plan.key
     } catch (error) {
       if (stale(ownGeneration)) return
       console.warn('[dsh-amphoreus] seat theme fallback:', error)
-      leaveSeat(plan)
+      if (plan.custom === undefined || appliedKey === null) resetWallpaperSurface(plan)
       appliedKey = plan.key
     }
   }
@@ -516,7 +667,14 @@ export function registerSeatTheme(
       hero = heroVisualById(bootstrapHeroId)
     }
     const target = hero === undefined || hero.heroId === GLOBAL_SEAT_HERO ? null : hero
-    const plan = planFor(state, target, list.current)
+    const plan = planFor(state, target, hero?.heroId, list.current)
+    const intent = target?.heroId ?? null
+    if (appliedIntent !== intent) {
+      seatLayer.apply(intent)
+      appliedIntent = intent
+    }
+    if (target !== null) rememberSeat(target.heroId)
+    else forgetSeat()
 
     if (pendingKey === plan.key) return
     if (pendingKey !== null) {
@@ -528,7 +686,7 @@ export function registerSeatTheme(
 
     const ownGeneration = ++generation
     pendingKey = plan.key
-    if (target === null) {
+    if (target === null && plan.custom === undefined && plan.candidates.length === 0) {
       leaveSeat(plan)
       appliedKey = plan.key
       pendingKey = null
@@ -556,6 +714,7 @@ export function registerSeatTheme(
     if (disposed) return
     disposed = true
     generation += 1
+    document.removeEventListener?.('visibilitychange', syncVideoVisibility)
     clearTransition()
     unsubscribeModel()
     unsubscribeSessions()
@@ -563,18 +722,8 @@ export function registerSeatTheme(
     bootstrapHeroId = undefined
     pendingKey = null
     appliedKey = null
-    const state = model.getSnapshot().state
-    const boot = window.__AMPHOREUS_BOOT__?.wallpaper
-    const plan = state === undefined
-      ? {
-        key: 'dispose',
-        hero: null,
-        candidates: [],
-        darkMask: boot?.darkMask ?? 0.18,
-        lightMask: boot?.lightMask ?? 0.03,
-      }
-      : planFor(state, null, undefined)
-    leaveSeat(plan)
+    resetSeatSurface()
+    seatLayer.apply(null)
   }
 
   return { hint, dispose }

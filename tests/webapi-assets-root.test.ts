@@ -285,9 +285,9 @@ test('the effective root getter wins over config in state, wallpaper, derive gat
       server.close()
     }
 
-    const withGetter = createBootPayload({ config, nonce: 'n', current: () => undefined, derivedWallpaper: () => null, assetsRoot: () => '' })
+    const withGetter = createBootPayload({ config, nonce: 'n', current: () => undefined, derivedWallpaper: () => null, assetsRoot: () => '', backgroundMode: () => 'preset' })
     assert.equal(withGetter.wallpaper.url, undefined, 'first frame follows the getter, not config')
-    const withoutGetter = createBootPayload({ config, nonce: 'n', current: () => undefined, derivedWallpaper: () => null })
+    const withoutGetter = createBootPayload({ config, nonce: 'n', current: () => undefined, derivedWallpaper: () => null, backgroundMode: () => 'preset' })
     assert.match(withoutGetter.wallpaper.url ?? '', /^\/amphoreus\/wallpaper\//u)
   } finally {
     await rm(root, { recursive: true, force: true })

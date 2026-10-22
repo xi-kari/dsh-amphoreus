@@ -34,6 +34,8 @@ test('TC11 assembles exact dependencies, singleton controllers, and slot order',
     'shell.overlay',
     'conversation.view',
     'conversation.input.dock',
+    'conversation.input.right',
+    'conversation.chat.assistant-actions',
   ])
   assert.equal(client.includes('children'), false)
 
@@ -96,14 +98,15 @@ test('all DeepSeek client imports are type-only and required SlotMap merges rema
   }
 })
 
-test('garnish records the shadowed folder branch and keeps the appendChild exception contained', () => {
+test('garnish and the owned visual shell keep direct body mounts contained', () => {
   assert.match(garnish, /遮蔽\s*\n \*\s+sidebar\.workspaces 后，目录图标替换自然失效；席位组自带徽记。/u)
   assert.match(garnish, /function swapFolderIcons\(/u)
   const clientDir = new URL('../src/client/', import.meta.url)
   for (const name of readdirSync(clientDir).filter(name => /\.(?:ts|tsx)$/u.test(name))) {
     const source = readFileSync(new URL(name, clientDir), 'utf8')
-    if (name !== 'garnish.ts') assert.doesNotMatch(source, /document\.body\.appendChild/u, name)
+    if (name !== 'garnish.ts' && name !== 'visual-shell.ts') assert.doesNotMatch(source, /document\.body\.appendChild/u, name)
   }
+  assert.match(client, /ctx\.effect\(\(\) => installVisualShell\(model,/u)
 })
 
 test('README distinguishes seat bindings from official directories and reports completed M3', () => {
@@ -127,7 +130,8 @@ test('shell.overlay and conversation.input.dock entries are pinned by id and ord
   const overlayStart = client.indexOf("ctx.slots.inject('shell.overlay'")
   const viewStart = client.indexOf("ctx.slots.inject('conversation.view'")
   const overlay = client.slice(overlayStart, viewStart)
-  assert.deepEqual([...overlay.matchAll(/id: '(amphoreus-[a-z-]+)'/gu)].map(match => match[1]), ['amphoreus-portal', 'amphoreus-suite-notice'])
+  assert.deepEqual([...overlay.matchAll(/id: '(amphoreus-[a-z-]+)'/gu)].map(match => match[1]), ['amphoreus-portal', 'amphoreus-mascot', 'amphoreus-suite-notice'])
+  assert.match(overlay, /id: 'amphoreus-mascot', order: 5/u)
   assert.match(overlay, /registerSetupOverlay\(ctx\.slots/u)
   const wizard = readFileSync(new URL('../src/client/setup-wizard.tsx', import.meta.url), 'utf8')
   assert.match(wizard, /name: 'shell\.overlay', id: 'amphoreus-setup', order: -10/u)

@@ -32,7 +32,7 @@ export interface SeatGrammar {
     /** Glass tint colours (hex) mixed into layer-1 for light/dark schemes. */
     readonly tintLight: string
     readonly tintDark: string
-    /** Absolute fill opacity of panes (0.58–0.94); bubbles add +.06 and never blur. */
+    /** Base frost setting (0.58–0.94); material coverage also includes a readability floor. */
     readonly frost: number
     /** backdrop-filter blur radius in px for panes (0 = matte). */
     readonly blurPx: number
@@ -128,9 +128,9 @@ export const SEAT_GRAMMARS: Readonly<Partial<Record<HeroId, SeatGrammar>>> = Obj
       rimStyle: 'solid',
       rimWidthPx: 1,
     },
-    // Sand-gold dashed ring 3px outside the rim: the sticker-sheet outline of the exercise book.
-    edgeLight: `${WHITE_EDGE}, 0 0 0 3px transparent, 0 0 0 4px color-mix(in srgb, #b28f67 45%, transparent), ${DROP_LIGHT}`,
-    edgeDark: `${DIM_EDGE}, 0 0 0 3px transparent, 0 0 0 4px color-mix(in srgb, #b28f67 35%, transparent), ${DROP_DARK}`,
+    // Sand-gold inner hairline.
+    edgeLight: `${WHITE_EDGE}, inset 0 0 0 1px color-mix(in srgb, #b28f67 45%, transparent), ${DROP_LIGHT}`,
+    edgeDark: `${DIM_EDGE}, inset 0 0 0 1px color-mix(in srgb, #b28f67 35%, transparent), ${DROP_DARK}`,
     typography: { display: 'serif', weight: 600, letterSpacing: '.02em', titleTransform: 'none', italic: false },
     motif: { sizePx: 48, opacity: 0.14, placement: 'sidebar' },
     ambient: 'star-blink',
@@ -139,7 +139,7 @@ export const SEAT_GRAMMARS: Readonly<Partial<Record<HeroId, SeatGrammar>>> = Obj
     composer: { tintLight: '#fdf6ea', tintDark: '#33201b' },
     masthead: 'CHRYSOS · No.02',
     feather: false,
-    signature: '砂金虚线相框；星星贴纸只在侧栏右上闪',
+    signature: '砂金细内缘；星星贴纸只在侧栏右上闪',
   },
   cerydra: {
     styleName: '棋盘君主',
@@ -155,9 +155,9 @@ export const SEAT_GRAMMARS: Readonly<Partial<Record<HeroId, SeatGrammar>>> = Obj
       rimStyle: 'solid',
       rimWidthPx: 1,
     },
-    // Double frame: blue hairline + gold line 4px out (Vol.10 white-line photo frame).
-    edgeLight: `${WHITE_EDGE}, 0 0 0 4px transparent, 0 0 0 5px color-mix(in srgb, #f0dba6 70%, transparent), ${DROP_LIGHT}`,
-    edgeDark: `${DIM_EDGE}, 0 0 0 4px transparent, 0 0 0 5px color-mix(in srgb, #f0dba6 55%, transparent), ${DROP_DARK}`,
+    // Gold inner hairline complements the blue rim.
+    edgeLight: `${WHITE_EDGE}, inset 0 0 0 1px color-mix(in srgb, #f0dba6 70%, transparent), ${DROP_LIGHT}`,
+    edgeDark: `${DIM_EDGE}, inset 0 0 0 1px color-mix(in srgb, #f0dba6 55%, transparent), ${DROP_DARK}`,
     typography: { display: 'serif', weight: 400, letterSpacing: '.18em', titleTransform: 'uppercase', italic: false },
     motif: { sizePx: 16, opacity: 0.06, placement: 'header' },
     ambient: 'binary-ticker',
@@ -182,9 +182,9 @@ export const SEAT_GRAMMARS: Readonly<Partial<Record<HeroId, SeatGrammar>>> = Obj
       rimStyle: 'solid',
       rimWidthPx: 1,
     },
-    // Red thread seam 3px outside (Vol.11 red string through the pages).
-    edgeLight: `${WHITE_EDGE}, 0 0 0 3px transparent, 0 0 0 4px color-mix(in srgb, #b8323f 45%, transparent), ${DROP_LIGHT}`,
-    edgeDark: `${DIM_EDGE}, 0 0 0 3px transparent, 0 0 0 4px color-mix(in srgb, #b8323f 55%, transparent), ${DROP_DARK}`,
+    // Red thread along the inner edge.
+    edgeLight: `${WHITE_EDGE}, inset 0 0 0 1px color-mix(in srgb, #b8323f 45%, transparent), ${DROP_LIGHT}`,
+    edgeDark: `${DIM_EDGE}, inset 0 0 0 1px color-mix(in srgb, #b8323f 55%, transparent), ${DROP_DARK}`,
     typography: { display: 'sans', weight: 700, letterSpacing: '.12em', titleTransform: 'uppercase', italic: false },
     motif: { sizePx: 64, opacity: 0.07, placement: 'sidebar' },
     ambient: 'shard-drift',
@@ -193,7 +193,7 @@ export const SEAT_GRAMMARS: Readonly<Partial<Record<HeroId, SeatGrammar>>> = Obj
     composer: { tintLight: '#f7f1f8', tintDark: '#251a2c' },
     masthead: 'CHRYSOS · No.11',
     feather: false,
-    signature: '红丝线外缝；胶片带贴侧栏右缘',
+    signature: '红丝线内缘；胶片带贴侧栏右缘',
   },
   terrae: {
     styleName: '青绢卷轴',
@@ -290,9 +290,9 @@ export const SEAT_GRAMMARS: Readonly<Partial<Record<HeroId, SeatGrammar>>> = Obj
       rimStyle: 'solid',
       rimWidthPx: 1,
     },
-    // Marble: gold line 6px out, faint drop (the most editorial, airy volume).
-    edgeLight: `${WHITE_EDGE}, 0 0 0 6px transparent, 0 0 0 7px color-mix(in srgb, #c9a75a 55%, transparent), 0 8px 24px color-mix(in srgb, var(--dsw-alias-bg-mask-2) 22%, transparent)`,
-    edgeDark: `${DIM_EDGE}, 0 0 0 6px transparent, 0 0 0 7px color-mix(in srgb, #c9a75a 45%, transparent), ${DROP_DARK}`,
+    // Gold inner hairline with a faint marble drop.
+    edgeLight: `${WHITE_EDGE}, inset 0 0 0 1px color-mix(in srgb, #c9a75a 55%, transparent), 0 8px 24px color-mix(in srgb, var(--dsw-alias-bg-mask-2) 22%, transparent)`,
+    edgeDark: `${DIM_EDGE}, inset 0 0 0 1px color-mix(in srgb, #c9a75a 45%, transparent), ${DROP_DARK}`,
     typography: { display: 'serif', weight: 400, letterSpacing: '.22em', titleTransform: 'uppercase', italic: false },
     motif: { sizePx: 120, opacity: 0.08, placement: 'sidebar' },
     ambient: 'prism-sweep',
@@ -317,9 +317,9 @@ export const SEAT_GRAMMARS: Readonly<Partial<Record<HeroId, SeatGrammar>>> = Obj
       rimStyle: 'double',
       rimWidthPx: 3,
     },
-    // Parchment double frame + copper corner ticks are drawn by the rim style; keep a warm drop.
-    edgeLight: `${WHITE_EDGE}, 0 0 0 2px color-mix(in srgb, #23664d 18%, transparent), ${DROP_LIGHT}`,
-    edgeDark: `${DIM_EDGE}, 0 0 0 2px color-mix(in srgb, #23664d 30%, transparent), ${DROP_DARK}`,
+    // The double rim carries the frame; the shadow adds depth.
+    edgeLight: `${WHITE_EDGE}, ${DROP_LIGHT}`,
+    edgeDark: `${DIM_EDGE}, ${DROP_DARK}`,
     typography: { display: 'serif', weight: 500, letterSpacing: '.05em', titleTransform: 'none', italic: false },
     motif: { sizePx: 160, opacity: 0.1, placement: 'stage' },
     ambient: 'astrolabe-spin',

@@ -154,6 +154,8 @@ test('deriveAssets clears stale progress before POST and preserves a progress ev
 
 test('a stale earlier refresh cannot overwrite a newer terminal snapshot', async () => {
   const oldFetch = globalThis.fetch
+  const oldWindow = Object.getOwnPropertyDescriptor(globalThis, 'window')
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: { setTimeout, clearTimeout } })
   const pending: Array<(value: Response) => void> = []
   globalThis.fetch = (() => new Promise<Response>(resolve => pending.push(resolve))) as typeof fetch
   const model = new AmphoreusClientModel()
@@ -171,5 +173,7 @@ test('a stale earlier refresh cannot overwrite a newer terminal snapshot', async
   } finally {
     model.close()
     globalThis.fetch = oldFetch
+    if (oldWindow === undefined) Reflect.deleteProperty(globalThis, 'window')
+    else Object.defineProperty(globalThis, 'window', oldWindow)
   }
 })

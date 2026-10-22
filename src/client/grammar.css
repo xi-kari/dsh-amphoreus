@@ -12,26 +12,68 @@
 
 /* ---------- Recipes (defined on body so var() over body-inline --dsw tokens resolves) ---------- */
 [data-amph-grammar] body {
-  --amph-glass-card: color-mix(in srgb, color-mix(in srgb, var(--dsw-alias-bg-layer-1) 70%, var(--amph-glass-tint)) calc(var(--amph-glass-frost, .78) * 100%), transparent);
-  --amph-glass-raised: color-mix(in srgb, color-mix(in srgb, var(--dsw-alias-bg-layer-2) 70%, var(--amph-glass-tint)) calc(min(1, var(--amph-glass-frost, .78) + .12) * 100%), transparent);
-  --amph-glass-hover: color-mix(in srgb, color-mix(in srgb, var(--dsw-alias-bg-layer-2) 70%, var(--amph-glass-tint)) calc(min(1, var(--amph-glass-frost, .78) + .18) * 100%), transparent);
-  --amph-glass-filter: blur(var(--amph-glass-blur, 14px)) saturate(1.18);
+  background-color: var(--amph-material-ground, transparent);
+  --amph-pane-opacity: var(--amph-material-pane-alpha, .9);
+  --amph-content-opacity: var(--amph-material-content-alpha, .94);
+  --amph-input-opacity: var(--amph-material-input-alpha, .96);
+  --amph-dialog-opacity: var(--amph-material-dialog-alpha, .96);
+  --amph-glass-base: var(--amph-material-base, var(--dsw-alias-bg-overlay));
+  --amph-glass-card: color-mix(in srgb, var(--amph-glass-base) calc(var(--amph-pane-opacity) * 100%), transparent);
+  --amph-glass-content: color-mix(in srgb, var(--amph-glass-base) calc(var(--amph-content-opacity) * 100%), transparent);
+  --amph-glass-input: color-mix(in srgb, var(--amph-glass-base) calc(var(--amph-input-opacity) * 100%), transparent);
+  --amph-glass-raised: color-mix(in srgb, var(--amph-glass-base) calc(min(1, var(--amph-pane-opacity) + .06) * 100%), transparent);
+  --amph-glass-hover: color-mix(in srgb, var(--amph-glass-base) calc(min(1, var(--amph-pane-opacity) + .1) * 100%), transparent);
+  --amph-glass-filter: var(--amph-material-filter, none);
+  --amph-dialog-filter: var(--amph-material-dialog-filter, none);
+  --amph-glass-highlight: rgba(255, 255, 255, .34);
+  --amph-liquid-sheen: linear-gradient(180deg,
+    rgba(255, 255, 255, var(--amph-material-sheen-alpha, 0)) 0%,
+    rgba(255, 255, 255, calc(var(--amph-material-sheen-alpha, 0) * .25)) 38%,
+    rgba(255, 255, 255, calc(var(--amph-material-sheen-alpha, 0) * .45)) 100%);
+  --amph-liquid-inset: inset 0 -1px 0 rgba(255, 255, 255, .08), inset 0 0 0 .5px rgba(255, 255, 255, .18);
   --amph-ease: cubic-bezier(.16, 1, .3, 1);
 }
 
-/* Dark scheme: lift the tint a step toward light so glass reads smoked, never black. */
 [data-amph-grammar='dark'] body {
-  --amph-glass-card: color-mix(in srgb, color-mix(in srgb, var(--dsw-alias-bg-layer-1) 55%, color-mix(in srgb, var(--amph-glass-tint) 84%, white)) calc(var(--amph-glass-frost, .78) * 100%), transparent);
-  --amph-glass-raised: color-mix(in srgb, color-mix(in srgb, var(--dsw-alias-bg-layer-2) 55%, color-mix(in srgb, var(--amph-glass-tint) 80%, white)) calc(min(1, var(--amph-glass-frost, .78) + .12) * 100%), transparent);
+  --amph-glass-highlight: rgba(255, 255, 255, .12);
+  --amph-liquid-inset: inset 0 -1px 0 rgba(255, 255, 255, .04), inset 0 0 0 .5px rgba(255, 255, 255, .08);
 }
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   [data-amph-grammar] body {
-    --amph-glass-card: color-mix(in srgb, var(--dsw-alias-bg-layer-1) 96%, var(--amph-glass-tint));
-    --amph-glass-raised: var(--dsw-alias-bg-layer-2);
-    --amph-glass-hover: var(--dsw-alias-bg-layer-3);
+    --amph-pane-opacity: 1;
+    --amph-content-opacity: 1;
+    --amph-input-opacity: 1;
+    --amph-dialog-opacity: 1;
     --amph-glass-filter: none;
+    --amph-dialog-filter: none;
+    --amph-liquid-sheen: none;
   }
+}
+
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  [data-amph-grammar] body {
+    --amph-pane-opacity: 1;
+    --amph-content-opacity: 1;
+    --amph-input-opacity: 1;
+    --amph-dialog-opacity: 1;
+    --amph-glass-filter: none;
+    --amph-dialog-filter: none;
+    --amph-liquid-sheen: none;
+  }
+}
+
+[data-amph-grammar] [data-amph-sidebar],
+[data-amph-grammar] [data-amph-header],
+[data-amph-grammar] [data-amph-composer],
+[data-amph-grammar] [data-amph-inputbar],
+[data-amph-grammar] [data-amph-settings],
+[data-amph-grammar] [role='menu'],
+[data-amph-grammar] [data-amph-conversation] [data-conversation-content] {
+  --dsw-alias-label-primary: var(--amph-material-primary);
+  --dsw-alias-label-secondary: var(--amph-material-secondary);
+  --dsw-alias-label-tertiary: var(--amph-material-secondary);
+  --dsw-alias-label-caption: var(--amph-material-secondary);
 }
 
 /* Seat wallpaper treatment: blur/position/saturation on the active seat layer, so a
@@ -121,10 +163,11 @@
   z-index: -1;
   border-radius: inherit;
   background-color: var(--amph-glass-card);
-  background-image: var(--amph-motif-url);
-  background-size: var(--amph-motif-size) var(--amph-motif-size);
-  background-repeat: repeat;
+  background-image: var(--amph-liquid-sheen), var(--amph-motif-url);
+  background-size: 100% 100%, var(--amph-motif-size) var(--amph-motif-size);
+  background-repeat: no-repeat, repeat;
   backdrop-filter: var(--amph-glass-filter);
+  box-shadow: var(--amph-liquid-inset);
   pointer-events: none;
 }
 [data-amph-grammar] [data-amph-sidebar]::after {
@@ -133,7 +176,7 @@
   inset: 0;
   z-index: -1;
   border-radius: inherit;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--amph-glass-tint) 45%, transparent) 0%, transparent 40%, color-mix(in srgb, var(--amph-glass-tint) 60%, transparent) 100%);
+  box-shadow: none;
   pointer-events: none;
 }
 [data-amph-grammar][data-amph-feather] [data-amph-sidebar] {
@@ -141,19 +184,20 @@
   box-shadow: none;
 }
 [data-amph-grammar][data-amph-feather] [data-amph-sidebar]::before {
+  box-shadow: none;
   mask-image: linear-gradient(90deg, black 78%, transparent 100%);
   -webkit-mask-image: linear-gradient(90deg, black 78%, transparent 100%);
 }
 /* 白厄 · 白石拱廊: the only non-rectangular sidebar — the glass sheet rises into a marble arch and
    the brand row steps down under it. Rectangular again when the rail collapses. */
 [data-amph-grammar][data-amph-seat='phainon'] [data-amph-frame]:not([data-sidebar-collapsed]) [data-amph-sidebar] {
-  border-top-color: transparent;
+  border-color: transparent;
+  box-shadow: none;
   padding-top: 26px;
 }
-[data-amph-grammar][data-amph-seat='phainon'] [data-amph-frame]:not([data-sidebar-collapsed]) [data-amph-sidebar]::before,
-[data-amph-grammar][data-amph-seat='phainon'] [data-amph-frame]:not([data-sidebar-collapsed]) [data-amph-sidebar]::after {
+[data-amph-grammar][data-amph-seat='phainon'] [data-amph-frame]:not([data-sidebar-collapsed]) [data-amph-sidebar]::before {
   border-radius: 999px 999px 0 0 / 140px 140px 0 0;
-  box-shadow: inset 0 0 0 1px var(--amph-glass-rim);
+  box-shadow: var(--amph-edge);
 }
 [data-amph-grammar] [data-amph-frame][data-sidebar-collapsed] [data-amph-sidebar] {
   margin: 12px -12px 12px 12px;
@@ -167,14 +211,14 @@
   background: var(--amph-glass-raised);
   border: 1px solid var(--amph-glass-rim);
   border-radius: var(--amph-radius-sm);
-  backdrop-filter: var(--amph-glass-filter);
+  backdrop-filter: none;
 }
 [data-amph-grammar] [data-amph-raised]:hover:not(:disabled) {
   background: var(--amph-glass-hover);
 }
 
 /* ---------- Header: detached glass card with the seat's edge signature ---------- */
-[data-amph-grammar] [data-phase='active'] [data-amph-header] {
+[data-amph-grammar] [data-amph-conversation][data-phase='active'] [data-amph-header] {
   position: relative;
   z-index: 8;
   margin: 12px 16px 0;
@@ -182,15 +226,16 @@
   border: var(--amph-rim-width, 1px) var(--amph-rim-style, solid) var(--amph-glass-rim);
   border-radius: var(--amph-radius);
   background: var(--amph-glass-card);
-  box-shadow: var(--amph-edge);
+  background-image: var(--amph-liquid-sheen);
+  box-shadow: var(--amph-liquid-inset), var(--amph-edge);
   backdrop-filter: var(--amph-glass-filter);
 }
-[data-amph-grammar] [data-phase='active'] [data-amph-header]::after {
+[data-amph-grammar] [data-amph-conversation][data-phase='active'] [data-amph-header]::after {
   display: none;
 }
 /* Masthead badge: `CHRYSOS · No.NN` in the header's top-right corner, 10px, aria-silent
    (speak: never; it is decoration — the real seat identity is the nameplate slot). */
-[data-amph-grammar] [data-phase='active'] [data-amph-header]::before {
+[data-amph-grammar] [data-amph-conversation][data-phase='active'] [data-amph-header]::before {
   content: var(--amph-masthead, "");
   position: absolute;
   top: -1px;
@@ -208,11 +253,11 @@
   speak: never;
   z-index: 1;
 }
-[data-amph-grammar] [data-amph-frame][data-sidebar-collapsed] [data-phase='active'] [data-amph-header] {
+[data-amph-grammar] [data-amph-frame][data-sidebar-collapsed] [data-amph-conversation][data-phase='active'] [data-amph-header] {
   margin-left: 28px;
 }
 /* Scrolling transcript slides under the floating header. */
-[data-amph-grammar] [data-phase='active'] [data-conversation-scroll] {
+[data-amph-grammar] [data-amph-conversation][data-phase='active'] [data-conversation-scroll] {
   margin-top: -88px;
   padding-top: 100px;
 }
@@ -221,7 +266,7 @@
 }
 
 /* ---------- Composer + stats: one glass slab ---------- */
-[data-amph-grammar] [data-phase] [class*='composerSeat'] {
+[data-amph-grammar] [data-amph-conversation] [class*='composerSeat'] {
   background: none;
 }
 [data-amph-grammar] [data-amph-composer] {
@@ -230,7 +275,7 @@
   background: var(--amph-glass-card);
   border: var(--amph-rim-width, 1px) var(--amph-rim-style, solid) var(--amph-glass-rim);
   border-radius: var(--amph-radius);
-  box-shadow: var(--amph-edge);
+  box-shadow: var(--amph-liquid-inset), var(--amph-edge);
   backdrop-filter: var(--amph-glass-filter);
 }
 [data-amph-grammar] [data-amph-composer]::after {
@@ -244,7 +289,7 @@
   border: var(--amph-rim-width, 1px) var(--amph-rim-style, solid) var(--amph-glass-rim);
   border-radius: var(--amph-radius);
   background: var(--amph-glass-card);
-  box-shadow: var(--amph-edge);
+  box-shadow: var(--amph-liquid-inset), var(--amph-edge);
   backdrop-filter: var(--amph-glass-filter);
 }
 [data-amph-grammar] [data-amph-inputbar]:has([data-amph-stats]) [data-amph-composer] {
@@ -254,7 +299,7 @@
   box-shadow: none;
   backdrop-filter: none;
 }
-[data-amph-grammar] [data-amph-inputbar]:has([data-amph-stats]) [data-amph-composer]::after {
+[data-amph-grammar] [data-amph-inputbar]:has([data-amph-stats]) [data-amph-composer]:not([class*='cardWorkspaceTrigger'])::after {
   display: none;
 }
 [data-amph-grammar] [data-amph-inputbar]:has([data-amph-stats]) [data-slot] {
@@ -282,7 +327,7 @@
 [data-amph-grammar] [data-conversation-scroll],
 [data-amph-grammar] [data-amph-composer] textarea,
 [data-amph-grammar] [data-amph-composer] [contenteditable] {
-  color: color-mix(in srgb, var(--amph-ink) 80%, var(--dsw-alias-label-primary));
+  color: var(--amph-material-ink);
   caret-color: var(--amph-accent);
 }
 [data-amph-grammar] [data-conversation-scroll] ::selection,
@@ -291,16 +336,16 @@
 }
 [data-amph-grammar] [data-amph-composer],
 [data-amph-grammar] [data-amph-inputbar]:has([data-amph-stats]) {
-  --dsw-specific-input-major: var(--amph-composer);
-  background: color-mix(in srgb, var(--amph-composer) calc(min(1, var(--amph-glass-frost, .78) + .14) * 100%), transparent);
+  --dsw-specific-input-major: var(--amph-glass-input);
+  background: var(--amph-glass-input);
+  background-image: var(--amph-liquid-sheen);
 }
 
 /* ---------- Bubbles, menus, trajectory, details ---------- */
 [data-amph-grammar] [data-amph-bubble] {
   border: var(--amph-rim-width, 1px) var(--amph-rim-style, solid) color-mix(in srgb, var(--amph-glass-rim) 70%, transparent);
   border-radius: var(--amph-radius);
-  /* No per-bubble backdrop-filter (cost grows with transcript length); +.10 fill keeps ink ≥4.5:1. */
-  background: color-mix(in srgb, color-mix(in srgb, var(--dsw-specific-bubble) 72%, var(--amph-glass-tint)) calc(min(1, var(--amph-glass-frost, .78) + .10) * 100%), transparent);
+  background: var(--amph-glass-content);
 }
 [data-amph-grammar] [role='menu'] {
   background: var(--amph-glass-raised);
@@ -308,7 +353,7 @@
   backdrop-filter: var(--amph-glass-filter);
 }
 [data-amph-grammar] [role='menu']:has([role='group'] > [role='menuitemradio']) {
-  background: color-mix(in srgb, var(--dsw-alias-bg-layer-2) 72%, transparent);
+  background: var(--amph-glass-raised);
 }
 [data-amph-grammar] [data-amph-trajectory] {
   margin: 8px 16px 12px;
@@ -317,7 +362,7 @@
   border: 1px solid var(--amph-glass-rim);
   border-radius: var(--amph-radius);
   background: var(--amph-glass-card);
-  box-shadow: var(--amph-edge);
+  box-shadow: inset 0 .5px 0 var(--amph-glass-highlight), var(--amph-edge);
   backdrop-filter: var(--amph-glass-filter);
   overflow: hidden;
 }
@@ -325,25 +370,18 @@
 [data-amph-grammar] [data-amph-trajectory] section[aria-label='Trajectory timeline'] {
   background: transparent;
 }
-/* ---------- Settings window: one GLOBAL translucent recipe (not the seat's frost), so the
-   dialog reads as light smoked glass over the wallpaper in every seat and both schemes.
-   The modal mask behind it is thinned to a veil; the left nav is its own lighter strip. ---------- */
+/* ---------- Settings: one glass window, flat inner surfaces ---------- */
 [data-amph-grammar] body {
-  --amph-settings-glass: color-mix(in srgb, color-mix(in srgb, var(--amph-glass-tint) 80%, white) 62%, transparent);
-  --amph-settings-nav: color-mix(in srgb, white 34%, transparent);
-  --amph-settings-inner: color-mix(in srgb, white 42%, transparent);
-  --amph-settings-mask: color-mix(in srgb, var(--amph-glass-tint) 22%, transparent);
+  --amph-settings-glass: color-mix(in srgb, var(--amph-glass-base) calc(var(--amph-dialog-opacity) * 100%), transparent);
+  --amph-settings-nav: color-mix(in srgb, var(--amph-glass-base) 18%, transparent);
+  --amph-settings-inner: color-mix(in srgb, var(--amph-glass-base) 10%, transparent);
+  --amph-settings-mask: color-mix(in srgb, var(--amph-glass-base) 24%, transparent);
 }
-[data-amph-grammar='dark'] body {
-  /* Lift the dark tint toward grey-violet and keep the fill airy: this is what stops the window reading black. */
-  --amph-settings-glass: color-mix(in srgb, color-mix(in srgb, var(--amph-glass-tint) 78%, white) 54%, transparent);
-  --amph-settings-nav: color-mix(in srgb, white 7%, transparent);
-  --amph-settings-inner: color-mix(in srgb, white 6%, transparent);
-  --amph-settings-mask: rgba(8, 6, 16, .28);
-}
-[data-amph-grammar] [class*='overlay']:has(> [data-amph-settings]) > [class*='mask'] {
+[data-amph-grammar] [class*='overlay']:has(> [data-amph-settings]) > [class*='mask'],
+[data-amph-grammar] [role='presentation']:has(> [data-amph-settings]) > [aria-hidden='true'] {
+  --dsw-alias-bg-mask-1: var(--amph-settings-mask);
   background: var(--amph-settings-mask);
-  backdrop-filter: blur(3px);
+  backdrop-filter: none;
 }
 [data-amph-grammar] [data-amph-settings] {
   --dsw-alias-bg-layer-1: var(--amph-settings-inner);
@@ -351,21 +389,20 @@
   --dsw-alias-bg-layer-3: var(--amph-glass-hover);
   --dsw-specific-sidebar-nav-item-active: color-mix(in srgb, var(--amph-accent) 22%, transparent);
   --dsw-specific-sidebar-nav-item-hover: color-mix(in srgb, var(--amph-accent) 12%, transparent);
-  --dsw-alias-brand-primary: var(--amph-accent);
   background: var(--amph-settings-glass);
+  background-image: var(--amph-liquid-sheen);
   border: 1px solid var(--amph-glass-rim);
   border-radius: calc(var(--amph-radius) + 8px);
-  box-shadow: var(--amph-edge);
-  backdrop-filter: blur(24px) saturate(1.2);
+  box-shadow: var(--amph-liquid-inset), var(--amph-edge);
+  backdrop-filter: var(--amph-dialog-filter);
 }
 [data-amph-grammar] [data-amph-settings] > [class*='nav'] {
   background: var(--amph-settings-nav);
   border-right: 1px solid color-mix(in srgb, var(--amph-glass-rim) 70%, transparent);
 }
 /* δ-me13 console inside the window: its cards become thin inner glass instead of stacking a second opaque layer. */
-[data-amph-grammar] [data-amph-console] [class*='_hero'],
-[data-amph-grammar] [data-amph-console] [class*='_panel'],
-[data-amph-grammar] [data-amph-console] [class*='_metric'] {
+[data-amph-grammar] [data-amph-console] header,
+[data-amph-grammar] [data-amph-console] section[aria-labelledby] {
   background: var(--amph-settings-inner);
   border-color: color-mix(in srgb, var(--amph-glass-rim) 80%, transparent);
   border-radius: var(--amph-radius-sm);
@@ -394,26 +431,71 @@
   text-transform: var(--amph-title-transform);
 }
 
-/* ---------- Conversation column veil: the transcript always gets one more layer than the margins ---------- */
-[data-amph-grammar] [data-phase='active'] [data-conversation-scroll]::before {
+/* ---------- Conversation reading surface ---------- */
+[data-amph-grammar] [data-amph-conversation][data-phase='active'] [data-conversation-scroll]::before {
   content: '';
   position: sticky;
   top: 0;
   display: block;
   height: 0;
 }
-[data-amph-grammar] [data-phase] {
-  background: linear-gradient(90deg, transparent 0, color-mix(in srgb, var(--amph-glass-tint) 26%, transparent) 18%, color-mix(in srgb, var(--amph-glass-tint) 26%, transparent) 82%, transparent 100%);
+[data-amph-grammar] [data-amph-conversation] {
+  background: var(--amph-material-ground, transparent);
 }
-[data-amph-grammar='dark'] [data-phase] {
-  background: linear-gradient(90deg, transparent 0, color-mix(in srgb, var(--amph-glass-tint) 40%, transparent) 18%, color-mix(in srgb, var(--amph-glass-tint) 40%, transparent) 82%, transparent 100%);
+[data-amph-grammar] [data-amph-conversation] [data-conversation-content][data-content-phase='active'] {
+  background: var(--amph-glass-content);
+  border-radius: var(--amph-radius);
+  color: var(--amph-material-ink);
+}
+
+[data-amph-grammar] body[data-amphoreus-code-background='on'] [data-amph-conversation],
+[data-amph-grammar] body[data-amphoreus-code-background='on'] [data-conversation-content][data-content-phase='active'] {
+  background: transparent;
+}
+
+[data-amph-grammar] body[data-amphoreus-code-background='on'] [data-chat-flow-kind='assistant-step'] [class*='_body'] > [class*='_markdown']:not([data-markdown-variant='compact']) {
+  box-sizing: border-box;
+  min-width: 0;
+  padding: 18px 22px;
+  background: var(--amph-glass-content);
+  border-radius: var(--amph-radius);
+}
+
+[data-amph-grammar] body[data-amphoreus-code-background='on'] [data-chat-flow-kind='assistant-step'] [class*='_markdown'] .md-table-wide {
+  width: 100%;
+  max-width: 100%;
+  margin-inline: 0;
+  padding-inline: 0;
+}
+
+[data-amph-grammar] body[data-amphoreus-code-background='on'] button[data-turn-process] {
+  display: inline-flex;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  min-height: 32px;
+  padding: 3px 9px;
+  border: 0;
+  border-radius: var(--amph-radius-sm);
+  background: var(--amph-glass-content);
+  color: var(--amph-material-secondary);
+}
+
+[data-amph-grammar] body[data-amphoreus-code-background='on'] [data-chat-node-key]::before {
+  content: none;
+}
+
+@media (max-width: 640px) {
+  [data-amph-grammar] body[data-amphoreus-code-background='on'] [data-chat-flow-kind='assistant-step'] [class*='_body'] > [class*='_markdown']:not([data-markdown-variant='compact']) {
+    padding: 12px 14px;
+  }
 }
 
 /* ---------- Motif on the conversation stage (only when the seat asks for it) ---------- */
-[data-amph-grammar] [data-phase] {
+[data-amph-grammar] [data-amph-conversation] {
   position: relative;
 }
-[data-amph-grammar] [data-phase]::before {
+[data-amph-grammar] [data-amph-conversation]::before {
   content: '';
   position: absolute;
   inset: 0;
@@ -424,39 +506,12 @@
   mask-image: radial-gradient(ellipse at 50% 20%, rgba(0, 0, 0, .9), transparent 78%);
   -webkit-mask-image: radial-gradient(ellipse at 50% 20%, rgba(0, 0, 0, .9), transparent 78%);
 }
-[data-amph-grammar][data-amph-motif-stage] [data-phase]::before {
+[data-amph-grammar][data-amph-motif-stage] [data-amph-conversation]::before {
   opacity: var(--amph-motif-opacity, .1);
 }
 
-/* ---------- Mascot: the seat's signature sticker perched on the composer's top-right corner.
-   Pure CSS (background-image from --amph-mascot-url); `reactive` lifts on focus/hover, `static`
-   sits still, `off` renders nothing. Never intercepts pointer events. ---------- */
 [data-amph-grammar] [data-amph-inputbar] {
   position: relative;
-}
-[data-amph-grammar]:not([data-amph-mascot='off']) [data-amph-inputbar]::after {
-  content: '';
-  position: absolute;
-  right: 14px;
-  top: -34px;
-  width: 56px;
-  height: 56px;
-  background: var(--amph-mascot-url, none) center / contain no-repeat;
-  filter: drop-shadow(0 2px 4px color-mix(in srgb, var(--amph-accent2) 35%, transparent));
-  pointer-events: none;
-  z-index: 9;
-  transform-origin: 50% 100%;
-  transition: transform 220ms var(--amph-ease);
-}
-[data-amph-grammar][data-amph-mascot='reactive'] [data-amph-inputbar]:has([data-composer-card]:focus-within)::after,
-[data-amph-grammar][data-amph-mascot='reactive'] [data-amph-inputbar]:hover::after {
-  transform: translateY(-4px) rotate(-4deg) scale(1.06);
-}
-[data-amph-grammar] [data-amph-inputbar]:has([data-amph-stats])::after {
-  top: -30px;
-}
-@media (prefers-reduced-motion: reduce) {
-  [data-amph-grammar] [data-amph-inputbar]::after { transition: none; }
 }
 
 /* ---------- Folio: turn number (NN) shows on hover at each turn's top-right, magazine style.
@@ -493,7 +548,7 @@
   height: 14px;
   z-index: 7;
   pointer-events: none;
-  backdrop-filter: blur(5px);
+  backdrop-filter: none;
   background: rgba(255, 255, 255, .16);
 }
 [data-amph-grammar='dark'] [data-amph-fade] {

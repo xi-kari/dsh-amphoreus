@@ -22,7 +22,8 @@ export interface GrammarLayerInputs {
   readonly prefs: () => GrammarPrefs | undefined
   readonly subscribePrefs: (listener: () => void) => () => void
   /** Derived asset keys + assetsRoot presence (for the mascot sticker); optional. */
-  readonly assets?: () => { readonly derived: readonly string[]; readonly assetsConfigured: boolean } | undefined
+  readonly assets?: () => { readonly derived: readonly string[]; readonly assetsConfigured: boolean;
+    readonly wallpaperActive?: boolean; readonly codeBackgroundActive?: boolean; readonly surfaceAlpha?: { readonly light: number; readonly dark: number } } | undefined
 }
 
 export type { GrammarSnapshot } from './grammar-vars.ts'
@@ -50,7 +51,11 @@ export function createGrammarLayer(inputs: GrammarLayerInputs): GrammarLayer {
       dark: inputs.isDark(),
       prefs: inputs.prefs() ?? GRAMMAR_DEFAULTS,
       grammar: seatGrammarOf(heroId),
-      ...(assets === undefined ? {} : { derived: assets.derived, assetsConfigured: assets.assetsConfigured }),
+      ...(assets === undefined ? {} : { derived: assets.derived, assetsConfigured: assets.assetsConfigured,
+        ...(assets.wallpaperActive === undefined ? {} : { wallpaperActive: assets.wallpaperActive }),
+        ...(assets.codeBackgroundActive === undefined ? {} : { codeBackgroundActive: assets.codeBackgroundActive }),
+        ...(assets.surfaceAlpha === undefined ? {} : { surfaceAlpha: assets.surfaceAlpha }),
+      }),
     }
   }
 

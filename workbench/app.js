@@ -120,9 +120,12 @@ const state = {
   dragging: false, canvasGesture: false, canvasRefreshAfter: 0, canvasViewInitialized: false, canvasCamera: { x: 0, y: 0 }, mapCardSessionSwitches: new Set(),
   expandedMessageIds: new Set(),
   canvasCards: undefined, canvasCardsById: undefined, canvasGraph: undefined, canvasTurnTotals: new Map(), mountedCardIds: new Set(), canvasNeedsCenter: false,
-  detailScrollByThread: new Map(), detailThreadId: null, detailTargetCardId: null,
-  inspectorCardId: null, inspectorOpening: false, inspectorScrollByCard: new Map(),
+  detailThreadId: null, detailTargetCardId: null,
+  inspectorCardId: null, inspectorOpening: false,
+  readingPositions: new Map(), inspectorWidth: null,
 }
+let disposeWorkbenchSurfaces = () => {}
+let currentDetailReader = null
 if (document.documentElement) document.documentElement.dataset.magazine = state.magazineMode
 
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character]))
@@ -601,6 +604,7 @@ async function archiveThread(thread) {
   if (!window.confirm(`归档画布中的「${thread.title}」及其分支？DSH 原会话会保留，可在 DSH 内继续查看。`)) return
   const result = await api(`/amphoreus/workbench/api/index/${thread.dshSessionId}`, { method: 'DELETE' })
   const hidden = Array.isArray(result.hidden) ? result.hidden.filter(id => typeof id === 'string') : []
+  disposeWorkbenchSurfaces()
   for (const sessionId of hidden) {
     const indexed = state.index.get(sessionId)
     state.index.set(sessionId, indexed === undefined
@@ -611,7 +615,10 @@ async function archiveThread(thread) {
     state.historyCompleteBySession.delete(sessionId)
     state.liveReplies.delete(sessionId)
     state.pendingReplies.delete(sessionId)
-    state.detailScrollByThread.delete(sessionId)
+    state.readingPositions.delete(`detail:${sessionId}`)
+    for (const key of state.readingPositions.keys()) {
+      if (key.startsWith(`inspector:${sessionId}:`)) state.readingPositions.delete(key)
+    }
     if (state.detailThreadId === sessionId) state.detailTargetCardId = null
   }
   if (Number.isSafeInteger(result.revision)) state.indexRevision = result.revision
@@ -2097,7 +2104,7 @@ function renderCardInspector(card) {
     ? `<button type="button" data-action="open-branch" data-thread="${thread.id}" data-card="${escapeHtml(card.id)}" data-seq="${card.answer.sourceSeq}"><svg aria-hidden="true" viewBox="0 0 16 16"><circle cx="4" cy="3.5" r="1.5"/><circle cx="12" cy="3.5" r="1.5"/><circle cx="12" cy="12.5" r="1.5"/><path d="M5.5 3.5h2A2.5 2.5 0 0 1 10 6v5"/></svg>创建分支</button>`
     : ''
   const openDshAction = `<button class="primary" type="button" data-action="open-dsh" data-thread="${thread.id}" data-seq="${Number.isInteger(card.answer?.sourceSeq) ? card.answer.sourceSeq : ''}" data-turn="${Number.isInteger(card.turn) ? card.turn : ''}"><svg aria-hidden="true" viewBox="0 0 16 16"><path d="M7 3.5H4.5A1.5 1.5 0 0 0 3 5v6.5A1.5 1.5 0 0 0 4.5 13H11a1.5 1.5 0 0 0 1.5-1.5V9"/><path d="M9.5 3.5h3v3M12.4 3.6 7.5 8.5"/></svg>在 DSH 中打开</button>`
-  return `<aside class="card-inspector${state.inspectorOpening ? ' is-opening' : ''}" aria-label="卡片详情" data-inspector-card="${escapeHtml(card.id)}"><header class="card-inspector-head"><div><div class="card-inspector-meta"><span>第 ${card.turnIndex + 1} 轮</span>${card.error === null ? '' : '<span class="card-inspector-error-status">失败</span>'}${process.length > 0 ? `<span>工具 ${process.length}</span>` : ''}</div><h2>${escapeHtml(card.question)}</h2></div><button class="card-inspector-close" type="button" data-action="close-card-inspector" aria-label="关闭卡片详情" title="关闭"><svg aria-hidden="true" viewBox="0 0 16 16"><path d="m4.5 4.5 7 7m0-7-7 7"/></svg></button></header><div class="card-inspector-scroll">${error}${answer}${processRecordsHtml}</div><footer class="card-inspector-actions">${continueAction}${branch}${openDshAction}</footer></aside>`
+  return `<aside class="card-inspector${state.inspectorOpening ? ' is-opening' : ''}" aria-label="卡片详情" data-inspector-card="${escapeHtml(card.id)}"><div class="inspector-resizer" role="separator" tabindex="0" aria-orientation="vertical" aria-controls="workbench-card-inspector-body" aria-label="调整详情宽度" title="左右方向键调整，双击或 Enter 复位"></div><header class="card-inspector-head"><div><div class="card-inspector-meta"><span>第 ${card.turnIndex + 1} 轮</span>${card.error === null ? '' : '<span class="card-inspector-error-status">失败</span>'}${process.length > 0 ? `<span>工具 ${process.length}</span>` : ''}</div><h2>${escapeHtml(card.question)}</h2></div><button class="card-inspector-close" type="button" data-action="close-card-inspector" aria-label="关闭卡片详情" title="关闭"><svg aria-hidden="true" viewBox="0 0 16 16"><path d="m4.5 4.5 7 7m0-7-7 7"/></svg></button></header><div class="reading-viewport"><div class="card-inspector-scroll" id="workbench-card-inspector-body" tabindex="0" aria-label="卡片详情正文"><div class="reading-content">${error}${answer}${processRecordsHtml}</div></div><button class="reading-jump" type="button" hidden>跳到最新</button></div><footer class="card-inspector-actions">${continueAction}${branch}${openDshAction}</footer></aside>`
 }
 
 function renderThread() {
@@ -2111,7 +2118,7 @@ function renderThread() {
   const seat = seatForCurrentView()
   const detailTitle = seatTitleOf(state.seatId ?? 'all')
   const detailVolume = String(seat?.volume ?? '').padStart(2, '0')
-  return `<section class="detail-view" data-title="${escapeHtml(detailTitle)}" data-volume="${detailVolume}"><header class="detail-head" data-title="${escapeHtml(detailTitle)}" data-volume="${detailVolume}"><div class="detail-head-title"><div class="detail-head-meta"><span class="detail-badge">${thread.parentId === null ? '会话' : '分支'}</span>${thread.dshSessionTitle ?? thread.title ? `<span class="detail-subtitle">${escapeHtml(thread.dshSessionTitle ?? thread.title)}</span>` : ''}</div><h1>${escapeHtml(questionFor(thread))}</h1></div><div class="detail-head-actions"><button data-action="open-dsh" data-thread="${thread.id}" data-seq="${Number.isInteger(latestAssistantSeq) ? latestAssistantSeq : ''}" data-turn="${Number.isInteger(latestAssistantTurn) ? latestAssistantTurn : ''}" title="在原生对话中打开此会话">在 DSH 中打开</button><button data-action="open-branch" data-thread="${thread.id}" title="基于最新回答创建分支">创建分支</button><button class="primary" data-action="show-canvas">返回画布</button></div></header><div class="detail-scroll">${messages.map(message => threadMessage(thread, message)).join('') || '<div class="note-empty">等待这条会话的第一条消息。</div>'}${renderConnectingTail(thread)}</div><form class="message-composer" data-compose="${thread.id}"><textarea maxlength="4000" placeholder="继续当前会话…" ${waiting ? 'disabled' : ''}></textarea><button class="primary" type="submit" ${waiting ? 'disabled' : ''}>${waiting ? '等待回复' : '发送'}</button></form></section>`
+  return `<section class="detail-view" data-title="${escapeHtml(detailTitle)}" data-volume="${detailVolume}"><header class="detail-head" data-title="${escapeHtml(detailTitle)}" data-volume="${detailVolume}"><div class="detail-head-title"><div class="detail-head-meta"><span class="detail-badge">${thread.parentId === null ? '会话' : '分支'}</span>${thread.dshSessionTitle ?? thread.title ? `<span class="detail-subtitle">${escapeHtml(thread.dshSessionTitle ?? thread.title)}</span>` : ''}</div><h1>${escapeHtml(questionFor(thread))}</h1></div><div class="detail-head-actions"><button data-action="open-dsh" data-thread="${thread.id}" data-seq="${Number.isInteger(latestAssistantSeq) ? latestAssistantSeq : ''}" data-turn="${Number.isInteger(latestAssistantTurn) ? latestAssistantTurn : ''}" title="在原生对话中打开此会话">在 DSH 中打开</button><button data-action="open-branch" data-thread="${thread.id}" title="基于最新回答创建分支">创建分支</button><button class="primary" data-action="show-canvas">返回画布</button></div></header><div class="reading-viewport"><div class="detail-scroll" tabindex="0" aria-label="会话详情正文"><div class="reading-content">${messages.map(message => threadMessage(thread, message)).join('') || '<div class="note-empty">等待这条会话的第一条消息。</div>'}${renderConnectingTail(thread)}</div></div><button class="reading-jump" type="button" hidden>跳到最新</button></div><form class="message-composer" data-compose="${thread.id}"><textarea maxlength="4000" placeholder="继续当前会话…" ${waiting ? 'disabled' : ''}></textarea><button class="primary" type="submit" ${waiting ? 'disabled' : ''}>${waiting ? '等待回复' : '发送'}</button></form></section>`
 }
 
 // ---- Seat portal（英雄纪卡牌门户） --------------------------------------------
@@ -2288,22 +2295,222 @@ function renderLedger() {
   </details>`
 }
 
+function readingGeometry(scroll) {
+  const max = Math.max(0, scroll.scrollHeight - scroll.clientHeight)
+  const top = Math.min(max, Math.max(0, scroll.scrollTop))
+  return { max, top, remaining: max - top }
+}
+
+function createWorkbenchReader({ scroll, content, jump, previous, onSave, now = () => performance.now() }) {
+  let disposed = false
+  let applying = false
+  const position = previous === undefined
+    ? { top: scroll.scrollTop, pinned: readingGeometry(scroll).max === 0, lastInputAt: -Infinity }
+    : { ...previous }
+  const update = () => {
+    if (disposed) return
+    const geometry = readingGeometry(scroll)
+    scroll.style.setProperty('--reader-fade-top', geometry.top > 2 ? '18px' : '0px')
+    scroll.style.setProperty('--reader-fade-bottom', geometry.remaining > 2 ? '18px' : '0px')
+    jump.hidden = geometry.remaining <= 40
+    onSave({ ...position })
+  }
+  const capture = () => {
+    if (disposed || applying) return
+    const geometry = readingGeometry(scroll)
+    position.top = geometry.top
+    position.pinned = geometry.remaining <= 40
+    update()
+  }
+  const hold = () => {
+    if (disposed) return
+    position.lastInputAt = now()
+    position.pinned = false
+    position.top = readingGeometry(scroll).top
+    update()
+  }
+  const input = event => {
+    if (event.type === 'keydown') {
+      if (!['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key)) return
+      if (event.altKey || event.ctrlKey || event.metaKey || event.isComposing) return
+      if (event.target.closest?.('input, textarea, select, [contenteditable="true"]')) return
+    }
+    hold()
+  }
+  const sync = () => {
+    if (disposed) return
+    const { max } = readingGeometry(scroll)
+    applying = true
+    scroll.scrollTop = position.pinned && now() - position.lastInputAt > 150
+      ? max : Math.min(max, Math.max(0, position.top))
+    position.top = readingGeometry(scroll).top
+    applying = false
+    update()
+  }
+  const latest = () => {
+    if (disposed) return
+    position.pinned = true
+    position.lastInputAt = -Infinity
+    sync()
+  }
+  scroll.addEventListener('scroll', capture, { passive: true })
+  for (const type of ['wheel', 'touchstart', 'pointerdown', 'keydown']) scroll.addEventListener(type, input, { passive: true })
+  jump.addEventListener('click', latest)
+  const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(sync) : null
+  observer?.observe(scroll)
+  observer?.observe(content)
+  sync()
+  return {
+    hold,
+    dispose() {
+      if (disposed) return
+      capture()
+      disposed = true
+      observer?.disconnect()
+      scroll.removeEventListener('scroll', capture)
+      for (const type of ['wheel', 'touchstart', 'pointerdown', 'keydown']) scroll.removeEventListener(type, input)
+      jump.removeEventListener('click', latest)
+    },
+  }
+}
+
+function inspectorWidthBounds(width) {
+  const available = Math.max(0, width - 16)
+  return { min: Math.min(width >= 720 ? 300 : 240, available), max: available }
+}
+
+function createInspectorResizer({ handle, panel, container, onWidth, initialWidth = 460, ownerDocument = document }) {
+  let disposed = false
+  let gesture = null
+  let bounds = inspectorWidthBounds(container.getBoundingClientRect().width)
+  let preferredWidth = initialWidth ?? 460
+  let width = preferredWidth
+  const apply = value => {
+    width = Math.round(Math.min(bounds.max, Math.max(bounds.min, value)))
+    panel.style.width = `${width}px`
+    handle.setAttribute('aria-valuemin', String(Math.round(bounds.min)))
+    handle.setAttribute('aria-valuemax', String(Math.round(bounds.max)))
+    handle.setAttribute('aria-valuenow', String(width))
+    handle.setAttribute('aria-valuetext', `${width} 像素`)
+  }
+  const finish = commit => {
+    if (gesture === null) return
+    const completed = gesture
+    gesture = null
+    if (!commit) apply(completed.width)
+    else if (completed.active) { preferredWidth = width; onWidth(width) }
+    delete container.dataset.inspectorResizing
+    ownerDocument.removeEventListener('pointermove', move)
+    ownerDocument.removeEventListener('pointerup', up)
+    ownerDocument.removeEventListener('pointercancel', cancel)
+    ownerDocument.removeEventListener('keydown', escape, true)
+    try { handle.releasePointerCapture(completed.pointerId) } catch {}
+  }
+  const move = event => {
+    if (gesture === null || event.pointerId !== gesture.pointerId) return
+    const delta = event.clientX - gesture.x
+    if (!gesture.active && Math.abs(delta) < 4) return
+    gesture.active = true
+    container.dataset.inspectorResizing = ''
+    apply(gesture.width - delta)
+  }
+  const up = event => { if (event.pointerId === gesture?.pointerId) finish(true) }
+  const cancel = event => { if (event.pointerId === gesture?.pointerId) finish(false) }
+  const escape = event => {
+    if (event.key !== 'Escape' || gesture === null) return
+    event.preventDefault()
+    event.stopPropagation()
+    finish(false)
+  }
+  const down = event => {
+    if (disposed || gesture !== null || event.button !== 0 || event.isPrimary === false) return
+    event.preventDefault()
+    bounds = inspectorWidthBounds(container.getBoundingClientRect().width)
+    gesture = { pointerId: event.pointerId, x: event.clientX, width, active: false }
+    try { handle.setPointerCapture(event.pointerId) } catch {}
+    ownerDocument.addEventListener('pointermove', move)
+    ownerDocument.addEventListener('pointerup', up)
+    ownerDocument.addEventListener('pointercancel', cancel)
+    ownerDocument.addEventListener('keydown', escape, true)
+  }
+  const reset = () => {
+    if (disposed) return
+    finish(false)
+    preferredWidth = 460
+    apply(preferredWidth)
+    onWidth(preferredWidth)
+  }
+  const keyboard = event => {
+    if (disposed || gesture !== null || event.altKey || event.ctrlKey || event.metaKey) return
+    const step = event.shiftKey ? 48 : 16
+    const value = event.key === 'ArrowLeft' ? width + step : event.key === 'ArrowRight' ? width - step
+      : event.key === 'Home' ? bounds.min : event.key === 'End' ? bounds.max : event.key === 'Enter' ? 460 : null
+    if (value === null) return
+    event.preventDefault()
+    event.stopPropagation()
+    apply(value)
+    preferredWidth = event.key === 'Enter' ? 460 : width
+    onWidth(preferredWidth)
+  }
+  const resized = () => {
+    if (disposed) return
+    const nextBounds = inspectorWidthBounds(container.getBoundingClientRect().width)
+    if (nextBounds.min === bounds.min && nextBounds.max === bounds.max) return
+    finish(false)
+    bounds = nextBounds
+    apply(preferredWidth)
+  }
+  handle.addEventListener('pointerdown', down)
+  handle.addEventListener('lostpointercapture', cancel)
+  handle.addEventListener('keydown', keyboard)
+  handle.addEventListener('dblclick', reset)
+  const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(resized) : null
+  observer?.observe(container)
+  apply(width)
+  return { dispose() {
+    if (disposed) return
+    finish(false)
+    disposed = true
+    observer?.disconnect()
+    handle.removeEventListener('pointerdown', down)
+    handle.removeEventListener('lostpointercapture', cancel)
+    handle.removeEventListener('keydown', keyboard)
+    handle.removeEventListener('dblclick', reset)
+  } }
+}
+
+function installWorkbenchSurfaces() {
+  const controls = []
+  currentDetailReader = null
+  for (const [selector, key] of [
+    ['.detail-scroll', state.detailThreadId === null ? null : `detail:${state.detailThreadId}`],
+    ['.card-inspector-scroll', state.inspectorCardId === null ? null : `inspector:${state.inspectorCardId}`],
+  ]) {
+    const scroll = document.querySelector(selector)
+    const content = scroll?.querySelector('.reading-content')
+    const jump = scroll?.parentElement?.querySelector('.reading-jump')
+    if (key === null || !(scroll instanceof HTMLElement) || !(content instanceof HTMLElement) || !(jump instanceof HTMLElement)) continue
+    const reader = createWorkbenchReader({ scroll, content, jump, previous: state.readingPositions.get(key), onSave: value => state.readingPositions.set(key, value) })
+    if (selector === '.detail-scroll') currentDetailReader = reader
+    controls.push(reader)
+  }
+  const panel = document.querySelector('.card-inspector')
+  const handle = panel?.querySelector('.inspector-resizer')
+  const container = panel?.parentElement
+  if (panel instanceof HTMLElement && handle instanceof HTMLElement && container instanceof HTMLElement) {
+    controls.push(createInspectorResizer({ handle, panel, container, initialWidth: state.inspectorWidth, onWidth: width => { state.inspectorWidth = width } }))
+  }
+  disposeWorkbenchSurfaces = () => {
+    for (const control of controls) control.dispose()
+    currentDetailReader = null
+    disposeWorkbenchSurfaces = () => {}
+  }
+}
+
 function render() {
+  disposeWorkbenchSurfaces()
   disconnectDispatchLaneEdges()
-  // Remember the departing thread's scroll position per thread id, so
-  // switching sessions restores each conversation's own place instead of
-  // smearing one session's position onto another.
-  if (state.mode === 'thread' && state.detailThreadId !== null) {
-    const detail = document.querySelector('.detail-scroll')
-    if (detail instanceof HTMLElement) state.detailScrollByThread.set(state.detailThreadId, detail.scrollTop)
-  }
-  if (state.mode === 'canvas' && state.inspectorCardId !== null) {
-    const inspector = document.querySelector('.card-inspector-scroll')
-    if (inspector instanceof HTMLElement) state.inspectorScrollByCard.set(state.inspectorCardId, inspector.scrollTop)
-  }
   state.detailThreadId = state.mode === 'thread' ? state.activeId : null
-  const detailScrollTop = state.detailThreadId === null ? null : state.detailScrollByThread.get(state.detailThreadId) ?? null
-  const inspectorScrollTop = state.mode === 'canvas' && state.inspectorCardId !== null ? state.inspectorScrollByCard.get(state.inspectorCardId) ?? null : null
   const cardScrollTops = new Map()
   if (state.mode === 'canvas') {
     // Key by the unique card id: every card of a session shares data-thread,
@@ -2360,14 +2567,7 @@ function render() {
     const answer = app.querySelector(`.thread-card[data-card-id="${CSS.escape(cardId)}"] .thread-answer`)
     if (answer instanceof HTMLElement) answer.scrollTop = scrollTop
   }
-  if (detailScrollTop !== null) window.requestAnimationFrame(() => {
-    const nextDetail = document.querySelector('.detail-scroll')
-    if (nextDetail instanceof HTMLElement) nextDetail.scrollTop = detailScrollTop
-  })
-  if (inspectorScrollTop !== null) window.requestAnimationFrame(() => {
-    const inspector = document.querySelector('.card-inspector-scroll')
-    if (inspector instanceof HTMLElement) inspector.scrollTop = inspectorScrollTop
-  })
+  installWorkbenchSurfaces()
   if (state.inspectorOpening) window.requestAnimationFrame(() => {
     document.querySelector('.card-inspector')?.classList.remove('is-opening')
     state.inspectorOpening = false
@@ -2382,7 +2582,10 @@ function render() {
     const seq = match === null ? null : match[1]
     if (seq !== null) window.requestAnimationFrame(() => {
       const target = app.querySelector(`[data-message-seq="${CSS.escape(seq)}"]`)
-      if (target instanceof HTMLElement) target.scrollIntoView({ block: 'start' })
+      if (target instanceof HTMLElement) {
+        target.scrollIntoView({ block: 'start' })
+        currentDetailReader?.hold()
+      }
     })
   }
 }
@@ -2671,6 +2874,7 @@ app.addEventListener('toggle', event => {
 }, true)
 document.addEventListener('selectionchange', queueSelectionFollowup)
 document.addEventListener('keydown', event => {
+  if (event.defaultPrevented) return
   if (event.key === 'Escape' && BOOT_MODE === 'portal') {
     event.preventDefault()
     post('amphoreus:close')
@@ -3055,10 +3259,10 @@ function applyConferenceProgress(data) {
   return true
 }
 
-function completeMapOpen() {
+function completeMapOpen(indexAlreadyLoaded = false) {
   if (state.mode === 'thread') state.mode = 'canvas'
   render()
-  void refreshIndex().catch(setError)
+  if (!indexAlreadyLoaded) void refreshIndex().catch(setError)
   post('amphoreus:seat-changed', { heroId: typeof state.seatId === 'string' && state.seatId.startsWith('seat:') ? state.seatId.slice(5) : null })
   window.requestAnimationFrame(() => post('amphoreus:map-ready'))
   window.setTimeout(() => post('amphoreus:map-ready'), 240)
@@ -3309,13 +3513,14 @@ async function bootWorkbench() {
   }
   post('amphoreus:request-current')
   post('amphoreus:request-config')
-  try { await refreshIndex() } catch (error) { setError(error) }
+  let indexLoaded = false
+  try { indexLoaded = await refreshIndex() } catch (error) { setError(error) }
   connectEvents()
   state.bootstrapped = true
   bootInFlight = false
   if (state.mapOpenPending) {
     state.mapOpenPending = false
-    completeMapOpen()
+    completeMapOpen(indexLoaded)
   }
 }
 

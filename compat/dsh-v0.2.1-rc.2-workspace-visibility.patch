@@ -1,0 +1,1710 @@
+diff --git a/docs/subsystems/workspace.i18n.yaml b/docs/subsystems/workspace.i18n.yaml
+index bf01196282..b2f26e9efe 100644
+--- a/docs/subsystems/workspace.i18n.yaml
++++ b/docs/subsystems/workspace.i18n.yaml
+@@ -12,8 +12,8 @@
+   en: ce5b65fb4d0b0c7b
+   zh: aa332a17810d583a
+ /workspaces/the-registry-ctx-workspaceregistry:
+-  en: 73b54ccf836b7f46
+-  zh: 7ee93ba8bb0a616a
++  en: 4c12f5b8762f4752
++  zh: 411ba32e16ff8b6d
+ /workspaces/default-workspace-initialization:
+   en: c4307480e504ba81
+   zh: dc8a98e1b447b900
+diff --git a/docs/subsystems/workspace.md b/docs/subsystems/workspace.md
+index b363ba184d..22dfbbf2b7 100644
+--- a/docs/subsystems/workspace.md
++++ b/docs/subsystems/workspace.md
+@@ -44,6 +44,9 @@ interface Workspace {
+   /** Display title. Defaults to the final path segment, or a filesystem root's own spelling; duplicates are allowed. */
+   readonly title: string
+ 
++  /** Owners hiding this Workspace from ordinary browsing; membership and running work are unchanged. */
++  readonly hiddenBy?: readonly string[]
++
+   /** ISO-8601 creation instant, stamped at create and never rewritten. */
+   readonly createdAt: string
+ 
+@@ -121,6 +124,8 @@ Ownership truth is the record's ordered `sessionIds`, never derived from session
+ 
+ ## The registry: `ctx.workspaceRegistry`
+ 
++`setHiddenByOwner(owner, workspaceIds)` replaces one owner's presentation exclusions without changing Workspace records or Session accounting. An empty set removes only that owner's exclusions. `Workspace.hiddenBy` is optional for existing consumers; absence or an empty array means visible. The [workspace package reference](../../packages/workspace/workspace/README.md#owner-controlled-workspace-visibility) owns persistence, compatibility, and lifecycle details.
++
+ `WorkspaceRegistry` ([signatures](#ctxworkspaceregistry--workspaceregistry)) owns registration and resolution. `create(path, title?)` requires a fully qualified path, canonicalizes it, rejects a nonexistent path (the original `ENOENT`) or a non-directory, returns the existing entity unchanged when the canonical path is already owned, and otherwise creates a record with `title ?? defaultWorkspaceTitle(path)` prepended to the durable registry order (different canonical paths may share a display title, and a path with no final segment uses its root spelling). `get(id)` and the ordered `list()` are synchronous cache reads; `resolveByPath(path)` applies the same fully qualified realpath canon without creating. `delete(id)` removes only the registration, order entry, and session account — the directory, user files, live sessions, and persisted logs are never touched, so those sessions become Ungrouped ([reference](../../packages/workspace/workspace/README.md)); unknown ids return `false`. Create and delete persist a pending-mutation marker before their two writes (record + order) can diverge; startup resolves exactly the marked mutation — by deleting the marked table row, which completes an interrupted delete and rolls back an interrupted create (the registration is re-creatable, so rollback is the safe direction) — and an unmarked order/table mismatch fails loud as corruption.
+ 
+ Sessions get their cwd at create time from whoever creates them, not from this registry — the API gateway resolves a new session's cwd from the chosen workspace's `path` (falling back to an explicit or default cwd), creates the session so the cwd lands in its immutable [`SessionHeader`](persistence.md#sessionheader--metadata-beside-the-log), then calls `attachSession`, which re-validates that stored header cwd against the workspace path. On the first successful start, the registry bootstraps history from persisted headers alone (`id`, `cwd`, `createdAt` — never event bodies), grouping sessions with a valid canonical cwd into per-directory workspaces, newest first; the initialized marker is written last so an interrupted bootstrap resumes safely. The bootstrap is one-time: cwd-less legacy sessions stay Ungrouped, and sessions created afterwards join a workspace only through `attachSession`.
+@@ -520,6 +525,17 @@ list(): Workspace[]
+  */
+ delete(id: WorkspaceId): Promise<boolean>
+ 
++/**
++ * Replace one owner's durable presentation exclusions. An empty list clears
++ * only that owner; other owners continue hiding their Workspaces. This does
++ * not mutate registrations, ordering, Session accounting, archives, pins,
++ * or running work. Existing ownership remains available to internal callers.
++ * @param owner - Nonempty stable owner name, normally the plugin package name.
++ * @param workspaceIds - Existing Workspaces to hide for this owner; duplicates and order are immaterial.
++ * @returns resolution after durability; unchanged sets require no write.
++ */
++setHiddenByOwner(owner: string, workspaceIds: readonly WorkspaceId[]): Promise<void>
++
+ /**
+  * Move one workspace within the durable display order, DOM-insertBefore-like.
+  * With an anchor it lands before that workspace; without one it appends.
+diff --git a/docs/subsystems/workspace.zh.md b/docs/subsystems/workspace.zh.md
+index c04a05c97d..c5acd5727e 100644
+--- a/docs/subsystems/workspace.zh.md
++++ b/docs/subsystems/workspace.zh.md
+@@ -44,6 +44,9 @@ interface Workspace {
+   /** Display title. Defaults to the final path segment, or a filesystem root's own spelling; duplicates are allowed. */
+   readonly title: string
+ 
++  /** Owners hiding this Workspace from ordinary browsing; membership and running work are unchanged. */
++  readonly hiddenBy?: readonly string[]
++
+   /** ISO-8601 creation instant, stamped at create and never rewritten. */
+   readonly createdAt: string
+ 
+@@ -121,6 +124,8 @@ interface Workspace {
+ 
+ ## 注册表：`ctx.workspaceRegistry`
+ 
++`setHiddenByOwner(owner, workspaceIds)` 替换一个所有者的展示排除集合，不改变 Workspace 记录或 Session 归属。空集合只移除该所有者的排除项。`Workspace.hiddenBy` 对已有消费方保持可选；缺失或空数组均表示可见。[workspace 包参考](../../packages/workspace/workspace/README.zh.md#owner-controlled-workspace-visibility)规定持久化、兼容性和生命周期细节。
++
+ `WorkspaceRegistry`（[签名](#ctxworkspaceregistry--workspaceregistry)）拥有注册与解析。`create(path, title?)` 要求完全限定路径并将其规范化，拒绝不存在的路径（原样传出原始 `ENOENT`）或非目录；当规范路径已被拥有时原样返回既有实体；否则创建一条标题为 `title ?? defaultWorkspaceTitle(path)` 的记录并前插到持久的注册表顺序中（不同规范路径可以共享同一显示标题，没有最终路径段时使用根路径拼写）。`get(id)` 与有序的 `list()` 是同步缓存读取；`resolveByPath(path)` 应用同一套完全限定 realpath 规范但不创建。`delete(id)` 只移除注册记录、顺序条目和会话账本——目录、用户文件、实时会话和已持久化日志一概不动，因此这些会话变为 Ungrouped（[参考](../../packages/workspace/workspace/README.zh.md)）；未知 id 返回 `false`。create 与 delete 会在其两次写入（记录 + 顺序）可能分叉之前先持久写入一个待定变更标记；启动时恰好解决被标记的那次变更——通过删除被标记的表行：这会补完被中断的 delete，并回滚被中断的 create（注册可以重建，因此回滚是安全方向）——而没有标记的顺序/表不一致则作为损坏大声失败。
+ 
+ 会话的 cwd 在创建时由创建者赋予，而不是由本注册表赋予——API 网关从所选工作区的 `path` 解析新会话的 cwd（回退到显式或默认 cwd），先创建会话使 cwd 落入其不可变的 [`SessionHeader`](persistence.zh.md#sessionheader--metadata-beside-the-log)，再调用 `attachSession`，后者会把已存储的 header cwd 与工作区路径重新校验一遍。首次成功启动时，注册表仅凭已持久化的 header（`id`、`cwd`、`createdAt`——绝不读事件正文）引导历史：把规范 cwd 有效的会话按目录分组为工作区，最新的排在最前；「已初始化」标记最后写入，因此被中断的引导可以安全续跑。引导只发生这一次：没有 cwd 的历史遗留会话保持 Ungrouped，此后创建的会话只能通过 `attachSession` 加入工作区。
+@@ -520,6 +525,17 @@ list(): Workspace[]
+  */
+ delete(id: WorkspaceId): Promise<boolean>
+ 
++/**
++ * Replace one owner's durable presentation exclusions. An empty list clears
++ * only that owner; other owners continue hiding their Workspaces. This does
++ * not mutate registrations, ordering, Session accounting, archives, pins,
++ * or running work. Existing ownership remains available to internal callers.
++ * @param owner - Nonempty stable owner name, normally the plugin package name.
++ * @param workspaceIds - Existing Workspaces to hide for this owner; duplicates and order are immaterial.
++ * @returns resolution after durability; unchanged sets require no write.
++ */
++setHiddenByOwner(owner: string, workspaceIds: readonly WorkspaceId[]): Promise<void>
++
+ /**
+  * Move one workspace within the durable display order, DOM-insertBefore-like.
+  * With an anchor it lands before that workspace; without one it appends.
+diff --git a/packages/api/workspace-controller/README.i18n.yaml b/packages/api/workspace-controller/README.i18n.yaml
+index e3cb08a719..f8f3396ce0 100644
+--- a/packages/api/workspace-controller/README.i18n.yaml
++++ b/packages/api/workspace-controller/README.i18n.yaml
+@@ -15,8 +15,8 @@
+   en: 4e53164159b5ce41
+   zh: 89582dc0294d0776
+ /workspace-controller/use-this-package:
+-  en: 8276c5edb7d0db7d
+-  zh: cda0c91f8c3776e6
++  en: a2b13f1376bfa854
++  zh: c0031491842e701c
+ /workspace-controller/use-this-package/first-use-workspace:
+   en: 61032e060e7213f0
+   zh: 437eb982a8738539
+diff --git a/packages/api/workspace-controller/README.md b/packages/api/workspace-controller/README.md
+index 27c26c7d9b..4288ec004b 100644
+--- a/packages/api/workspace-controller/README.md
++++ b/packages/api/workspace-controller/README.md
+@@ -22,6 +22,8 @@ English | [中文](README.zh.md)
+ <a id="use-this-package"></a>
+ ## Use this package
+ 
++Workspace baselines and `upsert` frames retain hidden registrations and their complete Session accounting. A hidden row carries `hidden: true` and `hiddenBy`; visible rows omit both fields. Visibility changes emit `upsert` without changing the Workspace's `updatedAt`. The Client model takes visibility from the ordered follow stream independently of record timestamps, so a delayed create or rename response cannot undo a visibility change. Browsing consumers filter hidden rows and their accounted Sessions after determining ownership. Host plugins manage the owner sets through the [Workspace registry](../../workspace/workspace/README.md#owner-controlled-workspace-visibility); no visibility mutation is exposed as a Remote method.
++
+ The Host controller serializes mutations whose correctness depends on current registry state and throws `RemoteError` with a stable error code for expected failures. Its `follow()` stream synchronously attaches to durable Workspace changes, emits one complete baseline first, then emits ordered `upsert`, `remove`, `order`, `archived`, and `pinned` increments. Archive and pin sets are Session id arrays, with the most recently pinned id first in the pin array. A reconnect starts another generation with a replacement baseline, so consumers do not depend on receiving every increment while disconnected. `archiveSession` without `stopActivity` refuses a Session with running work as `workspace/session-active`, whose details list that work by family (`turn`, `subagent`, `job`, `schedule`) with item ids and labels; with `stopActivity: true` the registry's providers stop the work first and the response arrives once the archive set is durable, while the stops settle in the background.
+ 
+ The controller injects `remoteAccess` and registers the `workspace` resource kind with the default field `workspaceId` through `typert.resources`. `workspace/follow` reads no resource, so its call touches the `global` resource: a Peer whose principal is not the owner may follow it only when its principal kind's policy in [`dsh-api-remote-access`](../remote-access/README.md) binds a `global` role listing the action. For that caller, the baseline, `upsert` frames, and `order` ids keep only the Workspaces `ctx.remoteAccess.allows()` admits as `workspace` resources, and only the Session ids it admits as `session` resources, within each Workspace and in the archived and pinned sets, so `workspace` and `session` roles list the same action. The stream tracks the Workspaces it delivered. When one is no longer admitted at its next change or in a new order, the stream sends a `replace` increment carrying the complete filtered state instead of a `remove`, because a removed id is never resurrected on the Client; `replace` is an ordinary increment that the Client applies like an opening baseline, not the start of a new generation, so it neither reports an error nor reconnects; once access returns, the Workspace reappears through an ordinary `upsert`. A `remove` frame reports a deletion and reaches only a caller that received that Workspace. Owner frames are unfiltered.
+diff --git a/packages/api/workspace-controller/README.zh.md b/packages/api/workspace-controller/README.zh.md
+index 4772d0c9b1..50ffbd711d 100644
+--- a/packages/api/workspace-controller/README.zh.md
++++ b/packages/api/workspace-controller/README.zh.md
+@@ -22,6 +22,8 @@ kind: "package-reference"
+ <a id="use-this-package"></a>
+ ## 使用本包
+ 
++Workspace baseline 与 `upsert` 帧保留隐藏登记及其完整 Session 归属。隐藏行携带 `hidden: true` 与 `hiddenBy`，可见行省略这两个字段。可见性变化通过 `upsert` 发布，不改变 Workspace 的 `updatedAt`。Client 模型从有序 follow 流接收可见性，并独立于记录时间戳处理，因此迟到的创建或重命名回包不能撤销可见性变化。浏览消费方先确定归属，再过滤隐藏行及其所属 Session。Host 插件通过 [Workspace 注册表](../../workspace/workspace/README.zh.md#owner-controlled-workspace-visibility)管理所有者集合；不提供可见性修改的 Remote 方法。
++
+ Host 控制器会串行执行正确性取决于当前注册表状态的变更，并为预期失败抛出带有稳定错误码的 `RemoteError`。它的 `follow()` 流会同步订阅持久 Workspace 变更，先发出一份完整 baseline，再按顺序发出 `upsert`、`remove`、`order`、`archived` 和 `pinned` 增量。归档与置顶集合都是会话 id 数组，置顶数组把最近置顶的 id 放在前面。重连会以替换 baseline 开始新一代，因此消费方不依赖收到断线期间的每个增量。不带 `stopActivity` 的 `archiveSession` 会以 `workspace/session-active` 拒绝仍有工作在跑的会话，其 details 按族（`turn`、`subagent`、`job`、`schedule`）列出这些工作及各项的 id 与名称；带 `stopActivity: true` 时注册表的提供方先停止这些工作，归档集合持久化后即返回响应，停止在后台收敛。
+ 
+ 控制器注入 `remoteAccess`，并经 `typert.resources` 以默认字段 `workspaceId` 登记 `workspace` 资源种类。`workspace/follow` 不读取资源，其调用访问 `global` 资源：principal 不是 owner 的 Peer 只有在其 principal kind 于 [`dsh-api-remote-access`](../remote-access/README.zh.md) 中的 policy 绑定了列出该 action 的 `global` role 时才能订阅它。对这类调用方，baseline、`upsert` 帧与 `order` 中的 id 只保留 `ctx.remoteAccess.allows()` 作为 `workspace` 资源允许的 Workspace，以及它作为 `session` 资源允许的会话 id（各 Workspace 内的会话以及归档与置顶集合），因此 `workspace` role 与 `session` role 也列出同一 action。流记录已下发的 Workspace。某个 Workspace 在下一次变化或新顺序中已不被允许时，流发送一个携带完整过滤后状态的 `replace` 增量帧而不是 `remove`，因为 Client 不会复活已移除的 id；`replace` 是普通增量帧，Client 像开场 baseline 一样整体替换状态，但它不开启新的一代，因此既不报告错误也不重连；访问恢复后，该 Workspace 经普通 `upsert` 重新出现。`remove` 帧表示删除，只发给收到过该 Workspace 的调用方。owner 的帧不过滤。
+diff --git a/packages/api/workspace-controller/src/client/model.ts b/packages/api/workspace-controller/src/client/model.ts
+index 779ffb1616..85ca882991 100644
+--- a/packages/api/workspace-controller/src/client/model.ts
++++ b/packages/api/workspace-controller/src/client/model.ts
+@@ -276,7 +276,7 @@ export class ClientWorkspaceModel implements WorkspaceFollowSink {
+ 
+   /** Merge one decoded Workspace upsert from the current follow generation. */
+   upsertView(workspace: WorkspaceView): void {
+-    this.upsert(workspace)
++    this.upsert(workspace, true)
+   }
+ 
+   /** Apply one decoded Workspace removal from the current follow generation. */
+@@ -381,19 +381,31 @@ export class ClientWorkspaceModel implements WorkspaceFollowSink {
+     this.invalidate()
+   }
+ 
+-  private upsert(view: WorkspaceView): void {
++  private upsert(view: WorkspaceView, visibilityFromStream = false): void {
+     if (this.removedIds.has(view.workspaceId)) return
+     const index = this.items.findIndex(item => item.workspaceId === view.workspaceId)
+     const installed = this.items[index]
+     // Unary responses and stream increments race on separate requests. Keep
+     // the newest Host projection regardless of their arrival order.
+-    if (installed !== undefined && Date.parse(view.updatedAt) < Date.parse(installed.updatedAt)) return
++    const olderRecord = installed !== undefined && Date.parse(view.updatedAt) < Date.parse(installed.updatedAt)
++    // Visibility follows its ordered stream independently of record timestamps.
++    const visibility = visibilityFromStream || installed === undefined ? view : installed
++    const owners = visibility.hiddenBy ?? []
++    const installedOwners = installed?.hiddenBy ?? []
++    if (olderRecord && visibility.hidden === installed.hidden
++      && owners.length === installedOwners.length && owners.every((owner, index) => owner === installedOwners[index])) return
++    const { hidden: _hidden, hiddenBy: _hiddenBy, ...record } = olderRecord ? installed : view
++    const accepted: WorkspaceView = {
++      ...record,
++      ...visibility.hidden === undefined ? {} : { hidden: visibility.hidden },
++      ...visibility.hiddenBy === undefined ? {} : { hiddenBy: visibility.hiddenBy },
++    }
+     if (!this.committedOrder.includes(view.workspaceId)) {
+       this.committedOrder = [view.workspaceId, ...this.committedOrder]
+     }
+     this.items = index === -1
+-      ? [view, ...this.items]
+-      : this.items.map((item, position) => position === index ? view : item)
++      ? [accepted, ...this.items]
++      : this.items.map((item, position) => position === index ? accepted : item)
+     this.invalidate()
+   }
+ 
+diff --git a/packages/api/workspace-controller/src/feed.ts b/packages/api/workspace-controller/src/feed.ts
+index be1cbdb21c..aee1923d12 100644
+--- a/packages/api/workspace-controller/src/feed.ts
++++ b/packages/api/workspace-controller/src/feed.ts
+@@ -31,10 +31,15 @@ export function workspaceView(workspace: Workspace): WorkspaceView {
+     sessionIds: [...workspace.sessionIds],
+     createdAt: workspace.createdAt,
+     updatedAt: workspace.updatedAt,
++    ...visibilityFields(workspace.hiddenBy),
+   }
+ }
+ 
+-function changedWorkspaceView(workspaceId: string, value: unknown): WorkspaceView {
++function visibilityFields(hiddenBy: readonly string[] = []): Pick<WorkspaceView, 'hidden' | 'hiddenBy'> {
++  return hiddenBy.length === 0 ? {} : { hidden: true, hiddenBy: [...hiddenBy] }
++}
++
++function changedWorkspaceView(workspaceId: string, value: unknown, hiddenBy?: readonly string[]): WorkspaceView {
+   const record: WorkspaceRecord = workspaceRecord.parse(value)
+   return {
+     workspaceId: WorkspaceId(workspaceId),
+@@ -43,6 +48,7 @@ function changedWorkspaceView(workspaceId: string, value: unknown): WorkspaceVie
+     sessionIds: [...record.sessionIds],
+     createdAt: record.createdAt,
+     updatedAt: record.updatedAt,
++    ...visibilityFields(hiddenBy),
+   }
+ }
+ 
+@@ -53,6 +59,7 @@ export class WorkspaceFeed {
+   private order: readonly string[]
+   private archived: readonly string[]
+   private pinned: readonly string[]
++  private readonly hiddenBy = new Map<string, readonly string[]>()
+ 
+   /** @param ctx - Host context containing the authoritative Workspace registry. */
+   constructor(private readonly ctx: Context) {
+@@ -61,6 +68,7 @@ export class WorkspaceFeed {
+     this.order = baseline.map(workspace => String(workspace.id))
+     this.archived = ctx.workspaceRegistry.archivedSessionIds.map(String)
+     this.pinned = ctx.workspaceRegistry.pinnedSessionIds.map(String)
++    for (const workspace of baseline) this.hiddenBy.set(workspace.id, workspace.hiddenBy ?? [])
+     ctx.on('domain/changed', (change: DomainChanged) => { this.changed(change) })
+     ctx.effect(() => () => {
+       for (const follower of this.followers) follower.close()
+@@ -99,6 +107,15 @@ export class WorkspaceFeed {
+   }
+ 
+   private changed(change: DomainChanged): void {
++    if (change.domain === 'workspace_visibility' && change.table === '' && change.operation === 'put') {
++      for (const workspace of this.ctx.workspaceRegistry.list()) {
++        const hiddenBy = workspace.hiddenBy ?? []
++        if (sameStrings(this.hiddenBy.get(workspace.id) ?? [], hiddenBy)) continue
++        this.hiddenBy.set(workspace.id, hiddenBy)
++        this.publish({ type: 'upsert', workspace: workspaceView(workspace) })
++      }
++      return
++    }
+     if (change.domain !== 'workspace') return
+     if (change.table === '') {
+       if (change.operation !== 'put') return
+@@ -112,6 +129,7 @@ export class WorkspaceFeed {
+           throw new Error(`committed Workspace registry references missing Workspace "${id}"`)
+         }
+         this.knownIds.add(id)
++        this.hiddenBy.set(id, workspace.hiddenBy ?? [])
+         this.publish({ type: 'upsert', workspace: workspaceView(workspace) })
+       }
+       this.order = nextOrder
+@@ -131,13 +149,14 @@ export class WorkspaceFeed {
+     if (change.table !== 'workspaces') return
+     if (change.operation === 'deleted') {
+       if (!this.knownIds.delete(change.key)) return
++      this.hiddenBy.delete(change.key)
+       this.publish({ type: 'remove', workspaceId: WorkspaceId(change.key) })
+       return
+     }
+     if (!this.knownIds.has(change.key)) return
+     this.publish({
+       type: 'upsert',
+-      workspace: changedWorkspaceView(change.key, change.value),
++      workspace: changedWorkspaceView(change.key, change.value, this.hiddenBy.get(change.key)),
+     })
+   }
+ 
+diff --git a/packages/api/workspace-controller/src/types.ts b/packages/api/workspace-controller/src/types.ts
+index cdf9adf073..eae9a8e891 100644
+--- a/packages/api/workspace-controller/src/types.ts
++++ b/packages/api/workspace-controller/src/types.ts
+@@ -21,6 +21,10 @@ export interface WorkspaceView {
+   readonly path: string
+   /** User-visible title. */
+   readonly title: string
++  /** Omitted for visible Workspaces; hidden registrations retain their Session accounting. */
++  readonly hidden?: true
++  /** Owners whose presentation exclusions currently hide this Workspace. */
++  readonly hiddenBy?: readonly string[]
+   /** Sessions accounted to this Workspace in manual order. */
+   readonly sessionIds: readonly SessionId[]
+   /** ISO-8601 creation instant. */
+diff --git a/packages/api/workspace-controller/tests/model.client.spec.ts b/packages/api/workspace-controller/tests/model.client.spec.ts
+index 9660b2ead8..b8f6b4f990 100644
+--- a/packages/api/workspace-controller/tests/model.client.spec.ts
++++ b/packages/api/workspace-controller/tests/model.client.spec.ts
+@@ -171,6 +171,36 @@ function baseline(
+ }
+ 
+ describe('ClientWorkspaceModel', () => {
++  it('keeps streamed visibility when a unary row with the same timestamp arrives later', async () => {
++    const remote = new FakeWorkspaceRemote()
++    const model = modelFor(remote)
++    const original = workspace('one', [sid('kept')])
++    baseline(model, [original])
++    const reply = deferred<RemoteResult<WorkspaceValue>>()
++    remote.onRename = () => reply.promise
++    const pending = model.rename(original.workspaceId, 'Renamed')
++    model.upsertView({ ...original, hidden: true, hiddenBy: ['owner'] })
++    reply.resolve(remoteOk({ workspace: { ...original, title: 'Renamed' } }))
++    await pending
++    expect(model.getSnapshot().items[0]).toEqual({ ...original, title: 'Renamed', hidden: true, hiddenBy: ['owner'] })
++    model.upsertView({ ...original, title: 'Renamed' })
++    expect(model.getSnapshot().items[0]).not.toHaveProperty('hidden')
++  })
++
++  it('applies ordered visibility independently of a newer unary record timestamp', async () => {
++    const remote = new FakeWorkspaceRemote()
++    const model = modelFor(remote)
++    const original = workspace('one', [sid('kept')])
++    const newer = { ...original, title: 'Newest', updatedAt: '2026-03-01T00:00:00.000Z' }
++    baseline(model, [original])
++    remote.onRename = async () => remoteOk({ workspace: newer })
++    await model.rename(original.workspaceId, newer.title)
++    model.upsertView({ ...original, hidden: true, hiddenBy: ['owner'] })
++    expect(model.getSnapshot().items[0]).toEqual({ ...newer, hidden: true, hiddenBy: ['owner'] })
++    model.upsertView(original)
++    expect(model.getSnapshot().items[0]).toEqual(newer)
++  })
++
+   it('publishes the prepared Workspace and leaves the list unchanged on refusal', async () => {
+     const remote = new FakeWorkspaceRemote()
+     const model = modelFor(remote)
+diff --git a/packages/api/workspace-controller/tests/workspace-controller.host.spec.ts b/packages/api/workspace-controller/tests/workspace-controller.host.spec.ts
+index c00531e06d..c3a73326b1 100644
+--- a/packages/api/workspace-controller/tests/workspace-controller.host.spec.ts
++++ b/packages/api/workspace-controller/tests/workspace-controller.host.spec.ts
+@@ -332,6 +332,39 @@ describe('WorkspaceController commands', () => {
+ })
+ 
+ describe('WorkspaceController follow', () => {
++  it('keeps hidden Workspace identities and membership in baselines and publishes owner changes as upserts', async () => {
++    const { controller, ctx, root } = await harness()
++    const created = await controller.create({ path: stageDir(root, 'owner-visibility') })
++    const workspaceId = created.workspace.workspaceId
++    const workspace = ctx.workspaceRegistry.get(workspaceId)!
++    const session = ctx.sessions.create(SessionId('hidden-member'), { meta: { cwd: workspace.path } })
++    await workspace.attachSession(session.id)
++    const feed = new WorkspaceFeed(ctx)
++    const before = feed.baseline().items[0]!
++    const abort = new AbortController()
++    const iterator = feed.follow(abort.signal)[Symbol.asyncIterator]()
++    try {
++      await nextFrame(iterator)
++      await ctx.workspaceRegistry.setHiddenByOwner('one', [workspaceId])
++      expect(feed.baseline().items).toEqual([{ ...before, hidden: true, hiddenBy: ['one'] }])
++      await expect(nextFrame(iterator)).resolves.toEqual({ type: 'upsert', workspace: { ...before, hidden: true, hiddenBy: ['one'] } })
++      await ctx.workspaceRegistry.setHiddenByOwner('two', [workspaceId])
++      await expect(nextFrame(iterator)).resolves.toMatchObject({ type: 'upsert', workspace: { workspaceId, hiddenBy: ['one', 'two'] } })
++      await controller.rename({ workspaceId, title: 'Renamed hidden workspace' })
++      await expect(nextFrame(iterator)).resolves.toMatchObject({ type: 'upsert', workspace: { workspaceId, title: 'Renamed hidden workspace', hidden: true, hiddenBy: ['one', 'two'] } })
++      await ctx.workspaceRegistry.setHiddenByOwner('one', [])
++      await expect(nextFrame(iterator)).resolves.toMatchObject({ type: 'upsert', workspace: { workspaceId, hidden: true, hiddenBy: ['two'] } })
++      await ctx.workspaceRegistry.setHiddenByOwner('two', [])
++      const visible = await nextFrame(iterator)
++      expect(visible).toMatchObject({ type: 'upsert', workspace: { workspaceId, sessionIds: [session.id] } })
++      expect(visible).not.toHaveProperty('workspace.hidden')
++      expect(visible).not.toHaveProperty('workspace.hiddenBy')
++    } finally {
++      abort.abort()
++      await iterator.return?.()
++    }
++  })
++
+   it('seeds a new feed from existing rows and rejects an inconsistent registry commit', async () => {
+     const { ctx, root } = await harness()
+     const existing = await ctx.workspaceRegistry.create(stageDir(root, 'existing'))
+diff --git a/packages/client/ui-workspace/README.i18n.yaml b/packages/client/ui-workspace/README.i18n.yaml
+index 60a03011cf..bf5f5b3a08 100644
+--- a/packages/client/ui-workspace/README.i18n.yaml
++++ b/packages/client/ui-workspace/README.i18n.yaml
+@@ -21,8 +21,8 @@
+   en: 8673afc1d72ad077
+   zh: 9fbb83a4029c5d10
+ /deepseek-ai-dsh-client-ui-workspace/use-this-package/workspace-hierarchy:
+-  en: 5e049b90c55eddb3
+-  zh: e06dc8d0d25c013f
++  en: c550ff68ef5b4c52
++  zh: 5ed144ea116c8dc5
+ /deepseek-ai-dsh-client-ui-workspace/use-this-package/search:
+   en: 9eab3bfbaf98c987
+   zh: 54e7e141dae5c9e8
+@@ -33,8 +33,8 @@
+   en: 9fb88260380bf093
+   zh: 3bace2b96ecd4a82
+ /deepseek-ai-dsh-client-ui-workspace/use-this-package/active-schedule-markers:
+-  en: 8d82539e4e4e890d
+-  zh: 7b97a3927de90ea8
++  en: 8100ba60a603d349
++  zh: e549e197124b0d71
+ /deepseek-ai-dsh-client-ui-workspace/understand-the-implementation:
+   en: 721d5a49fe231191
+   zh: 3ef1dd720219e00e
+diff --git a/packages/client/ui-workspace/README.md b/packages/client/ui-workspace/README.md
+index 2654447b77..6bcbddf215 100644
+--- a/packages/client/ui-workspace/README.md
++++ b/packages/client/ui-workspace/README.md
+@@ -45,6 +45,10 @@ Choose **Add workspace** and select a directory to register it and open a Sessio
+ 
+ Hierarchy uses registered canonical paths only. It does not scan for projects or resolve symlink aliases. Nesting does not change Session working directories, logs, or Workspace membership. Deleting a parent Workspace leaves its child Workspaces registered and places them under their next registered ancestor, or at the root.
+ 
++Workspaces marked `hidden` and their Sessions are omitted from the native sidebar in every grouping, archive filter, and search mode, and hidden Workspaces are omitted from the Workspace picker. Their membership, cached Session state, pin and archive status, saved order, and expansion remain intact; hiding never navigates away from an open Session. Hidden members do not become Ungrouped. A visible nested Workspace appears under its nearest visible ancestor, or at the root, while its registered ancestry remains unchanged.
++
++Implicit New Session and startup Workspace selection consider only visible Workspaces, including when the current Session belongs to a hidden Workspace. If an automatically selected Workspace becomes hidden while creation is pending, the result is not selected and no draft is written; the created Session remains intact. An all-hidden registry is not an empty installation. An explicitly opened or saved hidden Session retains its identity; a saved hidden blank is opened directly without reclaiming it through Session creation. Explicit Workspace ids passed to navigation and connection APIs remain valid.
++
+ ### Search
+ 
+ Collapsed search is one header action beside the view and add actions: activating it expands the field across the header. A non-blank query replaces either browsing mode with one flat result list — case-insensitive title and Workspace substring matches appear immediately, while a 250 ms debounced Host request adds ranked current-conversation content matches and snippets. Each new query aborts the preceding request; a failed content search leaves metadata matches visible without an additional warning. The list is capped at 20. Choosing an unarchived result clears and collapses search, opens the Session, and scrolls its row into view in the configured browsing mode; grouped browsing also expands its Workspace and the full Session list when required. Archived results offer Unarchive; attempting to open one explains that restriction without clearing the query or navigating.
+@@ -73,7 +77,7 @@ Grouped and flat Session rows show a clock mark when the Session has active sche
+ 
+ `ctx.uiWorkspace.openSession(target)` synchronously replaces the owned `mainView` reference and returns the main area to Conversation without waiting for `reference.ready`, so history loading renders inside the selected Session view. The target may be a known Session id or a durable direct-parent subagent address; an explicit address does not require a preloaded parent catalog. `openWorkspace(id, beforeOpen?, options?)` opens a Workspace blank only if no later navigation has superseded the request; an explicit New Session creates a fresh Session. `forkSession(id)` creates the child without navigating or superseding a pending navigation. The optional synchronous preparation callback runs after the target is retained and only for a current Workspace request, so superseded requests do not move composer drafts. Navigation or owner disposal suppresses the late UI commit, not the underlying Session creation. Startup restoration retains its main reference without changing the selected panel or cancelling a later navigation. Archiving the main Session releases its reference and clears the main selection. Selection failure leaves a global panel visible. Session rows read `usePanelInfo` to suppress their selected appearance while a global panel is active; search and directory-picker focus alone do not leave that panel.
+ 
+-Navigation and startup restoration obtain the selected Session's projections from its `follow`; neither issues a separate projection refresh for that Session or its parent, except that restoring a saved blank first reloads that Session's projections, because listed values are cached hints that can lag its log after an unclean Host exit.
++Navigation and startup restoration obtain the selected Session's projections from its `follow`; neither issues a separate projection refresh for that Session or its parent, except that restoring a saved blank in a visible Workspace first reloads that Session's projections, because listed values are cached hints that can lag its log after an unclean Host exit.
+ 
+ Workspace reopening and explicit draft preparation name the first eligible blank in catalog order when they ask the Host for a Session; startup restoration names the saved blank. The Host reuses the named blank under the requested preset, or under its default when the request names none, and creates another Session when the blank has started, left the Workspace, or is held by another writer; navigation opens the returned Session without trying other blanks. `startSession` with draft options, `openWorkspace`, and `connectWorkspace` accept `{ agentPreset }` for a flow that knows its preset before it starts, such as the creator entry; a connection joins the latest in-flight connection to its Workspace only when both request the same preset, so the latest request always reaches the Host. Startup restoration passes the preset the saved blank's log recorded, so the draft keeps that preset; when the Host reports the preset as missing (`agent-preset/not-found`) or failing to activate (`agent-preset/invalid`), restoration asks again without a preset and the draft continues under the Host default. Other failures abort the request: an explicit New Session or hero Workspace pick shows the failure as a transient notice quoting the Host's code and message (for example a preset that fails to mount) or, for a failure that is not a Host refusal, that failure's own message; a request a later navigation or owner disposal superseded raises no notice, and startup restoration reports only to the console. Released blanks retain their slash-command state when reused. Later navigation cancels a pending startup selection.
+ 
+diff --git a/packages/client/ui-workspace/README.zh.md b/packages/client/ui-workspace/README.zh.md
+index c655995453..3f45d5c36d 100644
+--- a/packages/client/ui-workspace/README.zh.md
++++ b/packages/client/ui-workspace/README.zh.md
+@@ -45,6 +45,10 @@ kind: "package-reference"
+ 
+ 层级仅使用已注册的规范路径，不扫描项目，也不解析符号链接别名。嵌套不会改变 Session 的工作目录、日志或 Workspace 归属。删除父 Workspace 后，子 Workspace 仍保持注册，并归入下一个已注册祖先；没有祖先时显示在根层级。
+ 
++标记为 `hidden` 的 Workspace 及其 Session 不显示在原生侧栏的任何分组、归档筛选或搜索模式中，隐藏 Workspace 也不出现在工作区选择器中。其归属、Session 缓存状态、置顶与归档状态、保存的顺序及展开偏好均保持不变；隐藏不会切走已打开的 Session。隐藏成员不会转入 Ungrouped。可见的嵌套 Workspace 显示在最近的可见祖先之下，没有可见祖先时显示在根层级，其注册层级保持不变。
++
++未明确指定工作区的新建 Session 与启动工作区选择，只考虑可见 Workspace；当前 Session 属于隐藏 Workspace 时也不继承它。自动选定的 Workspace 在创建等待期间变为隐藏时，不选择返回的会话，也不写入草稿；已经创建的 Session 保持不变。全部工作区隐藏不等于空安装。明确打开或已经保存的隐藏 Session 保留原身份；保存的隐藏空白会话直接打开，不经 Session 创建重新认领。显式传给导航和连接 API 的 Workspace id 仍然有效。
++
+ ### 搜索
+ 
+ 折叠搜索是视图和添加操作旁的一枚区头按钮：激活后输入框会扩展并占据区头。非空白查询会以单一扁平结果列表替代任一浏览模式——不区分大小写的标题和 Workspace 子串匹配项会立即显示，经 250 ms 防抖的 Host 请求则会加入经过排序的当前对话内容匹配项及其摘要片段。每次新查询都会中止前一个请求；内容搜索失败时，元数据匹配项仍会显示，不另给警告。列表最多显示 20 条结果。选择未归档结果会清空并收起搜索、打开 Session，并在当前浏览模式中将其行滚动到可见区域；分组浏览还会按需展开所属 Workspace 和完整 Session 列表。已归档结果提供取消归档操作；尝试打开时会说明限制，不清空查询，也不导航。
+@@ -73,7 +77,7 @@ Session 行渲染运行时的实时 `pendingInteraction` 分类：审批显示**
+ 
+ `ctx.uiWorkspace.openSession(target)` 会同步替换其拥有的 `mainView` reference，并让主区域返回 Conversation，而不等待 `reference.ready`，因此历史加载会显示在已经选中的 Session 视图内。目标可以是已知 Session id，也可以是持久的直接父子 subagent 地址；显式地址不要求预先加载 parent catalog。`openWorkspace(id, beforeOpen?, options?)` 仅在请求未被后续导航替代时打开工作区空白 Session；显式新会话操作会创建新的 Session。`forkSession(id)` 创建子会话，不导航，也不替代尚未完成的导航。可选的同步准备回调在目标被 retain 后执行，并且仅对仍有效的 Workspace 请求执行，因此过期请求不会搬移 composer 草稿。后续导航或 owner 释放会阻止晚到的 UI 提交，但不取消底层 Session 创建。启动恢复会 retain 主 reference，不改变已选面板，也不取消后续导航。归档主 Session 会释放其 reference 并清除主选择。选择失败时保留当前全局面板。Session 行读取 `usePanelInfo`，在全局面板活跃时不显示 Session 选中样式；仅把焦点移到搜索框或目录选择器不会离开该面板。
+ 
+-导航和启动恢复通过所选 Session 的 `follow` 获取投影，不会另行刷新该 Session 或其父会话的投影；例外是恢复已保存的空白会话时先重新加载该 Session 的投影，因为列表中的值是缓存提示，Host 非正常退出后可能落后于其日志。
++导航和启动恢复通过所选 Session 的 `follow` 获取投影，不会另行刷新该 Session 或其父会话的投影；例外是恢复可见 Workspace 中已保存的空白会话时先重新加载该 Session 的投影，因为列表中的值是缓存提示，Host 非正常退出后可能落后于其日志。
+ 
+ 重新打开工作区和显式准备草稿向 Host 请求 Session 时指明列表中第一个符合条件的空白会话；启动恢复指明已保存的空白会话。Host 以请求的 preset 复用该空白会话，请求未指明 preset 时使用其默认 preset；若该空白会话已开始、已离开该工作区或写锁被其他写者占用，Host 改为新建 Session；导航打开 Host 返回的 Session，不再尝试其他空白会话。带草稿选项的 `startSession`、`openWorkspace` 和 `connectWorkspace` 接受 `{ agentPreset }`，供开始前已确定 preset 的流程使用，例如创造模式入口；一次连接仅在与该工作区最近一次进行中的连接请求相同 preset 时与之合并，因此最新的请求总会到达 Host。启动恢复传入已保存空白会话日志记录的 preset，使草稿保留该 preset；当 Host 报告该 preset 不存在（`agent-preset/not-found`）或无法激活（`agent-preset/invalid`）时，启动恢复改为不带 preset 再请求一次，草稿在 Host 默认 preset 下继续。其他错误会中止请求：显式新建会话或在 hero 中选择工作区时，失败以短暂提示展示，引用 Host 的错误码和消息（例如 preset 挂载失败），非 Host 拒绝的失败则显示其自身消息；已被后续导航或 owner 销毁取代的请求不弹提示，启动恢复仍只报告到控制台。已释放的空白会话被复用时保留 slash 命令状态。后续导航会取消尚未完成的启动选择。
+ 
+diff --git a/packages/client/ui-workspace/src/client/WorkspacePicker.tsx b/packages/client/ui-workspace/src/client/WorkspacePicker.tsx
+index a8e40b7889..38ca851029 100644
+--- a/packages/client/ui-workspace/src/client/WorkspacePicker.tsx
++++ b/packages/client/ui-workspace/src/client/WorkspacePicker.tsx
+@@ -74,7 +74,7 @@ export function WorkspacePickFlow({
+   selectedId,
+ }: WorkspacePickFlowProps) {
+   const workspaceSnapshot = useWorkspaces(state => state)
+-  const workspaces = workspaceSnapshot.items
++  const workspaces = workspaceSnapshot.items.filter(workspace => workspace.hidden !== true)
+   const getAnchorRect = useCallback(
+     () => anchorRef?.current?.getBoundingClientRect() ?? null,
+     [anchorRef],
+diff --git a/packages/client/ui-workspace/src/client/navigation.ts b/packages/client/ui-workspace/src/client/navigation.ts
+index 9c8fa97760..acb28c0b33 100644
+--- a/packages/client/ui-workspace/src/client/navigation.ts
++++ b/packages/client/ui-workspace/src/client/navigation.ts
+@@ -81,7 +81,7 @@ export interface UiWorkspace {
+   /**
+    * Create a fresh Session, or reuse a blank when preparing an explicit draft. A creation the Host
+    * refuses is shown through the Workspace notice and leaves the selection as it was.
+-   * @param workspaceId - explicit target; absent inherits the current or most recent Workspace.
++   * @param workspaceId - explicit target; absent inherits the current or most recent visible Workspace.
+    * @param options - initial content and the reused blank's preset; existing text or attachments
+    * are preserved unless clearPreviousDraft is true.
+    */
+@@ -261,6 +261,9 @@ class UiWorkspaceService extends Service implements UiWorkspace {
+    */
+   private async restoreBlank(workspaceId: WorkspaceId, sessionId: SessionId): Promise<SessionId> {
+     await this.sessions.refreshProjections(sessionId)
++    if (this.workspaces.list.getSnapshot().items.some(item => item.workspaceId === workspaceId && item.hidden === true)) {
++      return sessionId
++    }
+     const recorded = this.sessions.list.getSnapshot().byId[sessionId]?.projectionValues?.agentPreset
+     const request = { workspaceId, sessionId }
+     if (typeof recorded !== 'string') return this.createNamed(request)
+@@ -269,6 +272,9 @@ class UiWorkspaceService extends Service implements UiWorkspace {
+     } catch (error: unknown) {
+       const code = sessionCreateErrorOf(error)?.rpcError.code
+       if (code !== 'agent-preset/not-found' && code !== 'agent-preset/invalid') throw error
++      if (this.workspaces.list.getSnapshot().items.some(item => item.workspaceId === workspaceId && item.hidden === true)) {
++        return sessionId
++      }
+       return this.createNamed(request)
+     }
+   }
+@@ -289,8 +295,10 @@ class UiWorkspaceService extends Service implements UiWorkspace {
+     workspaceId: WorkspaceId,
+     beforeOpen: ((sessionId: SessionId) => void) | undefined,
+     reuse: Pick<StartSessionOptions, 'agentPreset'> | undefined,
++    visibleOnly = false,
+   ): Promise<void> {
+     const navigation = AbortSignal.any([this.ctx.layout.beginNavigation(), this.lifetime.signal])
++    if (visibleOnly && !this.workspaceVisible(workspaceId)) return
+     let sessionId: SessionId
+     try {
+       sessionId = await this.connectBlank(workspaceId, reuse)
+@@ -300,7 +308,7 @@ class UiWorkspaceService extends Service implements UiWorkspace {
+       if (!navigation.aborted) this.notify({ kind: 'createFailed', message: creationFailureMessage(error) })
+       throw error
+     }
+-    if (navigation.aborted) return
++    if (navigation.aborted || visibleOnly && !this.workspaceVisible(workspaceId)) return
+     this.replaceMain(sessionId, navigation, 'reveal', beforeOpen)
+   }
+ 
+@@ -327,7 +335,7 @@ class UiWorkspaceService extends Service implements UiWorkspace {
+     const current = this.mainReference?.sessionId
+     const currentWorkspaceId = current === undefined
+       ? undefined
+-      : workspace.items.find(item => item.sessionIds.includes(current))?.workspaceId
++      : workspace.items.find(item => item.hidden !== true && item.sessionIds.includes(current))?.workspaceId
+     const recent = workspace.phase === 'ready' && sessions.phase === 'ready'
+       ? recentWorkspace(workspace.items, sessions.byId)
+       : undefined
+@@ -340,13 +348,15 @@ class UiWorkspaceService extends Service implements UiWorkspace {
+       this.clearMain()
+       return
+     }
+-    const opening = draftOptions === undefined
+-      ? this.openWorkspaceSession(target, undefined, undefined)
+-      : this.openWorkspace(target, initializeDraft ? (id) => {
+-        const binding = this.sessions.binding(id)
+-        if (binding === undefined) this.draftPreparationFailed()
+-        this.prepareDraft(binding, draftOptions)
+-      } : undefined, agentPreset === undefined ? {} : { agentPreset })
++    const beforeOpen = initializeDraft ? (id: SessionId) => {
++      const binding = this.sessions.binding(id)
++      if (binding === undefined) this.draftPreparationFailed()
++      this.prepareDraft(binding, draftOptions)
++    } : undefined
++    const reuse = draftOptions === undefined ? undefined : agentPreset === undefined ? {} : { agentPreset }
++    const opening = draftOptions !== undefined && workspaceId !== undefined
++      ? this.openWorkspace(target, beforeOpen, reuse)
++      : this.openWorkspaceSession(target, beforeOpen, reuse, workspaceId === undefined)
+     void opening.catch(
+       (reason: unknown) => { console.warn('new session failed:', reason) },
+     )
+@@ -448,28 +458,37 @@ class UiWorkspaceService extends Service implements UiWorkspace {
+     const summary = saved.sessionId === undefined ? undefined : sessions.byId[saved.sessionId]
+     const workspace = summary === undefined ? undefined
+       : workspaces.items.find(item => item.sessionIds.includes(summary.id))
+-    if (summary !== undefined && (!summary.blank || workspace === undefined)) {
++    if (summary !== undefined && (!summary.blank || workspace === undefined
++      || workspace.hidden === true && !workspaces.archivedSessionIds.includes(summary.id))) {
+       this.replaceMain(summary.id, this.lifetime.signal, 'preserve')
+       return
+     }
+     const navigation = AbortSignal.any([this.ctx.layout.beginNavigation(), this.lifetime.signal])
+     let sessionId: SessionId | undefined
+-    if (summary !== undefined && workspace !== undefined && summary.cwd === workspace.path
++    if (summary !== undefined && workspace !== undefined && workspace.hidden !== true && summary.cwd === workspace.path
+       && !workspaces.archivedSessionIds.includes(summary.id)) {
+       sessionId = await this.restoreBlank(workspace.workspaceId, summary.id)
+     }
+-    let target = workspace?.workspaceId ?? recentWorkspace(workspaces.items, sessions.byId)
++    const restoringSaved = sessionId !== undefined
++    let target = (workspace?.hidden === true ? undefined : workspace?.workspaceId) ?? recentWorkspace(workspaces.items, sessions.byId)
+     if (target === undefined && workspaces.items.length === 0 && sessions.ids.length === 0) {
+       const prepared = await this.initializeDefaultWorkspace(navigation)
+       if (navigation.aborted) return
+       target = prepared?.workspaceId
+     }
+-    if (sessionId === undefined && target !== undefined) sessionId = await this.connectWorkspace(target)
+-    if (sessionId !== undefined && !navigation.aborted) {
++    if (sessionId === undefined && target !== undefined && this.workspaceVisible(target)) {
++      sessionId = await this.connectWorkspace(target)
++    }
++    if (sessionId !== undefined && !navigation.aborted
++      && (restoringSaved || target !== undefined && this.workspaceVisible(target))) {
+       this.replaceMain(sessionId, navigation, 'preserve')
+     }
+   }
+ 
++  private workspaceVisible(workspaceId: WorkspaceId): boolean {
++    return this.workspaces.list.getSnapshot().items.some(item => item.workspaceId === workspaceId && item.hidden !== true)
++  }
++
+   private async initializeDefaultWorkspace(signal: AbortSignal): Promise<WorkspaceView | undefined> {
+     try {
+       return await this.workspaces.initializeDefault(signal)
+@@ -557,6 +576,7 @@ function recentWorkspace(
+   let selected: WorkspaceId | undefined
+   let selectedTime = Number.NEGATIVE_INFINITY
+   for (const workspace of workspaces) {
++    if (workspace.hidden === true) continue
+     let latest = Number.NEGATIVE_INFINITY
+     for (const sessionId of workspace.sessionIds) {
+       const session = sessions[sessionId]
+diff --git a/packages/client/ui-workspace/src/client/rows/WorkspaceBrowser.tsx b/packages/client/ui-workspace/src/client/rows/WorkspaceBrowser.tsx
+index df871654ee..56c56291b6 100644
+--- a/packages/client/ui-workspace/src/client/rows/WorkspaceBrowser.tsx
++++ b/packages/client/ui-workspace/src/client/rows/WorkspaceBrowser.tsx
+@@ -687,7 +687,7 @@ function SessionTree({
+ 
+ /** The flat "In one list" body: every session is one draggable top-level row. */
+ function FlatList({
+-  list, sessionIds, rowState, onLeaveArchivedOnly, useSessionStatus, open, onSessionRenameRequest,
++  list, sessionIds, workspaces, rowState, onLeaveArchivedOnly, useSessionStatus, open, onSessionRenameRequest,
+   usePanelInfo, setSessionOrder, workspaceReady, animationResetKey,
+   revealSessionId, onSessionRevealed, renderSlot, t,
+ }: Pick<
+@@ -699,6 +699,7 @@ function FlatList({
+   | 'usePanelInfo'
+   | 'setSessionOrder'
+   | 'workspaceReady'
++  | 'workspaces'
+   | 'animationResetKey'
+   | 'revealSessionId'
+   | 'onSessionRevealed'
+@@ -712,8 +713,8 @@ function FlatList({
+   const panelActive = usePanelInfo(info => info.activePanelId !== null)
+   const statuses = useSessionStatus(s => s)
+   const rows = useMemo(
+-    () => deriveFlat(list, sessionIds, rowState, statuses),
+-    [list, sessionIds, rowState, statuses],
++    () => deriveFlat(list, sessionIds, rowState, statuses, workspaces),
++    [list, sessionIds, rowState, statuses, workspaces],
+   )
+   const [drag, setDrag] = useState<DragState | null>(null)
+   const dropCommitted = useRef(false)
+@@ -1423,6 +1424,7 @@ export function WorkspaceBrowser({
+                 usePanelInfo={usePanelInfo}
+                 list={list}
+                 sessionIds={orderedFlatSessionIds}
++                workspaces={workspaces}
+                 rowState={rowState}
+                 onLeaveArchivedOnly={leaveArchivedOnly}
+                 workspaceReady={workspaceReady}
+diff --git a/packages/client/ui-workspace/src/client/tree.ts b/packages/client/ui-workspace/src/client/tree.ts
+index eb67d0ebe3..71a97426aa 100644
+--- a/packages/client/ui-workspace/src/client/tree.ts
++++ b/packages/client/ui-workspace/src/client/tree.ts
+@@ -1,7 +1,8 @@
+ /**
+  * Derives the workspace browser tree from caller-projected Workspace and
+- * Session order. Unassigned Sessions trail under Ungrouped; only the selected
+- * blank Session remains visible.
++ * Session order. Hidden Workspaces retain membership without contributing
++ * rows. Unassigned Sessions trail under Ungrouped; only the selected blank
++ * Session remains visible.
+  */
+ import {
+   type SessionListState, type SessionSearchResultItem, type SessionSummary,
+@@ -342,11 +343,12 @@ function groupByWorkspace(
+   const groups: Group[] = []
+   const accounted = new Set<SessionId>()
+   for (const workspace of workspaces) {
++    for (const id of workspace.sessionIds) accounted.add(id)
++    if (workspace.hidden === true) continue
+     const members: SessionSummary[] = []
+     for (const id of workspace.sessionIds) {
+       const summary = list.byId[id]
+       if (summary === undefined) continue // account may lead the list pull; the row appears when the summary lands
+-      accounted.add(id)
+       if (!sessionVisible(summary, current, archived, archivedFilter)) continue
+       members.push(summary)
+     }
+@@ -420,7 +422,8 @@ function sessionNode(
+ /**
+  * Derive the workspace browser groups with every session as a top-level row.
+  *
+- * Every group shows, except that the archived-only filter drops groups
++ * Hidden Workspaces and their members contribute no rows. Every other group
++ * shows, except that the archived-only filter drops groups
+  * without visible members; sessions populate under expanded groups with
+  * pinned rows leading in the selected local order. Blank sessions are
+  * excluded except for the selected provisional New Session row; archived
+@@ -497,13 +500,19 @@ export function visibleSessionIds(
+   })
+ }
+ 
++/** Session membership suppressed from ordinary navigation by Workspace visibility. */
++function hiddenWorkspaceSessionIds(workspaces: readonly WorkspaceView[]): ReadonlySet<SessionId> {
++  return new Set(workspaces.flatMap(workspace => workspace.hidden === true ? workspace.sessionIds : []))
++}
++
+ /**
+  * Derive flat rows from the browser's complete ordered Session ids, with
+- * pinned rows fronted ahead of the supplied order.
++ * pinned rows fronted ahead of the supplied order and hidden Workspace members omitted.
+  * @param list - sessions list snapshot used to select the ids.
+  * @param sessionIds - complete account members in the selected order, including hidden archives.
+  * @param rowState - registry-global pin and archive sets plus the archived filter.
+  * @param statuses - unified UI status by Session.
++ * @param workspaces - complete Workspace membership and visibility.
+  * @returns flat rows in sectioned order with current status indicators.
+  */
+ export function deriveFlat(
+@@ -511,11 +520,14 @@ export function deriveFlat(
+   sessionIds: readonly SessionId[],
+   rowState: SessionRowState,
+   statuses: SessionStatuses,
++  workspaces: readonly WorkspaceView[],
+ ): SessionNode[] {
+   const archived = new Set(rowState.archivedSessionIds)
+   const pinned = new Set(rowState.pinnedSessionIds)
+   const current = mainSessionId(list)
++  const hidden = hiddenWorkspaceSessionIds(workspaces)
+   const members = sessionIds.flatMap((id) => {
++    if (hidden.has(id)) return []
+     const session = list.byId[id]
+     return session !== undefined && sessionVisible(session, current, archived, rowState.archivedFilter)
+       ? [session]
+@@ -529,6 +541,7 @@ export function deriveFlat(
+  * Merge immediate title/Workspace substring matches with ranked Host content
+  * matches. Local rows lead newest-first, content-only rows retain backend
+  * order, and duplicate sessions receive the backend snippet in place.
++ * Hidden Workspace members never contribute local or content matches.
+  * @param list - session metadata authority.
+  * @param workspaces - Workspace membership and display labels.
+  * @param query - caller text; surrounding whitespace is ignored.
+@@ -553,6 +566,7 @@ export function deriveSearchResults(
+   if (q === '') return { items: [], hasMore: false }
+   const archived = new Set(archivedSessionIds)
+   const current = mainSessionId(list)
++  const hidden = hiddenWorkspaceSessionIds(workspaces)
+ 
+   const workspaceBySession = new Map<SessionId, string>()
+   for (const workspace of workspaces) {
+@@ -569,6 +583,7 @@ export function deriveSearchResults(
+ 
+   const local: SessionSummary[] = []
+   for (const id of list.ids) {
++    if (hidden.has(id)) continue
+     const summary = list.byId[id]
+     // Blank placeholders never match a query (their canonical title displays
+     // localized, so matching it would tie search to one language).
+@@ -593,6 +608,7 @@ export function deriveSearchResults(
+   }
+   for (const summary of orderedLocal) include(summary)
+   for (const item of content.items) {
++    if (hidden.has(item.sessionId)) continue
+     const summary = list.byId[item.sessionId]
+     if (summary !== undefined && !summary.blank && sessionVisible(summary, current, archived, archivedFilter)) include(summary)
+   }
+diff --git a/packages/client/ui-workspace/tests/tree.client.spec.ts b/packages/client/ui-workspace/tests/tree.client.spec.ts
+index 9fb549c5bd..1d2a324019 100644
+--- a/packages/client/ui-workspace/tests/tree.client.spec.ts
++++ b/packages/client/ui-workspace/tests/tree.client.spec.ts
+@@ -65,6 +65,61 @@ const rowState = (options: {
+ })
+ const noRows = rowState()
+ 
++describe('Workspace visibility', () => {
++  it.each(['default', 'show', 'only'] as const)('omits hidden groups and their members from the %s view without making them Ungrouped', (archivedFilter) => {
++    const sessions = withMain(list(
++      summary('private-pin', 40), summary('private-archive', 30),
++      { ...summary('private-blank', 50), blank: true },
++      summary('public', 20), summary('loose', 10),
++    ), sid('private-blank'))
++    const hidden = {
++      ...workspace('private', ['private-pin', 'private-archive', 'private-blank', 'pending']),
++      hidden: true as const,
++    }
++    const workspaces = [hidden, workspace('public-workspace', ['public'])]
++    const groups = deriveGroups(sessions, workspaces, rowState({
++      pinned: ['private-pin'], archived: ['private-archive', 'public', 'loose'], archivedFilter,
++    }), noAttention, view(['private', 'public-workspace', UNGROUPED_KEY]))
++
++    expect(groups.map(group => group.key)).toEqual(archivedFilter === 'default' ? ['public-workspace'] : ['public-workspace', UNGROUPED_KEY])
++    expect(groups.flatMap(group => group.sessions.map(session => session.id)))
++      .toEqual(archivedFilter === 'default' ? [] : ['public', 'loose'])
++    expect(deriveFlat(sessions, sessions.ids, rowState({
++      pinned: ['private-pin'], archived: ['private-archive', 'public', 'loose'], archivedFilter,
++    }), noAttention, workspaces).map(session => session.id))
++      .toEqual(archivedFilter === 'default' ? [] : ['public', 'loose'])
++    expect(owningGroupKey(workspaces, sid('private-pin'))).toBe('private')
++    expect(sessionMemberIds(sessions)).toEqual(sessions.ids)
++    expect(hidden.sessionIds).toEqual(['private-pin', 'private-archive', 'private-blank', 'pending'])
++  })
++
++  it('keeps late-arriving hidden members out of Ungrouped', () => {
++    const workspaces = [{ ...workspace('private', ['pending']), hidden: true as const }]
++    const initial = list(summary('loose', 10))
++    const next = list(summary('pending', 20), summary('loose', 10))
++    for (const sessions of [initial, next]) {
++      const groups = deriveGroups(sessions, workspaces, noRows, noAttention, view([UNGROUPED_KEY]))
++      expect(groups.map(group => group.key)).toEqual([UNGROUPED_KEY])
++      expect(groups.flatMap(group => group.sessions.map(session => session.id))).toEqual(['loose'])
++    }
++  })
++
++  it('excludes hidden members from local title, Workspace title, and Host content search', () => {
++    const sessions = list(summary('private-title-hit', 50), summary('private-body', 40), summary('public-title-hit', 30))
++    const workspaces = [{ ...workspace('private', ['private-title-hit', 'private-body'], 'title-hit'), hidden: true as const }]
++    const results = deriveSearchResults(sessions, workspaces, 'title-hit', [], 'show', noAttention, {
++      items: [
++        { sessionId: sid('private-body'), snippet: 'title-hit in private body' },
++        { sessionId: sid('public-title-hit'), snippet: 'title-hit in public body' },
++      ], hasMore: false,
++    }, 20)
++
++    expect(results.items.map(item => [item.id, item.snippet]))
++      .toEqual([['public-title-hit', 'title-hit in public body']])
++    expect(results.hasMore).toBe(false)
++  })
++})
++
+ describe('owningGroupKey', () => {
+   it('returns the owning Workspace id or the Ungrouped key', () => {
+     const workspaces = [workspace('first', ['owned'])]
+@@ -83,7 +138,7 @@ describe('Session ordering', () => {
+     const order = pinCurrentBlank(sessions.ids, sid('blank'))
+     const state = rowState({ pinned: ['pin'] })
+     const rows = mode === 'flat'
+-      ? deriveFlat(sessions, order, state, noAttention)
++      ? deriveFlat(sessions, order, state, noAttention, [])
+       : deriveGroups(
+         sessions,
+         mode === 'workspace' ? [workspace('alpha', order)] : [],
+@@ -112,7 +167,7 @@ describe('Session ordering', () => {
+       ],
+     }
+     const order = orderByRecency(sessions.ids, sessions.byId)
+-    expect(deriveFlat(sessions, order, state, noAttention).map(row => row.id))
++    expect(deriveFlat(sessions, order, state, noAttention, []).map(row => row.id))
+       .toEqual([sid('fresh-pin'), sid('stale-pin'), sid('plain')])
+   })
+ 
+@@ -189,7 +244,7 @@ describe('Session ordering', () => {
+     const state = rowState({ pinned: ['source', 'other-pin'] })
+     const order = reconcileManualOrder(sessions.ids, ['source', 'other-pin', 'ordinary'], sessions.byId, state)
+     const rows = mode === 'flat'
+-      ? deriveFlat(sessions, order, state, noAttention)
++      ? deriveFlat(sessions, order, state, noAttention, [])
+       : deriveGroups(
+         sessions, mode === 'workspace' ? [workspace('alpha', order)] : [], state, noAttention,
+         view([mode === 'workspace' ? 'alpha' : UNGROUPED_KEY], order),
+@@ -201,9 +256,9 @@ describe('Session ordering', () => {
+     const sessions = list(summary('plain', 1), summary('archived', 2))
+     const members = sessionMemberIds(sessions)
+     expect(members).toEqual(['plain', 'archived'])
+-    expect(deriveFlat(sessions, members, rowState({ archived: ['archived'] }), noAttention).map(row => row.id))
++    expect(deriveFlat(sessions, members, rowState({ archived: ['archived'] }), noAttention, []).map(row => row.id))
+       .toEqual(['plain'])
+-    expect(deriveFlat(sessions, members, rowState({ archived: ['archived'], archivedFilter: 'only' }), noAttention)
++    expect(deriveFlat(sessions, members, rowState({ archived: ['archived'], archivedFilter: 'only' }), noAttention, [])
+       .map(row => row.id)).toEqual(['archived'])
+     expect(members).toEqual(['plain', 'archived'])
+   })
+@@ -236,7 +291,7 @@ describe('deriveGroups', () => {
+       sessions, [workspace('project', ['awaiting'])], noRows, attention, view(['project']),
+     )
+     expect(grouped[0]!.sessions[0]).toMatchObject({ pendingInteraction: 'plan-review', running: true })
+-    expect(deriveFlat(sessions, visibleSessionIds(sessions, noArchive, 'default'), noRows, attention)[0])
++    expect(deriveFlat(sessions, visibleSessionIds(sessions, noArchive, 'default'), noRows, attention, [])[0])
+       .toMatchObject({ pendingInteraction: 'plan-review', running: true })
+   })
+ 
+@@ -249,7 +304,7 @@ describe('deriveGroups', () => {
+         status({ key: `${kind}:1`, kind, sessionId: awaiting.id } as SessionPendingInteraction),
+       ]])
+ 
+-      expect(deriveFlat(list(awaiting), [awaiting.id], noRows, attention)[0]?.pendingInteraction).toBe(kind)
++      expect(deriveFlat(list(awaiting), [awaiting.id], noRows, attention, [])[0]?.pendingInteraction).toBe(kind)
+     },
+   )
+ 
+@@ -313,7 +368,7 @@ describe('deriveGroups', () => {
+     const plainNode = groups[0]!.sessions.find(session => session.id === plain.id)!
+     expect(doneNode.completed).toBe(true)
+     expect(plainNode.completed).toBe(false)
+-    expect(deriveFlat(sessions, visibleSessionIds(sessions, noArchive, 'default'), noRows, statuses)
++    expect(deriveFlat(sessions, visibleSessionIds(sessions, noArchive, 'default'), noRows, statuses, [])
+       .find(node => node.id === done.id)!.completed).toBe(true)
+     const search = deriveSearchResults(
+       sessions, [workspace('first', ['done', 'plain'])], 'done', noArchive, 'default',
+@@ -357,7 +412,7 @@ describe('deriveGroups', () => {
+     expect(groups[0]!.sessionCount).toBe(2)
+     expect(groups[0]!.sessions[0]).toMatchObject({ running: false, runningSubagentCount: 1 })
+     expect(groups[0]!.sessions[1]).toMatchObject({ running: false, runningSubagentCount: 1 })
+-    expect(deriveFlat(sessions, visibleSessionIds(sessions, noArchive, 'default'), noRows, noAttention)
++    expect(deriveFlat(sessions, visibleSessionIds(sessions, noArchive, 'default'), noRows, noAttention, [])
+       .map(node => [node.id, node.runningSubagentCount])).toEqual([
+       [parent.id, 1], [fork.id, 1],
+     ])
+@@ -385,7 +440,7 @@ describe('deriveGroups', () => {
+     ])
+     const counts = (snapshot: SessionStatusSnapshot) => [
+       deriveGroups(sessions, [workspace('first', ['parent'])], noRows, snapshot, view(['first']))[0]!.sessions[0]!.runningSubagentCount,
+-      deriveFlat(sessions, [parent.id], noRows, snapshot)[0]!.runningSubagentCount,
++      deriveFlat(sessions, [parent.id], noRows, snapshot, [])[0]!.runningSubagentCount,
+       deriveSearchResults(sessions, [], 'parent', noArchive, 'default', snapshot, { items: [], hasMore: false }, 10).items[0]!.runningSubagentCount,
+     ]
+     expect(counts(statuses)).toEqual([1, 1, 1])
+@@ -527,7 +582,7 @@ describe('deriveFlat', () => {
+     const child = { ...summary('child', 30), parentId: parent.id }
+     const tieB = summary('tie-b', 20)
+     const tieA = summary('tie-a', 20)
+-    const rows = deriveFlat(list(parent, child, tieB, tieA), [parent.id, tieA.id, child.id, tieB.id], noRows, noAttention)
++    const rows = deriveFlat(list(parent, child, tieB, tieA), [parent.id, tieA.id, child.id, tieB.id], noRows, noAttention, [])
+     expect(rows.map(row => row.id)).toEqual([parent.id, tieA.id, child.id, tieB.id])
+   })
+ 
+@@ -548,7 +603,7 @@ describe('deriveFlat', () => {
+     const currentBlank = { ...summary('current-blank', 9), blank: true, retainedBy: { mainView: 1 } }
+     const staleBlank = { ...summary('stale-blank', 8), blank: true }
+     const sessions = list(currentBlank, summary('real', 1), staleBlank)
+-    const rows = deriveFlat(sessions, visibleSessionIds(sessions, noArchive, 'default'), noRows, noAttention)
++    const rows = deriveFlat(sessions, visibleSessionIds(sessions, noArchive, 'default'), noRows, noAttention, [])
+     expect(rows.map(row => row.id)).toEqual([currentBlank.id, sid('real')])
+     expect(rows.map(row => row.title)).toEqual(['', 'real'])
+     expect(rows.map(row => row.blank)).toEqual([true, false])
+@@ -575,7 +630,7 @@ describe('deriveFlat', () => {
+   it('leads the flat list with pinned rows in the supplied order', () => {
+     const sessions = list(summary('a', 2), summary('b', 2), summary('c', 2), summary('d', 3))
+     const rows = deriveFlat(
+-      sessions, [sid('b'), sid('a'), sid('c'), sid('d')], rowState({ pinned: ['c', 'b', 'a'] }), noAttention,
++      sessions, [sid('b'), sid('a'), sid('c'), sid('d')], rowState({ pinned: ['c', 'b', 'a'] }), noAttention, [],
+     )
+     expect(rows.map(row => [row.id, row.pinned])).toEqual([
+       [sid('b'), true], [sid('a'), true], [sid('c'), true], [sid('d'), false],
+@@ -883,5 +938,5 @@ it('leaves unnamed history titles empty for locale-owned row labels', () => {
+   delete item.title
+   item.displayTitle = 'Default workspace'
+   const sessions = list(item)
+-  expect(deriveFlat(sessions, [item.id], noRows, noAttention)[0]?.title).toBe('')
++  expect(deriveFlat(sessions, [item.id], noRows, noAttention, [])[0]?.title).toBe('')
+ })
+diff --git a/packages/client/ui-workspace/tests/workspace-browser.client.spec.tsx b/packages/client/ui-workspace/tests/workspace-browser.client.spec.tsx
+index 4b62826cbc..46c1df6402 100644
+--- a/packages/client/ui-workspace/tests/workspace-browser.client.spec.tsx
++++ b/packages/client/ui-workspace/tests/workspace-browser.client.spec.tsx
+@@ -151,7 +151,125 @@ function rerender(b: ReturnType<typeof mount>, overrides: Partial<WorkspaceBrows
+   b.view.rerender(<WorkspaceBrowser {...b.props} />)
+ }
+ 
++function sessionRowTitles() {
++  return screen.getAllByRole('treeitem')
++    .filter(row => row.getAttribute('aria-expanded') === null)
++    .map(row => row.querySelector('[class*="title"]')?.textContent)
++}
++
+ describe('WorkspaceBrowser', () => {
++  it.each(['workspace', 'workspace-tree', 'flat'] as const)('hides private Workspace rows in %s without changing membership or saved positions', (groupBy) => {
++    const preferences = createWorkspaceViewStore().create()
++    preferences.actions.setGroupBy(groupBy)
++    preferences.actions.setGroupExpanded('private', true)
++    preferences.actions.setGroupExpanded('public', true)
++    preferences.actions.setGroupExpanded(UNGROUPED_KEY, true)
++    preferences.actions.setSessionOrder('private', ['private-pin', 'private-old'], {})
++    preferences.actions.setSessionOrder(FLAT_SESSION_ORDER_KEY, ['public-session', 'private-pin', 'private-old', 'loose'], {})
++    const privateWorkspace = workspace('private', ['private-old', 'private-pin'], 'Private Workspace')
++    const publicWorkspace = workspace('public', ['public-session'], 'Public Workspace')
++    const sessions = sessionState([
++      summary('private-old', 90), summary('private-pin', 100), summary('public-session', 30), summary('loose', 20),
++    ], { main: sid('private-pin') })
++    const b = mount({
++      useSessions: hook(sessions),
++      useWorkspaces: hook(workspaceState([privateWorkspace, publicWorkspace], [], [sid('private-pin')])),
++    })
++    const rows = sessionRowTitles
++    const beforeRows = rows()
++    const beforeView = b.store.getSnapshot()
++    const beforeSessions = structuredClone(sessions)
++
++    rerender(b, {
++      useWorkspaces: hook(workspaceState([{ ...privateWorkspace, hidden: true }, publicWorkspace], [], [sid('private-pin')])),
++    })
++    expect(rows()).toEqual(['public-session', 'loose'])
++    expect(screen.queryByText('Private Workspace')).toBeNull()
++    expect(b.store.getSnapshot()).toEqual(beforeView)
++    expect(sessions).toEqual(beforeSessions)
++    expect(b.props.open).not.toHaveBeenCalled()
++    expect(b.props.startSession).not.toHaveBeenCalled()
++
++    rerender(b, { useWorkspaces: hook(workspaceState([privateWorkspace, publicWorkspace], [], [sid('private-pin')])) })
++    expect(rows()).toEqual(beforeRows)
++    expect(b.store.getSnapshot()).toEqual(beforeView)
++  })
++
++  it('keeps a visible nested Workspace reachable when its registered parent is hidden', () => {
++    const preferences = createWorkspaceViewStore().create()
++    preferences.actions.setGroupBy('workspace-tree')
++    preferences.actions.setGroupExpanded('private', false)
++    preferences.actions.setGroupExpanded('child', true)
++    const parent = { ...workspace('private', ['parent-session'], 'Private Workspace'), hidden: true as const }
++    const child = { ...workspace('child', ['child-session'], 'Child Workspace'), path: '/projects/private/child' }
++    mount({
++      useSessions: hook(sessionState([summary('parent-session', 30), summary('child-session', 20)])),
++      useWorkspaces: hook(workspaceState([parent, child])),
++    })
++
++    expect(screen.queryByText('Private Workspace')).toBeNull()
++    expect(screen.queryByText('parent-session')).toBeNull()
++    expect(screen.getByText('Child Workspace')).toBeTruthy()
++    expect(screen.getByText('child-session')).toBeTruthy()
++  })
++
++  it('keeps hidden members in the complete saved flat order when visible rows are dragged', () => {
++    const preferences = createWorkspaceViewStore().create()
++    preferences.actions.setGroupBy('flat')
++    preferences.actions.setSessionOrder(FLAT_SESSION_ORDER_KEY, ['first', 'private-session', 'last'], {})
++    const b = mount({
++      useSessions: hook(sessionState([summary('first', 30), summary('private-session', 20), summary('last', 10)])),
++      useWorkspaces: hook(workspaceState([{ ...workspace('private', ['private-session']), hidden: true }])),
++    })
++    expect(screen.queryByText('private-session')).toBeNull()
++    const source = screen.getByText('last').closest('[role="treeitem"]') as HTMLElement
++    const target = screen.getByText('first').closest('[role="treeitem"]') as HTMLElement
++    target.getBoundingClientRect = () => ({
++      top: 100, bottom: 134, left: 0, right: 200, width: 200, height: 34, x: 0, y: 100, toJSON: () => ({}),
++    })
++    fireEvent.dragStart(source, { dataTransfer: dragData() })
++    fireDrag(target, 'drop', 102)
++
++    expect(b.store.getSnapshot().sessionOrderByAccount[FLAT_SESSION_ORDER_KEY])
++      .toEqual(['last', 'first', 'private-session'])
++    rerender(b, { useWorkspaces: hook(workspaceState([workspace('private', ['private-session'])])) })
++    expect(screen.getAllByRole('treeitem').map(row => row.querySelector('[class*="title"]')?.textContent))
++      .toEqual(['last', 'first', 'private-session'])
++  })
++
++  it('withdraws local and Host search hits immediately when their Workspace is hidden', async () => {
++    vi.useFakeTimers()
++    try {
++      const privateWorkspace = workspace('private', ['private-needle', 'private-body'])
++      const b = mount({
++        useSessions: hook(sessionState([
++          summary('private-needle', 40), summary('private-body', 30), summary('public-needle', 20),
++        ])),
++        useWorkspaces: hook(workspaceState([privateWorkspace])),
++        searchSessions: vi.fn(async () => ({
++          items: [{ sessionId: sid('private-body'), snippet: 'needle in private body' }], hasMore: false,
++        })),
++      })
++      fireEvent.change(screen.getByPlaceholderText('搜索会话名称'), { target: { value: 'needle' } })
++      await act(async () => { await vi.advanceTimersByTimeAsync(250) })
++      expect(screen.getByText('private-needle')).toBeTruthy()
++      expect(screen.getByText('private-body')).toBeTruthy()
++
++      rerender(b, { useWorkspaces: hook(workspaceState([{ ...privateWorkspace, hidden: true }])) })
++      expect(screen.queryByText('private-needle')).toBeNull()
++      expect(screen.queryByText('private-body')).toBeNull()
++      expect(screen.queryByText('needle in private body')).toBeNull()
++      expect(screen.getByText('public-needle')).toBeTruthy()
++      expect(b.props.open).not.toHaveBeenCalled()
++
++      rerender(b, { useWorkspaces: hook(workspaceState([privateWorkspace])) })
++      expect(screen.getByText('private-needle')).toBeTruthy()
++      expect(screen.getByText('private-body')).toBeTruthy()
++    } finally {
++      vi.useRealTimers()
++    }
++  })
++
+   it.each(['workspace', 'flat', 'ungrouped'] as const)('keeps %s recency independent of arrival order and saved manual positions', (mode) => {
+     localStorage.clear()
+     const preferences = createWorkspaceViewStore().create()
+@@ -1146,9 +1264,7 @@ describe('WorkspaceBrowser', () => {
+           [sid('p'), sid('q')],
+         )),
+       })
+-      const names = () => screen.getAllByRole('treeitem')
+-        .filter(row => row.getAttribute('aria-expanded') === null)
+-        .map(row => row.querySelector('[class*="title"]')?.textContent)
++      const names = sessionRowTitles
+       expect(names()).toEqual(['p', 'q', 'a', 'b', 'c'])
+       expect(b.store.getSnapshot().sessionOrderByAccount[account]).toEqual(saved)
+ 
+diff --git a/packages/client/ui-workspace/tests/workspace-picker.client.spec.tsx b/packages/client/ui-workspace/tests/workspace-picker.client.spec.tsx
+index df9149403c..733a54aa29 100644
+--- a/packages/client/ui-workspace/tests/workspace-picker.client.spec.tsx
++++ b/packages/client/ui-workspace/tests/workspace-picker.client.spec.tsx
+@@ -125,6 +125,29 @@ function chooseAdd(): void {
+ }
+ 
+ describe('WorkspacePicker', () => {
++  it('withdraws hidden Workspaces from choices and restores them in Host order', () => {
++    const privateWorkspace = workspace('private', 'Private Workspace')
++    const publicWorkspace = workspace('public', 'Public Workspace')
++    const b = mount([{ ...privateWorkspace, hidden: true }, publicWorkspace])
++
++    expect(screen.queryByRole('menuitem', { name: 'Private Workspace' })).toBeNull()
++    expect(screen.getByRole('menuitem', { name: 'Public Workspace' })).toBeTruthy()
++    expect(b.onPick).not.toHaveBeenCalled()
++
++    b.rerenderItems([privateWorkspace, publicWorkspace])
++    expect(screen.getAllByRole('menuitem').map(item => item.textContent))
++      .toEqual(['Private Workspace', 'Public Workspace', '添加工作区…'])
++    fireEvent.click(screen.getByRole('menuitem', { name: 'Private Workspace' }))
++    expect(b.onPick).toHaveBeenCalledWith(wid('private'))
++  })
++
++  it('opens the add flow when every registered Workspace is hidden', () => {
++    const b = mount([{ ...workspace('private', 'Private Workspace'), hidden: true }])
++    expect(screen.queryByRole('menu')).toBeNull()
++    expect(screen.getByTestId('directory-flow')).toBeTruthy()
++    expect(b.onPick).not.toHaveBeenCalled()
++  })
++
+   it('lists same-title Workspaces separately and forwards the selected id', () => {
+     const b = mount([workspace('alpha', 'Shared'), workspace('beta', 'Shared')])
+     const entries = screen.getAllByRole('menuitem', { name: 'Shared' })
+diff --git a/packages/client/ui-workspace/tests/workspaces-service.client.spec.ts b/packages/client/ui-workspace/tests/workspaces-service.client.spec.ts
+index 1662c1cd5f..421f8b0858 100644
+--- a/packages/client/ui-workspace/tests/workspaces-service.client.spec.ts
++++ b/packages/client/ui-workspace/tests/workspaces-service.client.spec.ts
+@@ -319,6 +319,164 @@ function lastOpening(open: MockInstance<UiWorkspaceService['openWorkspace']>): P
+   return result.value
+ }
+ 
++describe('hidden Workspace navigation', () => {
++  it('chooses only visible recent Workspaces for startup and an ordinary New Session', async () => {
++    persistSelection({})
++    const hidden = { ...workspace('hidden', [sid('newest')], '2026-03-01T00:00:00.000Z'), hidden: true as const }
++    const visible = workspace('visible', [sid('older')])
++    const b = bench({
++      workspaces: workspaceState([hidden, visible]),
++      sessions: sessionState([summary('newest', { updatedAt: 100 }), summary('older', { updatedAt: 1 })]),
++    })
++    await setImmediate()
++    expect(b.sessions.create).toHaveBeenCalledExactlyOnceWith({ workspaceId: wid('visible') })
++    b.sessions.create.mockClear()
++    b.uiWorkspace.startSession()
++    await setImmediate()
++    expect(b.sessions.create).toHaveBeenCalledExactlyOnceWith({ workspaceId: wid('visible') })
++  })
++
++  it('does not inherit the hidden Workspace of an explicitly opened current Session', async () => {
++    persistSelection({})
++    const b = bench({ workspaces: workspaceState([workspace('hidden', [sid('current')]), workspace('visible')]) })
++    b.uiWorkspace.openSession(sid('current'))
++    const currentReference = b.sessions.retained[0]!
++    b.sessions.list.set(sessionState([summary('current', { running: true, updatedAt: 100 })]))
++    b.workspaces.list.update(state => ({ ...state, items: state.items.map(item => item.workspaceId === wid('hidden') ? { ...item, hidden: true } : item) }))
++    expect(currentReference.release).not.toHaveBeenCalled()
++    expect(b.sessions.create).not.toHaveBeenCalled()
++    b.uiWorkspace.startSession()
++    await setImmediate()
++    expect(b.sessions.create).toHaveBeenCalledExactlyOnceWith({ workspaceId: wid('visible') })
++  })
++
++  it.each([false, true])('retains a saved hidden Session without creating or reclaiming it (blank: %s)', async (blank) => {
++    persistSelection({ sessionId: sid('saved') })
++    const b = bench({
++      workspaces: workspaceState([{ ...workspace('hidden', [sid('saved')]), hidden: true }, workspace('visible')]),
++      sessions: sessionState([summary('saved', { blank, cwd: '/w/hidden', running: !blank })]),
++    })
++    await setImmediate()
++    expect(b.sessions.retain).toHaveBeenCalledExactlyOnceWith(sid('saved'), { source: 'mainView' })
++    expect(b.sessions.create).not.toHaveBeenCalled()
++    expect(b.sessions.refreshProjections).not.toHaveBeenCalled()
++  })
++
++  it('keeps an all-hidden registry out of automatic creation and preserves an explicit draft target', async () => {
++    persistSelection({})
++    const b = bench({
++      workspaces: workspaceState([{ ...workspace('hidden'), hidden: true }]),
++      sessions: sessionState(),
++    })
++    await setImmediate()
++    b.uiWorkspace.startSession()
++    await setImmediate()
++    expect(b.sessions.create).not.toHaveBeenCalled()
++    expect(b.workspaces.initializeDefault).not.toHaveBeenCalled()
++    b.uiWorkspace.openSession(sid('running'))
++    const reference = b.sessions.retained.at(-1)!
++    b.uiWorkspace.startSession(undefined, { prompt: 'keep this draft' })
++    expect(reference.release).not.toHaveBeenCalled()
++    expect(b.requestDraftInitialization).not.toHaveBeenCalled()
++    expect(b.notify).toHaveBeenCalledWith({ kind: 'createFailed', message: en['draft.workspaceRequired'] })
++  })
++
++  it.each([false, true])('does not select an implicit creation after its Workspace becomes hidden (draft: %s)', async (draft) => {
++    persistSelection({})
++    const b = bench({ workspaces: workspaceState([workspace('visible')]) })
++    b.uiWorkspace.openSession(sid('previous'))
++    b.sessions.list.set(sessionState([summary('previous')]))
++    const pending = Promise.withResolvers<SessionId>()
++    b.sessions.create.mockReturnValueOnce(pending.promise)
++    b.uiWorkspace.startSession(undefined, draft ? { prompt: 'new draft' } : undefined)
++    expect(b.sessions.create).toHaveBeenCalledOnce()
++    b.workspaces.list.set(workspaceState([{ ...workspace('visible'), hidden: true }]))
++    pending.resolve(sid('created-late'))
++    await setImmediate()
++    expect(b.sessions.retain).toHaveBeenCalledExactlyOnceWith(sid('previous'), { source: 'mainView' })
++    expect(b.sessions.retained[0]!.release).not.toHaveBeenCalled()
++    expect(b.requestDraftInitialization).not.toHaveBeenCalled()
++  })
++
++  it('does not select a startup creation after its Workspace becomes hidden', async () => {
++    persistSelection({})
++    const pending = Promise.withResolvers<SessionId>()
++    const b = bench({
++      workspaces: workspaceState([workspace('visible')]),
++      sessions: sessionState(),
++      configureSessions: (sessions) => { sessions.create.mockReturnValueOnce(pending.promise) },
++    })
++    expect(b.sessions.create).toHaveBeenCalledOnce()
++    b.workspaces.list.set(workspaceState([{ ...workspace('visible'), hidden: true }]))
++    pending.resolve(sid('created-late'))
++    await setImmediate()
++    expect(b.sessions.retain).not.toHaveBeenCalled()
++  })
++
++  it('does not connect a default Workspace hidden while its initialization was pending', async () => {
++    persistSelection({})
++    const pending = Promise.withResolvers<WorkspaceView>()
++    const b = bench({
++      workspaces: workspaceState(), sessions: sessionState(),
++      configureWorkspaces: (workspaces) => { workspaces.initializeDefault.mockReturnValueOnce(pending.promise) },
++    })
++    b.workspaces.list.set(workspaceState([{ ...workspace('default'), hidden: true }]))
++    pending.resolve(workspace('default'))
++    await setImmediate()
++    expect(b.sessions.create).not.toHaveBeenCalled()
++    expect(b.sessions.retain).not.toHaveBeenCalled()
++  })
++
++  it('retains the saved blank without reclaiming it when its Workspace becomes hidden during projection refresh', async () => {
++    persistSelection({ sessionId: sid('saved') })
++    const pending = Promise.withResolvers<undefined>()
++    const b = bench({
++      workspaces: workspaceState([workspace('visible', [sid('saved')])]),
++      sessions: sessionState([summary('saved', { blank: true, cwd: '/w/visible' })]),
++      configureSessions: (sessions) => { sessions.refreshProjections.mockReturnValueOnce(pending.promise) },
++    })
++    expect(b.sessions.refreshProjections).toHaveBeenCalledExactlyOnceWith(sid('saved'))
++    b.workspaces.list.set(workspaceState([{ ...workspace('visible', [sid('saved')]), hidden: true }]))
++    pending.resolve(undefined)
++    await setImmediate()
++    expect(b.sessions.create).not.toHaveBeenCalled()
++    expect(b.sessions.retain).toHaveBeenCalledExactlyOnceWith(sid('saved'), { source: 'mainView' })
++  })
++
++  it('preserves explicit connections and navigation to hidden Workspaces', async () => {
++    const b = bench({ workspaces: workspaceState([{ ...workspace('hidden'), hidden: true }]) })
++    await expect(b.uiWorkspace.connectWorkspace(wid('hidden'))).resolves.toBe(sid('created-hidden'))
++    await b.uiWorkspace.openWorkspace(wid('hidden'))
++    expect(b.sessions.retain).toHaveBeenLastCalledWith(sid('created-hidden'), { source: 'mainView' })
++    b.uiWorkspace.startSession(wid('hidden'))
++    await setImmediate()
++    expect(b.sessions.create).toHaveBeenCalledTimes(3)
++    expect(b.sessions.create).toHaveBeenLastCalledWith({ workspaceId: wid('hidden') })
++  })
++
++  it.each(['agent-preset/not-found', 'agent-preset/invalid'] as const)(
++    'does not retry a saved blank after its Workspace becomes hidden during %s', async (code) => {
++      persistSelection({ sessionId: sid('saved') })
++      const pending = Promise.withResolvers<SessionId>()
++      const b = bench({
++        workspaces: workspaceState([workspace('visible', [sid('saved')])]),
++        sessions: sessionState([summary('saved', { blank: true, cwd: '/w/visible', projectionValues: { agentPreset: 'missing' } })]),
++        configureSessions: (sessions) => { sessions.create.mockReturnValueOnce(pending.promise) },
++      })
++      await setImmediate()
++      expect(b.sessions.create).toHaveBeenCalledOnce()
++      b.workspaces.list.set(workspaceState([{ ...workspace('visible', [sid('saved')]), hidden: true }]))
++      const refusal = code === 'agent-preset/not-found'
++        ? new RemoteError(code, 'unknown preset', { agentPreset: 'missing', available: ['standard'] })
++        : new RemoteError(code, 'invalid preset', { agentPreset: 'missing', reason: 'invalid' })
++      pending.reject(new SessionCreateError(refusal, sid('saved')))
++      await setImmediate()
++      expect(b.sessions.create).toHaveBeenCalledOnce()
++      expect(b.sessions.retain).toHaveBeenCalledExactlyOnceWith(sid('saved'), { source: 'mainView' })
++    },
++  )
++})
++
+ describe('UiWorkspaceService', () => {
+   it('prepares and selects the default Workspace after both startup baselines', async () => {
+     const b = bench({ configureWorkspaces: (workspaces) => {
+diff --git a/packages/extensions/cordis-client-runner/src/client/api-catalog.ts b/packages/extensions/cordis-client-runner/src/client/api-catalog.ts
+index 1dd6bf22b9..0a30c73f5d 100644
+--- a/packages/extensions/cordis-client-runner/src/client/api-catalog.ts
++++ b/packages/extensions/cordis-client-runner/src/client/api-catalog.ts
+@@ -362,7 +362,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
+       {
+         signature: 'startSession(workspaceId?: WorkspaceId, options?: StartSessionOptions): void',
+         description: 'Create a fresh Session, or reuse a blank when preparing an explicit draft. A creation the Host refuses is shown through the Workspace notice and leaves the selection as it was.',
+-        parameters: [{ name: 'workspaceId', description: 'explicit target; absent inherits the current or most recent Workspace.' }, { name: 'options', description: 'initial content and the reused blank\'s preset; existing text or attachments are preserved unless clearPreviousDraft is true.' }],
++        parameters: [{ name: 'workspaceId', description: 'explicit target; absent inherits the current or most recent visible Workspace.' }, { name: 'options', description: 'initial content and the reused blank\'s preset; existing text or attachments are preserved unless clearPreviousDraft is true.' }],
+       },
+       {
+         signature: 'archiveSession(sessionId: SessionId, options?: { readonly stopActivity?: boolean }): Promise<void>',
+@@ -1081,7 +1081,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
+   },
+   {
+     name: 'WorkspaceView',
+-    declaration: 'export interface WorkspaceView {\n    readonly workspaceId: WorkspaceId;\n    readonly path: string;\n    readonly title: string;\n    readonly sessionIds: readonly SessionId[];\n    readonly createdAt: string;\n    readonly updatedAt: string;\n}',
++    declaration: 'export interface WorkspaceView {\n    readonly workspaceId: WorkspaceId;\n    readonly path: string;\n    readonly title: string;\n    readonly hidden?: true;\n    readonly hiddenBy?: readonly string[];\n    readonly sessionIds: readonly SessionId[];\n    readonly createdAt: string;\n    readonly updatedAt: string;\n}',
+   },
+ ]
+ 
+diff --git a/packages/extensions/tool-cordis/src/api-catalog.ts b/packages/extensions/tool-cordis/src/api-catalog.ts
+index be3e316263..37e084b619 100644
+--- a/packages/extensions/tool-cordis/src/api-catalog.ts
++++ b/packages/extensions/tool-cordis/src/api-catalog.ts
+@@ -3942,6 +3942,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
+         parameters: [{ name: 'id', description: 'Workspace registration to remove.' }],
+         returns: '`true` when a record was deleted, `false` when it was unknown.',
+       },
++      {
++        signature: 'setHiddenByOwner(owner: string, workspaceIds: readonly WorkspaceId[]): Promise<void>',
++        description: 'Replace one owner\'s durable presentation exclusions. An empty list clears only that owner; other owners continue hiding their Workspaces. This does not mutate registrations, ordering, Session accounting, archives, pins, or running work. Existing ownership remains available to internal callers.',
++        parameters: [{ name: 'owner', description: 'Nonempty stable owner name, normally the plugin package name.' }, { name: 'workspaceIds', description: 'Existing Workspaces to hide for this owner; duplicates and order are immaterial.' }],
++        returns: 'resolution after durability; unchanged sets require no write.',
++      },
+       {
+         signature: 'insertBefore(id: WorkspaceId, beforeId?: WorkspaceId): Promise<readonly WorkspaceId[]>',
+         description: 'Move one workspace within the durable display order, DOM-insertBefore-like. With an anchor it lands before that workspace; without one it appends.',
+@@ -8731,7 +8737,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
+   },
+   {
+     name: 'Workspace',
+-    declaration: 'export interface Workspace {\n    readonly id: WorkspaceId;\n    readonly path: string;\n    readonly title: string;\n    readonly createdAt: string;\n    readonly updatedAt: string;\n    readonly sessionIds: readonly SessionId[];\n    setTitle(title: string): Promise<void>;\n    attachSession(sessionId: SessionId): Promise<void>;\n    insertSessionBefore(sessionId: SessionId, beforeSessionId?: SessionId): Promise<void>;\n    detachSession(sessionId: SessionId): Promise<void>;\n    status(): Promise<\'ok\' | \'missing-dir\'>;\n}',
++    declaration: 'export interface Workspace {\n    readonly id: WorkspaceId;\n    readonly path: string;\n    readonly title: string;\n    readonly hiddenBy?: readonly string[];\n    readonly createdAt: string;\n    readonly updatedAt: string;\n    readonly sessionIds: readonly SessionId[];\n    setTitle(title: string): Promise<void>;\n    attachSession(sessionId: SessionId): Promise<void>;\n    insertSessionBefore(sessionId: SessionId, beforeSessionId?: SessionId): Promise<void>;\n    detachSession(sessionId: SessionId): Promise<void>;\n    status(): Promise<\'ok\' | \'missing-dir\'>;\n}',
+   },
+   {
+     name: 'WorkspaceArchiveSessionRequest',
+@@ -8867,7 +8873,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
+   },
+   {
+     name: 'WorkspaceView',
+-    declaration: 'export interface WorkspaceView {\n    readonly workspaceId: WorkspaceId;\n    readonly path: string;\n    readonly title: string;\n    readonly sessionIds: readonly SessionId[];\n    readonly createdAt: string;\n    readonly updatedAt: string;\n}',
++    declaration: 'export interface WorkspaceView {\n    readonly workspaceId: WorkspaceId;\n    readonly path: string;\n    readonly title: string;\n    readonly hidden?: true;\n    readonly hiddenBy?: readonly string[];\n    readonly sessionIds: readonly SessionId[];\n    readonly createdAt: string;\n    readonly updatedAt: string;\n}',
+   },
+ ]
+ 
+diff --git a/packages/workspace/workspace/README.i18n.yaml b/packages/workspace/workspace/README.i18n.yaml
+index a601b2c2f2..d3daf2b72b 100644
+--- a/packages/workspace/workspace/README.i18n.yaml
++++ b/packages/workspace/workspace/README.i18n.yaml
+@@ -30,8 +30,11 @@
+   en: 217475057b6506ed
+   zh: be2312a29499c203
+ /deepseek-ai-dsh-workspace/use-this-package/grouping-sessions-under-a-project:
+-  en: 5a68da22516a6a3c
+-  zh: a229d57acdab882c
++  en: 8d38cef8faf512fe
++  zh: 29e366a068b376c5
++/deepseek-ai-dsh-workspace/use-this-package/owner-controlled-workspace-visibility:
++  en: bfcc84a9d9e16e7f
++  zh: 27c2051c0195898e
+ /deepseek-ai-dsh-workspace/use-this-package/hiding-and-restoring-sessions-and-removing-projects:
+   en: 7b298aa5c48501d4
+   zh: 8ffeec728c1c13fe
+diff --git a/packages/workspace/workspace/README.md b/packages/workspace/workspace/README.md
+index eb9698bb1e..0743868049 100644
+--- a/packages/workspace/workspace/README.md
++++ b/packages/workspace/workspace/README.md
+@@ -72,6 +72,13 @@ The first successful registration records its identity durably. Repeated calls r
+ 
+ A session joins the project of the directory it runs in: create a session in a project's directory and it appears under that project, newest first. A session can only belong to one project. A new session must have a recorded directory that resolves to the project's directory. Already-accounted sessions keep their project and order when their fully qualified recorded path is missing, including a dangling symlink; renaming or reordering the project does not remove that ownership. Missing headers, invalid recorded paths, existing mismatched directories, and filesystem failures other than ENOENT remain excluded. Keeping ownership does not recreate the directory or relax new-session attachment, so a fork can still fail to attach while the directory is missing.
+ 
++<a id="owner-controlled-workspace-visibility"></a>
++### Owner-controlled Workspace visibility
++
++`setHiddenByOwner(owner, workspaceIds)` replaces one owner's durable set of hidden Workspaces. Pass an empty array to clear that owner; a Workspace stays hidden while another owner still lists it. Duplicate ids and input order do not matter, and unknown ids reject without writing. The stable owner name normally matches the plugin package name. Visibility is presentation state: it preserves Workspace ids, titles, timestamps, ordering, Session membership, archives, pins, and running work. `get()` and `list()` still return every registration, with `hiddenBy` naming its active owners, so hidden Sessions retain their ownership instead of becoming ungrouped. This is not an access-control mechanism.
++
++The `workspace_visibility` domain stores `{ owners: Record<string, WorkspaceId[]> }` at version 1, separately from the unchanged version-2 `workspace` domain. Missing visibility data means all Workspaces are visible; existing Workspace documents need no migration. Failed writes publish no visibility change. Hosts without this API ignore the independent visibility file, so a plugin requiring hidden native browsing must check that `workspaceRegistry.setHiddenByOwner` exists.
++
+ ### Hiding and restoring sessions, and removing projects
+ 
+ Hide a session from the grouping when it should stop appearing there: it disappears from the visible list, while its session, history, and place in the project stay intact. A session with running work — its own turn, a running subagent, a background job, or an active reminder — is not hidden underneath that work: the registry refuses with the list of what runs, and a caller that asks to stop the work first has it stopped the way the user's own stop actions do, then hidden. Restore a hidden session when it should appear again: it returns to its recorded position under its project, or to the ungrouped sessions when it belongs to none, and continues the conversation from a regularly ended log. Remove a project when it is no longer needed: it leaves the list, and its folder, files, and session histories are never touched — those sessions become ungrouped. Adding the same directory again afterwards starts a fresh project without the old sessions.
+diff --git a/packages/workspace/workspace/README.zh.md b/packages/workspace/workspace/README.zh.md
+index 852b368b33..693aafc001 100644
+--- a/packages/workspace/workspace/README.zh.md
++++ b/packages/workspace/workspace/README.zh.md
+@@ -72,6 +72,13 @@ ctx.workspaceRegistry.list() // shows the project, newest first
+ 
+ 会话加入它运行目录所在的项目：在项目目录中创建会话，它就会出现在该项目下，新到旧排列。一个会话只能属于一个项目。新会话必须记录可解析为项目目录的工作目录。已记账会话的完整绝对路径缺失时（包括悬空符号链接），仍保留原项目与顺序；重命名或排序项目不会移除该归属。头部缺失、无效记录路径、现存但不匹配的目录，以及 ENOENT 以外的文件系统错误仍会被排除。保留归属不会重建目录，也不放宽新会话挂接要求，因此目录缺失时 Fork 仍可能挂接失败。
+ 
++<a id="owner-controlled-workspace-visibility"></a>
++### 按所有者控制 Workspace 可见性
++
++`setHiddenByOwner(owner, workspaceIds)` 替换一个所有者持久保存的隐藏 Workspace 集合。传入空数组只清除该所有者；只要其他所有者仍列出某个 Workspace，它就保持隐藏。重复 id 与输入顺序无关，未知 id 会在写入前拒绝。稳定的所有者名称通常使用插件包名。可见性属于展示状态：Workspace 的 id、标题、时间戳、顺序、Session 归属、归档、置顶和运行任务均保持不变。`get()` 与 `list()` 仍返回全部登记，并由 `hiddenBy` 列出当前隐藏所有者，因此隐藏 Session 保留原归属，不会变成未分组。此机制不承担访问控制。
++
++`workspace_visibility` 域以版本 1 保存 `{ owners: Record<string, WorkspaceId[]> }`，与保持版本 2 不变的 `workspace` 域分开。没有可见性数据表示全部 Workspace 可见；已有 Workspace 文档无需迁移。写入失败不会发布可见性变化。没有此 API 的宿主会忽略独立的可见性文件，因此要求隐藏原生浏览入口的插件必须检查 `workspaceRegistry.setHiddenByOwner` 是否存在。
++
+ ### 隐藏、恢复会话与移除项目
+ 
+ 当会话不应再出现在分组中时隐藏它：它会从可见列表中消失，但其会话、历史与在项目中的位置都保持不变。仍有工作在跑的会话——它自己的回合、运行中的子代理、后台任务或活跃提醒——不会被藏在这些工作之下：注册表会拒绝并列出还在跑的内容；调用方若要求先停止这些工作，注册表会按用户自己的停止操作同样的方式停掉它们，然后再隐藏。当被隐藏的会话应重新出现时恢复它：它会回到其项目下记录的位置；不属于任何项目时则回到 Ungrouped，并从一份正常收尾的日志继续对话。项目不再需要时移除它：它离开列表，而其文件夹、文件与会话历史绝不受影响——这些会话变成 Ungrouped。之后再次添加同一目录会从空项目开始，不会带回旧会话。
+diff --git a/packages/workspace/workspace/package.json b/packages/workspace/workspace/package.json
+index 627a4f2f9a..1a8287d0be 100644
+--- a/packages/workspace/workspace/package.json
++++ b/packages/workspace/workspace/package.json
+@@ -51,6 +51,7 @@
+     "@deepseek-ai/dsh-session-persistence": "workspace:*",
+     "@deepseek-ai/dsh-storage": "workspace:*",
+     "@deepseek-ai/dsh-storage-domain": "workspace:*",
++    "@deepseek-ai/dsh-storage-json": "workspace:*",
+     "@deepseek-ai/dsh-typert-protocol": "workspace:*"
+   }
+ }
+diff --git a/packages/workspace/workspace/src/entity.ts b/packages/workspace/workspace/src/entity.ts
+index 0d687e8c94..d8902916b0 100644
+--- a/packages/workspace/workspace/src/entity.ts
++++ b/packages/workspace/workspace/src/entity.ts
+@@ -38,6 +38,13 @@ export interface WorkspaceEntityHost {
+    */
+   table(): KvTable<WorkspaceId, WorkspaceRecord>
+ 
++  /**
++   * Read the committed presentation exclusions for one Workspace.
++   * @param id - Workspace identity.
++   * @returns owners currently hiding the Workspace.
++   */
++  hiddenBy(id: WorkspaceId): readonly string[]
++
+   /**
+    * Validate an already-accounted session, preserving ownership when its fully
+    * qualified cwd cannot resolve because a path component is missing.
+@@ -91,6 +98,10 @@ export class WorkspaceEntity implements Workspace {
+     return this.record.title
+   }
+ 
++  get hiddenBy(): readonly string[] {
++    return this.host.hiddenBy(this.id)
++  }
++
+   get createdAt(): string {
+     return this.record.createdAt
+   }
+diff --git a/packages/workspace/workspace/src/index.ts b/packages/workspace/workspace/src/index.ts
+index 0f630500cb..3fb1798a27 100644
+--- a/packages/workspace/workspace/src/index.ts
++++ b/packages/workspace/workspace/src/index.ts
+@@ -16,15 +16,15 @@ import type { WorkspaceEntityHost } from './entity.ts'
+ 
+ export { WorkspaceMoveInvalidError } from './entity.ts'
+ import { defaultWorkspaceTitle, fullyQualifiedWorkspacePath, realpathNormalize } from './paths.ts'
+-import { workspaceDomainSpec } from './spec.ts'
+-import type { WorkspaceDomainState, WorkspaceRecord } from './spec.ts'
++import { workspaceDomainSpec, workspaceVisibilityDomainSpec } from './spec.ts'
++import type { WorkspaceDomainState, WorkspaceRecord, WorkspaceVisibilityState } from './spec.ts'
+ import type { SessionActivity, Workspace, WorkspaceId as WorkspaceIdBrand } from './types.ts'
+ 
+ export type {
+   SessionActivity, SessionActivityItem, SessionActivityKind, SessionActivityKindMap, Workspace,
+ } from './types.ts'
+-export { workspaceDomainState, workspaceRecord, workspaceDomainSpec } from './spec.ts'
+-export type { WorkspaceDomainState, WorkspaceRecord } from './spec.ts'
++export { workspaceDomainState, workspaceRecord, workspaceDomainSpec, workspaceVisibilityDomainSpec, workspaceVisibilityState } from './spec.ts'
++export type { WorkspaceDomainState, WorkspaceRecord, WorkspaceVisibilityState } from './spec.ts'
+ export { realpathNormalize } from './paths.ts'
+ 
+ /** Identifies one workspace record (see `src/types.ts` for the brand rationale). */
+@@ -172,6 +172,7 @@ export class WorkspaceRegistry extends Service {
+ 
+   private table?: KvTable<WorkspaceId, WorkspaceRecord>
+   private global?: DomainGlobal<WorkspaceDomainState>
++  private visibility?: DomainGlobal<WorkspaceVisibilityState>
+   private state?: WorkspaceDomainState
+   private readonly entities = new Map<WorkspaceId, WorkspaceEntity>()
+   private readonly headers = new Map<SessionId, SessionHeader>()
+@@ -182,6 +183,8 @@ export class WorkspaceRegistry extends Service {
+ 
+   private readonly host: WorkspaceEntityHost = {
+     table: () => this.requireTable(),
++    hiddenBy: id => Object.entries(this.requireVisibility().get().owners)
++      .filter(([, ids]) => ids.includes(id)).map(([owner]) => owner).sort(),
+     candidateMatches: (id, path) => this.sessionPaths.get(id) === path || this.missingSessionPaths.has(id),
+     readSessionHeader: id => this.readSessionHeader(id),
+     rememberSessionPath: (id, path) => {
+@@ -203,6 +206,10 @@ export class WorkspaceRegistry extends Service {
+     this.global = domain.global
+     this.state = domain.global.get()
+ 
++    const visibility = await this.ctx.storageDomain.open(workspaceVisibilityDomainSpec)
++    this.ctx.effect(() => () => visibility.close(), 'workspace.visibilityClose')
++    this.visibility = visibility.global
++
+     await this.recoverPendingMutation()
+     this.validateStoredState(this.state)
+     if (!this.state.initialized) {
+@@ -311,6 +318,33 @@ export class WorkspaceRegistry extends Service {
+     return this.enqueueOperation(() => this.deleteKnown(id))
+   }
+ 
++  /**
++   * Replace one owner's durable presentation exclusions. An empty list clears
++   * only that owner; other owners continue hiding their Workspaces. This does
++   * not mutate registrations, ordering, Session accounting, archives, pins,
++   * or running work. Existing ownership remains available to internal callers.
++   * @param owner - Nonempty stable owner name, normally the plugin package name.
++   * @param workspaceIds - Existing Workspaces to hide for this owner; duplicates and order are immaterial.
++   * @returns resolution after durability; unchanged sets require no write.
++   */
++  setHiddenByOwner(owner: string, workspaceIds: readonly WorkspaceId[]): Promise<void> {
++    return this.enqueueOperation(async () => {
++      if (owner.trim() === '') throw new TypeError('workspace visibility owner must be nonempty')
++      const requested = new Set(workspaceIds)
++      for (const id of requested) {
++        if (!this.entities.has(id)) throw new Error(`cannot hide unknown workspace '${id}'`)
++      }
++      const visibility = this.requireVisibility()
++      const state = visibility.get()
++      const owners = new Map(Object.entries(state.owners))
++      const previous = owners.get(owner) ?? []
++      if (previous.length === requested.size && previous.every(id => requested.has(id))) return
++      if (requested.size === 0) owners.delete(owner)
++      else owners.set(owner, this.requireState().workspaceIds.filter(id => requested.has(id)))
++      await visibility.set({ owners: Object.fromEntries(owners) })
++    })
++  }
++
+   /**
+    * Move one workspace within the durable display order, DOM-insertBefore-like.
+    * With an anchor it lands before that workspace; without one it appends.
+@@ -886,6 +920,11 @@ export class WorkspaceRegistry extends Service {
+     return this.state
+   }
+ 
++  private requireVisibility(): DomainGlobal<WorkspaceVisibilityState> {
++    if (this.visibility === undefined) throw new Error('workspace registry is not started yet')
++    return this.visibility
++  }
++
+   private async setState(state: WorkspaceDomainState): Promise<void> {
+     await (this.global as DomainGlobal<WorkspaceDomainState>).set(state)
+     this.state = state
+diff --git a/packages/workspace/workspace/src/spec.ts b/packages/workspace/workspace/src/spec.ts
+index 9bd792258a..fb5533019e 100644
+--- a/packages/workspace/workspace/src/spec.ts
++++ b/packages/workspace/workspace/src/spec.ts
+@@ -82,3 +82,19 @@ export const workspaceDomainSpec = defineDomain({
+   },
+   tables: { workspaces: domainTable<WorkspaceId, WorkspaceRecord>(workspaceRecord) },
+ })
++
++/** Owner-scoped presentation exclusions, independent of Workspace records and Session accounting. */
++export const workspaceVisibilityState = z.object({
++  owners: z.record(z.string().min(1), z.array(workspaceId)),
++})
++
++/** Persisted owner-to-Workspace exclusion sets. */
++export type WorkspaceVisibilityState = z.infer<typeof workspaceVisibilityState>
++
++/** Independent visibility storage; existing Workspace domain versions remain unchanged. */
++export const workspaceVisibilityDomainSpec = defineDomain({
++  name: 'workspace_visibility',
++  version: 1,
++  global: { schema: workspaceVisibilityState, initial: { owners: {} } },
++  tables: {},
++})
+diff --git a/packages/workspace/workspace/src/types.ts b/packages/workspace/workspace/src/types.ts
+index 1b09bef969..934933fb10 100644
+--- a/packages/workspace/workspace/src/types.ts
++++ b/packages/workspace/workspace/src/types.ts
+@@ -80,6 +80,9 @@ export interface Workspace {
+   /** Display title. Defaults to the final path segment, or a filesystem root's own spelling; duplicates are allowed. */
+   readonly title: string
+ 
++  /** Owners hiding this Workspace from ordinary browsing; membership and running work are unchanged. */
++  readonly hiddenBy?: readonly string[]
++
+   /** ISO-8601 creation instant, stamped at create and never rewritten. */
+   readonly createdAt: string
+ 
+diff --git a/packages/workspace/workspace/tests/workspace.spec.ts b/packages/workspace/workspace/tests/workspace.spec.ts
+index 988e999569..f4a7f5ac47 100644
+--- a/packages/workspace/workspace/tests/workspace.spec.ts
++++ b/packages/workspace/workspace/tests/workspace.spec.ts
+@@ -1,6 +1,6 @@
+ import type { z } from 'zod'
+ import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
+-import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises'
++import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
+ import { tmpdir } from 'node:os'
+ import { basename, join, relative } from 'node:path'
+ import { Context } from '@deepseek-ai/cordis'
+@@ -13,6 +13,7 @@ import type { SessionHeader } from '@deepseek-ai/dsh-session'
+ import { SessionPersistenceRevision } from '@deepseek-ai/dsh-session-persistence'
+ import type { SessionPersistenceSnapshot } from '@deepseek-ai/dsh-session-persistence'
+ import { MemoryMediaPool, MemoryStorageBackend } from '../../../storage/storage-domain/tests/helpers/memory-backend.ts'
++import { JsonStorageBackend } from '@deepseek-ai/dsh-storage-json'
+ import WorkspaceRegistry, {
+   WorkspaceId,
+   type workspaceDomainState,
+@@ -360,6 +361,117 @@ describe('WorkspaceRegistry lifecycle and bootstrap', () => {
+   })
+ })
+ 
++describe('WorkspaceRegistry owner visibility', () => {
++  it('writes only the independent JSON visibility file and reopens it without changing the workspace document', async () => {
++    const root = await makeDir('visibility-storage')
++    const path = await makeDir('visibility-project')
++    const sessions = [header('visibility-durable-session', path)]
++    const backend = new JsonStorageBackend(root)
++    const first = await harness({ backend, sessions })
++    const workspace = first.registry.list()[0]!
++    const before = await readFile(join(root, 'workspace.json'))
++    await first.registry.setHiddenByOwner('dsh-amphoreus', [workspace.id])
++    expect(await readFile(join(root, 'workspace.json'))).toEqual(before)
++    expect(JSON.parse(await readFile(join(root, 'workspace_visibility.json'), 'utf8'))).toEqual({
++      unit: { name: 'workspace_visibility', version: 1 },
++      global: { owners: { 'dsh-amphoreus': [workspace.id] } },
++      tables: {},
++    })
++    await first.fiber.dispose()
++    await backend.close()
++    const reopenedBackend = new JsonStorageBackend(root)
++    const reopened = await harness({ backend: reopenedBackend, sessions })
++    expect(reopened.registry.get(workspace.id)?.hiddenBy).toEqual(['dsh-amphoreus'])
++    expect(reopened.registry.get(workspace.id)?.sessionIds).toEqual(sessions.map(session => session.id))
++    await reopened.registry.setHiddenByOwner('dsh-amphoreus', [])
++    expect(await readFile(join(root, 'workspace.json'))).toEqual(before)
++    await reopened.fiber.dispose()
++    await reopenedBackend.close()
++  })
++
++  it('refuses malformed durable visibility data without changing the workspace domain', async () => {
++    const pool = storedPool([], { initialized: true, workspaceIds: [] })
++    const before = structuredClone(pool.media.get('workspace'))
++    pool.versions.set('workspace_visibility', 1)
++    pool.media.set('workspace_visibility', { tables: new Map(), global: { owners: { broken: 'not-an-id-array' } } })
++    await expect(harness({ pool })).rejects.toThrow()
++    expect(pool.media.get('workspace')).toEqual(before)
++  })
++
++  it('persists owner sets independently of existing workspace records, accounting, order, and archives', async () => {
++    const firstPath = await makeDir('visibility-first')
++    const secondPath = await makeDir('visibility-second')
++    const first = WorkspaceId('visibility-first')
++    const second = WorkspaceId('visibility-second')
++    const session = SessionId('visibility-session')
++    const pool = storedPool([
++      [first, { ...record(firstPath, [session]), title: 'First title' }],
++      [second, { ...record(secondPath, []), title: 'Second title' }],
++    ], { initialized: true, workspaceIds: [second, first], archivedSessionIds: [session] })
++    const before = structuredClone(pool.media.get('workspace'))
++    const { fiber, registry, changes } = await harness({ pool, sessions: [header(session, firstPath)] })
++    await registry.setHiddenByOwner('amphoreus', [first, second, first])
++    expect(registry.list().map(workspace => workspace.id)).toEqual([second, first])
++    expect(registry.get(first)?.sessionIds).toEqual([session])
++    expect(registry.get(first)?.hiddenBy).toEqual(['amphoreus'])
++    expect(registry.archivedSessionIds).toEqual([session])
++    expect(pool.media.get('workspace')).toEqual(before)
++    expect(pool.versions.get('workspace')).toBe(2)
++    expect(pool.versions.get('workspace_visibility')).toBe(1)
++    expect(changes.map(change => change.domain)).toEqual(['workspace_visibility'])
++    await fiber.dispose()
++
++    const reopened = await harness({ pool, sessions: [header(session, firstPath)] })
++    expect(reopened.registry.get(first)?.hiddenBy).toEqual(['amphoreus'])
++    expect(reopened.registry.get(second)?.hiddenBy).toEqual(['amphoreus'])
++    expect(pool.media.get('workspace')).toEqual(before)
++    await reopened.fiber.dispose()
++  })
++
++  it('replaces only the named owner and treats order, duplicate ids, and repeated clears as no-ops', async () => {
++    const { fiber, registry, changes } = await harness()
++    const first = await registry.create(await makeDir('visibility-owner-first'))
++    const second = await registry.create(await makeDir('visibility-owner-second'))
++    await registry.setHiddenByOwner('one', [first.id])
++    await registry.setHiddenByOwner('two', [first.id, second.id])
++    changes.length = 0
++    await registry.setHiddenByOwner('two', [second.id, first.id, first.id])
++    expect(changes).toEqual([])
++    await registry.setHiddenByOwner('one', [])
++    expect(first.hiddenBy).toEqual(['two'])
++    expect(second.hiddenBy).toEqual(['two'])
++    await registry.setHiddenByOwner('two', [second.id])
++    expect(first.hiddenBy).toEqual([])
++    expect(second.hiddenBy).toEqual(['two'])
++    changes.length = 0
++    await registry.setHiddenByOwner('one', [])
++    expect(changes).toEqual([])
++    await fiber.dispose()
++  })
++
++  it('keeps running work and committed visibility unchanged when a replacement is invalid or fails to persist', async () => {
++    const { ctx, fiber, registry, pool, changes } = await harness()
++    const workspace = await registry.create(await makeDir('visibility-failure'))
++    const stop = vi.fn(async () => {})
++    const activity = vi.fn()
++    ctx.on('workspace/session-stop', stop)
++    ctx.on('workspace/session-activity', (_request, next) => { activity(); return next() })
++    await registry.setHiddenByOwner('one', [workspace.id])
++    changes.length = 0
++    await expect(registry.setHiddenByOwner('one', [WorkspaceId('missing')])).rejects.toThrow('unknown workspace')
++    await expect(registry.setHiddenByOwner('', [])).rejects.toThrow('owner')
++    pool.failNextWrites = 1
++    await expect(registry.setHiddenByOwner('one', [])).rejects.toThrow('injected write failure')
++    expect(workspace.hiddenBy).toEqual(['one'])
++    expect(changes).toEqual([])
++    expect(stop).not.toHaveBeenCalled()
++    expect(activity).not.toHaveBeenCalled()
++    await registry.setHiddenByOwner('one', [])
++    expect(workspace.hiddenBy).toEqual([])
++    await fiber.dispose()
++  })
++})
++
+ describe('WorkspaceRegistry create and lookup', () => {
+   it('accepts fully qualified roots and directories without accepting drive-relative paths', () => {
+     expect(fullyQualifiedWorkspacePath('C:\\', 'win32')).toBe(true)
+diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
+index 5f38bae356..21fa4d3cb8 100644
+--- a/pnpm-lock.yaml
++++ b/pnpm-lock.yaml
+@@ -15475,6 +15475,9 @@ importers:
+       '@deepseek-ai/dsh-storage-domain':
+         specifier: workspace:*
+         version: link:../../storage/storage-domain
++      '@deepseek-ai/dsh-storage-json':
++        specifier: workspace:*
++        version: link:../../storage/storage-json
+       '@deepseek-ai/dsh-typert-protocol':
+         specifier: workspace:*
+         version: link:../../typert/protocol

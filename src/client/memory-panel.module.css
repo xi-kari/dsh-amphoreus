@@ -109,3 +109,17 @@
   font: inherit;
   font-size: 11px;
 }
+
+@media (max-width: 620px) {
+  .row, .body, .notes, .compose, .composeFoot { min-width: 0; }
+  .toggle { flex: 1 1 100%; flex-wrap: wrap; min-height: 44px; }
+  .name { min-width: 0; overflow-wrap: anywhere; }
+  .note { grid-template-columns: minmax(0, 1fr) auto; }
+  .badge { grid-column: 1 / -1; justify-self: start; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+  .text { grid-column: 1; }
+  .remove { grid-column: 2; min-width: 44px; min-height: 44px; }
+  .textarea { min-width: 0; max-width: 100%; }
+  .limit { flex-wrap: wrap; min-width: 0; max-width: 100%; margin-left: 0; white-space: normal; }
+  .limit input { box-sizing: border-box; min-width: 0; min-height: 44px; max-width: 100%; }
+  .composeFoot > button { flex: 1 1 100%; }
+}

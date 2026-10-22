@@ -20,6 +20,11 @@ import { HeroBrandMark, SidebarBrandMark, SidebarBrandName } from './brand.tsx'
 import { BRAND_ICON_DATA_URL, BRAND_MANIFEST_DATA_URL } from './brand-icon.ts'
 import { installShellBrand } from './brand-shell.ts'
 import { installGarnish } from './garnish.ts'
+import { installVisualShell } from './visual-shell.ts'
+import { installCodeBackground } from './code-background.ts'
+import { ComposerTools } from './composer-tools.tsx'
+import { MessageReaderAction } from './message-reader.tsx'
+import { MascotPanel, type MascotPanelInjected } from './mascot-panel.tsx'
 import { createEnterSeatQueue } from './enter-seat-queue.ts'
 import type { HandoffDeps } from './handoff.ts'
 import { HandoffDock } from './handoff-dock.tsx'
@@ -29,13 +34,18 @@ import { PipelineRail } from './pipeline-rail.tsx'
 import { PortalFooterAction, PortalOverlay, type PortalFooterInjected, type PortalOverlayInjected } from './portal.tsx'
 import { createPortalStore } from './portal-store.ts'
 import { createSeatWatch } from './seat-watch.ts'
+import { installSeatMotion } from './seat-motion.ts'
+import './seat-motion.css'
 import { createGrammarLayer, grammarVariablesFor } from './grammar-layer.ts'
+import { installLiquidGlass } from './liquid-glass.ts'
+import './liquid-glass.css'
 import { createDirectChatRequests, openDirectSeatChat, startSeatSession } from './seat-actions.ts'
 import { assertSessionUnarchived, createSessionArchiveAction } from './session-archive.ts'
 import { SeatBrowser, type SeatBrowserInjected } from './seat-browser.tsx'
 import { seatViewsFrom } from './seat-model.ts'
 import { AmphoreusSettings } from './settings.tsx'
 import { AmphoreusClientModel } from './state.ts'
+import { openStateChannel } from './state-channel.ts'
 import { readRememberedTab, seedConversationView, WORKBENCH_VIEW_ID } from './tabmemory.ts'
 import { createSeatLayer, readDswTokens, registerGlobalTheme, registerSeatTheme } from './theme.ts'
 import { WorkbenchView, type WorkbenchViewInjected } from './workbench.tsx'
@@ -71,6 +81,7 @@ export function apply(ctx: ClientContext): void {
   const model = new AmphoreusClientModel()
   const sessions: ISessions = ctx.get('sessions') as ClientContext['sessions'] & ISessions
   const sessionsFace = createSessionAdapter(sessions, ctx.uiWorkspace)
+  ctx.effect(() => installVisualShell(model, () => sessionsFace.list.getSnapshot().current), 'amphoreus: visual shell')
   const themeBridge = {
     read: readDswTokens,
     isDark: () => ctx.theme.getTheme().active.colorScheme === 'dark',
@@ -93,6 +104,14 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => () => seatTheme.dispose(), 'amphoreus: seat wallpaper')
   const seatWatch = createSeatWatch()
   ctx.effect(() => () => seatWatch.dispose(), 'amphoreus: seat watch')
+  ctx.effect(() => installSeatMotion(seatWatch, {
+    enabled: () => model.getSnapshot().state?.effectiveConfig.grammar.ambient !== false,
+    subscribe: model.subscribe,
+  }), 'amphoreus: seat motion')
+  ctx.effect(() => installCodeBackground({
+    model, sessions: sessionsFace.list, seat: seatWatch,
+    isDark: themeBridge.isDark, subscribeTheme: themeBridge.subscribe,
+  }), 'amphoreus: code background')
   // Seat visual grammar: --amph-* variables + data-amph-* hooks; fully retractable.
   const grammarLayer = createGrammarLayer({
     seat: seatWatch,
@@ -102,10 +121,15 @@ export function apply(ctx: ClientContext): void {
     subscribePrefs: listener => model.subscribe(listener),
     assets: () => {
       const state = model.getSnapshot().state
-      return state === undefined ? undefined : { derived: state.assets.derived, assetsConfigured: state.effectiveConfig.assetsConfigured }
+      return state === undefined ? undefined : { derived: state.assets.derived, assetsConfigured: state.effectiveConfig.assetsConfigured,
+        wallpaperActive: state.effectiveConfig.wallpaper.enabled && state.effectiveConfig.wallpaper.mode !== 'none',
+        codeBackgroundActive: state.effectiveConfig.codeBackground?.enabled === true && state.effectiveConfig.codeBackground.intensity > 0,
+        surfaceAlpha: state.effectiveConfig.wallpaper.surfaceAlpha,
+      }
     },
   })
   ctx.effect(() => () => grammarLayer.dispose(), 'amphoreus: grammar layer')
+  ctx.effect(() => installLiquidGlass(grammarLayer), 'amphoreus: liquid glass')
   const grammarBridge = {
     read: () => {
       const snapshot = grammarLayer.getSnapshot()
@@ -339,10 +363,9 @@ export function apply(ctx: ClientContext): void {
   // seat-switch: end
   const bootWorkbench = window.__AMPHOREUS_BOOT__?.workbench
   const workbenchEnabled = bootWorkbench?.enabled ?? true
-  ctx.effect(async () => {
-    await model.start()
-    return () => model.close()
-  }, 'amphoreus: state channel')
+  ctx.effect(() => openStateChannel(model, error => {
+    console.warn('[dsh-amphoreus] state channel:', error)
+  }), 'amphoreus: state channel')
   if (workbenchEnabled) {
     ctx.effect(() => {
       const defaultViewOf = (): 'chat' | 'workbench' =>
@@ -399,6 +422,11 @@ export function apply(ctx: ClientContext): void {
     inject: (): SeatBrowserInjected => ({
       model,
       archiveSession,
+      searchMessages: async (query, signal) => {
+        const result = await sessions.search(query, signal)
+        if (!result.ok) throw new Error(result.error.message)
+        return result.value
+      },
       openSession: async (sessionId, skillName) => {
         await openBoundSeatSession(sessionId, skillName, skillName === undefined)
         if (skillName !== undefined) openDirectSession(sessionId)
@@ -481,6 +509,10 @@ export function apply(ctx: ClientContext): void {
   }, PortalOverlay),
   // @anchor shell-overlay-entries
   ctx.slots.register({
+    name: 'shell.overlay', id: 'amphoreus-mascot', order: 5, locale: NS,
+    inject: (): MascotPanelInjected => ({ model, grammar: grammarLayer, sessionList: sessionsFace.list, portal }),
+  }, MascotPanel),
+  ctx.slots.register({
     name: 'shell.overlay',
     id: 'amphoreus-suite-notice',
     order: 10,
@@ -553,5 +585,11 @@ export function apply(ctx: ClientContext): void {
     order: 31,
     inject: () => ({ player: soundPlayer, model, seat: seatWatch }),
   }, SendSound)])
+  ctx.slots.inject('conversation.input.right', () => ctx.slots.register({
+    name: 'conversation.input.right', id: 'amphoreus-writing-tools', order: 20, locale: NS,
+  }, ComposerTools))
+  ctx.slots.inject('conversation.chat.assistant-actions', () => ctx.slots.register({
+    name: 'conversation.chat.assistant-actions', id: 'amphoreus-reader', order: 30, locale: NS,
+  }, MessageReaderAction))
   // @anchor client-tail
 }

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { GRAMMAR_DEFAULTS, GRAMMAR_LIMITS, type GrammarPrefs } from '../shared/api.ts'
 import type { AmphoreusKey } from './locales.ts'
 import css from './settings.module.css'
+import { SegmentedChoice } from './segmented-choice.tsx'
 
 type Translate = (key: AmphoreusKey, params?: Record<string, unknown>) => string
 
@@ -87,21 +88,9 @@ export function GrammarPanel({ grammar, busy, t, onPatch }: GrammarPanelProps) {
           )
         })}
       </div>
-      <div className={css.segmented} role="radiogroup" aria-label={t('settings.grammarMascot')}>
-        {(['reactive', 'static', 'off'] as const).map(mode => (
-          <button
-            key={mode}
-            type="button"
-            role="radio"
-            aria-checked={draft.mascot === mode}
-            className={css.segment}
-            disabled={busy || !draft.enabled}
-            onClick={() => commit({ mascot: mode })}
-          >
-            {t(`settings.grammarMascot.${mode}` as AmphoreusKey)}
-          </button>
-        ))}
-      </div>
+      <SegmentedChoice label={t('settings.grammarMascot')} value={draft.mascot} disabled={busy || !draft.enabled}
+        choices={(['reactive', 'static', 'off'] as const).map(value => ({ value, label: t(`settings.grammarMascot.${value}` as AmphoreusKey) }))}
+        onChange={mascot => commit({ mascot })} />
       <p className={css.hintLine}>
         <label className={css.switchRow}>
           <input

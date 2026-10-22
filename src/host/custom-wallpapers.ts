@@ -5,25 +5,18 @@
  * Metadata (fit / position / playback) lives in `prefs.customWallpapers`.
  */
 import { createReadStream } from 'node:fs'
-import { mkdir, readdir, realpath, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, readdir, realpath, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { pipeline } from 'node:stream/promises'
 import { createWriteStream } from 'node:fs'
+import { WALLPAPER_MEDIA_TYPES } from '../shared/wallpaper-media.ts'
 
 export const CUSTOM_WALLPAPER_DIR = 'custom-wallpapers'
 
 /** Accepted upload MIME → extension. Anything else is rejected with 415. */
-export const CUSTOM_WALLPAPER_TYPES: Readonly<Record<string, string>> = Object.freeze({
-  'image/png': 'png',
-  'image/jpeg': 'jpg',
-  'image/webp': 'webp',
-  'image/gif': 'gif',
-  'image/avif': 'avif',
-  'image/apng': 'apng',
-  'video/mp4': 'mp4',
-  'video/webm': 'webm',
-})
+export const CUSTOM_WALLPAPER_TYPES = WALLPAPER_MEDIA_TYPES
 
 const VIDEO_EXTENSIONS = new Set(['mp4', 'webm'])
 const MIME_BY_EXT: Readonly<Record<string, string>> = Object.freeze(
@@ -61,6 +54,7 @@ export class CustomWallpaperStore {
   /** `realpath(#root)` (lazily resolved, falls back to #root): serve() compares realpath'd files against THIS, so a junction/symlink/8.3 dataDir still contains its own files. */
   #realRoot: string | undefined
   #index = new Map<string, CustomWallpaperRecord>()
+  #pending = new Map<string, Promise<void>>()
 
   constructor(dataDir: string) {
     this.#root = resolve(dataDir, CUSTOM_WALLPAPER_DIR)
@@ -123,38 +117,85 @@ export class CustomWallpaperStore {
    * Stream an upload body to disk (no size cap — the user chose the file), then
    * atomically replace whatever the seat had. Returns the new record.
    */
-  async put(heroId: string, mime: string, body: IncomingMessage): Promise<CustomWallpaperRecord> {
+  async put(heroId: string, mime: string, body: IncomingMessage, activate?: () => Promise<void>): Promise<CustomWallpaperRecord> {
     assertHeroId(heroId)
-    const ext = CUSTOM_WALLPAPER_TYPES[mime.toLowerCase().split(';')[0]!.trim()]
+    const normalizedMime = mime.toLowerCase().split(';')[0]!.trim()
+    const ext = CUSTOM_WALLPAPER_TYPES[normalizedMime]
     if (ext === undefined) throw new TypeError(`unsupported wallpaper type: ${mime}`)
+    return this.#serialize(heroId, () => this.#put(heroId, normalizedMime, ext, body, activate))
+  }
+
+  async #put(heroId: string, mime: string, ext: string, body: IncomingMessage, activate?: () => Promise<void>): Promise<CustomWallpaperRecord> {
     const directory = join(this.#root, heroId)
     await mkdir(directory, { recursive: true })
-    const temporary = join(directory, `.upload-${process.pid}-${Date.now()}.tmp`)
+    const id = randomUUID()
+    const temporary = join(directory, `.upload-${id}.tmp`)
+    const backup = join(directory, `.backup-${id}.tmp`)
+    const metadata = join(directory, `.origin-${id}.tmp`)
+    const file = `wallpaper.${ext}`
+    const destination = join(directory, file)
+    const previous = this.#index.get(heroId)
+    let backedUp = false, replaced = false, keepBackup = false
     try {
       await pipeline(body, createWriteStream(temporary, { flags: 'wx' }))
       const info = await stat(temporary)
       if (info.size === 0) throw new TypeError('empty upload')
-      for (const existing of await readdir(directory)) {
-        if (FILE_NAME.test(existing)) await rm(join(directory, existing), { force: true })
+      try {
+        await copyFile(destination, backup)
+        backedUp = true
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
       }
-      const file = `wallpaper.${ext}`
-      await rename(temporary, join(directory, file))
-      await writeFile(join(directory, '.origin.json'), JSON.stringify({ mime, bytes: info.size, at: Date.now() }))
+      await writeFile(metadata, JSON.stringify({ mime, bytes: info.size, at: Date.now() }), { flag: 'wx' })
+      await rename(temporary, destination)
+      replaced = true
       const record: CustomWallpaperRecord = { heroId, file, kind: customWallpaperKind(file), mime, bytes: info.size, mtimeMs: Date.now() }
       this.#index.set(heroId, record)
+      await activate?.()
+      // The file and preference commit are authoritative; advisory metadata and old-file cleanup cannot undo them.
+      await rename(metadata, join(directory, '.origin.json')).catch(() => {})
+      for (const existing of await readdir(directory).catch(() => [])) {
+        if (existing !== file && FILE_NAME.test(existing)) await rm(join(directory, existing), { force: true }).catch(() => {})
+      }
       return record
+    } catch (error) {
+      if (replaced) {
+        try {
+          if (backedUp) await rename(backup, destination)
+          else await rm(destination, { force: true })
+        } catch (rollbackError) {
+          keepBackup = backedUp
+          throw new AggregateError([error, rollbackError], 'Wallpaper replacement failed; the previous file backup was preserved')
+        } finally {
+          if (previous === undefined) this.#index.delete(heroId)
+          else this.#index.set(heroId, previous)
+        }
+      }
+      throw error
     } finally {
       await rm(temporary, { force: true }).catch(() => {})
+      await rm(metadata, { force: true }).catch(() => {})
+      if (!keepBackup) await rm(backup, { force: true }).catch(() => {})
     }
+  }
+
+  #serialize<T>(heroId: string, action: () => Promise<T>): Promise<T> {
+    const task = (this.#pending.get(heroId) ?? Promise.resolve()).then(action)
+    const settled = task.then(() => {}, () => {})
+    this.#pending.set(heroId, settled)
+    void settled.then(() => { if (this.#pending.get(heroId) === settled) this.#pending.delete(heroId) })
+    return task
   }
 
   async remove(heroId: string): Promise<boolean> {
     assertHeroId(heroId)
-    const record = this.#index.get(heroId)
-    if (record === undefined) return false
-    await rm(join(this.#root, heroId), { recursive: true, force: true })
-    this.#index.delete(heroId)
-    return true
+    return this.#serialize(heroId, async () => {
+      const record = this.#index.get(heroId)
+      if (record === undefined) return false
+      await rm(join(this.#root, heroId), { recursive: true, force: true })
+      this.#index.delete(heroId)
+      return true
+    })
   }
 
   /** GET/HEAD with Range (206) so videos seek; images get long private caching keyed by ?v. */

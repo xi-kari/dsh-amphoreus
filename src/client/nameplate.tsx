@@ -37,6 +37,7 @@ export function SeatNameplate({ sessionId, model, t }: SeatNameplateProps) {
   return (
     <span
       className={css.plate}
+      data-amph-nameplate=""
       style={{ '--amph-seat-accent': color.accent, '--amph-seat-hue': color.hue ?? 0 } as CSSProperties}
       title={tooltip}
     >

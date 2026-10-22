@@ -1,0 +1,8 @@
+.thumbnail, .backgroundThumbnail { display: inline-flex; flex-direction: column; align-items: stretch; gap: 6px; max-width: 100%; padding: 0; border: 0; border-radius: 8px; background: transparent; color: var(--dsw-alias-label-secondary); font: inherit; font-size: 12px; text-align: start; cursor: zoom-in; }
+.thumbnail { width: 180px; margin-top: 8px; }
+.thumbnail img { display: block; width: 100%; height: 100px; object-fit: cover; border-radius: 8px; background: var(--dsw-alias-bg-layer-1); }
+.backgroundThumbnail { width: 100%; }
+.backgroundThumbnail img { display: block; width: 100%; max-height: 200px; object-fit: contain; border-radius: 8px; background: var(--dsw-alias-bg-base); }
+.thumbnail:hover span, .backgroundThumbnail:hover span { color: var(--dsw-alias-label-primary); }
+.thumbnail:focus-visible, .backgroundThumbnail:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 3px; }
+.presetPreview { margin-top: 12px; }

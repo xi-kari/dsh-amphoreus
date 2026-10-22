@@ -19,6 +19,7 @@ export interface Seam {
 }
 
 export const GRAMMAR_SEAMS: readonly Seam[] = [
+  { attribute: 'data-amph-conversation', selector: '[data-phase]:has([data-conversation-content])' },
   // Layout frame: the sidebar column's direct parent.
   { attribute: 'data-amph-frame', selector: ':has(> [class*="sidebarCol"])' },
   // Sidebar column and its topmost content root.
@@ -27,7 +28,7 @@ export const GRAMMAR_SEAMS: readonly Seam[] = [
   // New-session button (raised control).
   { attribute: 'data-amph-raised', selector: 'button[class*="newSession"]' },
   // Conversation header card.
-  { attribute: 'data-amph-header', selector: '[data-phase] > header, [data-phase] header[class*="header"]' },
+  { attribute: 'data-amph-header', selector: '[data-amph-conversation] > header, [data-amph-conversation] [data-slot="conversation.header"] header' },
   // Trajectory view.
   { attribute: 'data-amph-trajectory', selector: '[data-conversation-composer-overlay]' },
   // Details column root.

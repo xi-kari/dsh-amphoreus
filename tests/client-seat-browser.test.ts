@@ -2,11 +2,15 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 import vm from 'node:vm'
-import { JsxEmit, ModuleKind, ScriptTarget, transpileModule } from 'typescript'
+import { createSourceFile, forEachChild, isObjectLiteralExpression, isPropertyAssignment, isStringLiteral, isVariableDeclaration, JsxEmit, ModuleKind, ScriptTarget, transpileModule, type Node } from 'typescript'
 import * as seatModel from '../src/client/seat-model.ts'
 import * as workspaceRouting from '../src/client/workspace-routing.ts'
 import * as sessionAdapter from '../src/client/session-adapter.ts'
+import * as sessionNavigation from '../src/client/session-navigation.ts'
 import { zh } from '../src/client/locales.ts'
+import { createDirectChatRequests, openDirectSeatChat, startSeatSession } from '../src/client/seat-actions.ts'
+import { createSeatStartGuard } from '../src/client/seat-start-guard.ts'
+import { CONVERSATION_PREF_PREFIX } from '../src/client/tabmemory.ts'
 
 interface Element {
   type: string
@@ -16,10 +20,13 @@ interface Element {
 const source = readFileSync(new URL('../src/client/seat-browser.tsx', import.meta.url), 'utf8')
 
 function harness(options: {
+  wide?: boolean
+  expandSidebar?: () => void
   seats?: number
   directoryBlank?: boolean
   internalUnbound?: boolean
-  start?: (skill: string) => Promise<string>
+  hiddenWorkspaces?: boolean
+  start?: (skill: string) => Promise<string | undefined>
   open?: (id: string, skill?: string) => Promise<void>
   archive?: (id: string) => Promise<void>
   remove?: (workspaceId: string) => Promise<void>
@@ -46,8 +53,8 @@ function harness(options: {
   const workspaces = {
     archivedSessionIds: [] as string[],
     items: [
-      ...(options.directoryBlank ? [{ workspaceId: 'directory', title: 'Directory', path: 'D:/directory', sessionIds: ['blank', ...(options.directoryHoldsSeats ? Object.keys(sessions).filter(id => id.startsWith('seat-')) : [])] }] : []),
-      ...(options.internalUnbound ? [{ workspaceId: 'internal', title: 'Cyrene', path: 'D:/seat-cyrene', sessionIds: ['internal-blank', ...Object.keys(sessions).filter(id => id.startsWith('seat-'))] }] : []),
+      ...(options.directoryBlank ? [{ workspaceId: 'directory', title: 'Directory', path: 'D:/directory', sessionIds: ['blank', ...(options.directoryHoldsSeats ? Object.keys(sessions).filter(id => id.startsWith('seat-')) : [])], hidden: options.hiddenWorkspaces ?? false }] : []),
+      ...(options.internalUnbound ? [{ workspaceId: 'internal', title: 'Cyrene', path: 'D:/seat-cyrene', sessionIds: ['internal-blank', ...Object.keys(sessions).filter(id => id.startsWith('seat-'))], hidden: options.hiddenWorkspaces ?? false }] : []),
     ],
   }
   const snapshot = {
@@ -72,6 +79,7 @@ function harness(options: {
       return state[index]
     },
     useSyncExternalStore(_subscribe: unknown, getSnapshot: () => unknown) { return getSnapshot() },
+    useEffect() {},
   }
   const jsx = (type: string, props: Element['props']) => ({ type, props })
   const modules: Record<string, unknown> = {
@@ -80,6 +88,7 @@ function harness(options: {
     './seat-model.ts': seatModel,
     './workspace-routing.ts': workspaceRouting,
     './session-adapter.ts': sessionAdapter,
+    './session-navigation.ts': sessionNavigation,
     './seat-browser.module.css': { default: new Proxy({}, { get: (_target, key) => key }) },
   }
   const context = vm.createContext({
@@ -92,7 +101,7 @@ function harness(options: {
     compilerOptions: { module: ModuleKind.CommonJS, target: ScriptTarget.ES2022, jsx: JsxEmit.ReactJSX, esModuleInterop: false },
   }).outputText, context)
   const props = {
-    wide: true, expandSidebar: () => {},
+    wide: options.wide ?? true, expandSidebar: options.expandSidebar ?? (() => {}),
     useSessions: (selector: (value: typeof list) => unknown) => selector(list),
     useWorkspaces: (selector: (value: typeof workspaces) => unknown) => selector(workspaces),
     model: { subscribe: () => () => {}, getSnapshot: () => snapshot },
@@ -100,11 +109,14 @@ function harness(options: {
     createDirectoryWorkspace: async () => {},
     removeDirectoryWorkspace: options.remove ?? (async () => {}),
     archiveSession: options.archive ?? (async () => {}),
+    searchMessages: async () => ({ items: [], hasMore: false }),
     t: (key: keyof typeof zh) => zh[key],
   }
   return {
     list,
     workspaces,
+    props,
+    snapshot,
     render: (): Element => { cursor = 0; return context.exports.SeatBrowser(props) },
   }
 }
@@ -130,6 +142,173 @@ function button(tree: Element, label: string): Element {
 }
 
 const settle = () => new Promise(resolve => setImmediate(resolve))
+
+test('hidden ordinary workspaces do not expose a directory creation or conversation entry', () => {
+  const app = harness({ directoryBlank: true, hiddenWorkspaces: true })
+  const entries = elements(app.render())
+  assert.equal(entries.some(item => item.type === 'button' && item.props.title === 'D:/directory'), false)
+  assert.equal(entries.some(item => item.type === 'button' && text(item.props.children) === zh['seats.untitledSession']), false)
+})
+
+test('hidden seat workspaces do not expose their unbound drafts', () => {
+  const app = harness({ internalUnbound: true, hiddenWorkspaces: true })
+  const entries = elements(app.render())
+  assert.equal(entries.some(item => item.props['data-group'] === 'unbound-sessions'), false)
+  assert.equal(entries.some(item => item.type === 'button' && text(item.props.children) === 'Internal draft'), false)
+})
+
+const assembly = createSourceFile('index.ts', readFileSync(new URL('../src/client/index.ts', import.meta.url), 'utf8'), ScriptTarget.ES2022, true)
+
+function assemblyExpression(predicate: (node: Node) => string | undefined): string {
+  let expression: string | undefined
+  const visit = (node: Node): void => {
+    expression ??= predicate(node)
+    if (expression === undefined) forEachChild(node, visit)
+  }
+  visit(assembly)
+  assert.ok(expression, 'assembly expression missing')
+  return expression
+}
+
+function evaluateAssembly(expression: string, bindings: Record<string, unknown>): any {
+  const context = vm.createContext({ exports: {}, ...bindings })
+  vm.runInContext(transpileModule(`exports.value = ${expression}`, {
+    compilerOptions: { module: ModuleKind.CommonJS, target: ScriptTarget.ES2022 },
+  }).outputText, context)
+  return context.exports.value
+}
+
+for (const seats of [0, 2]) {
+  test(`seat row only expands and collapses its ${seats} conversations without creating or selecting one`, async () => {
+    let created = 0
+    const opened: string[] = []
+    const app = harness({
+      seats,
+      start: async () => { created++; return 'unexpected' },
+      open: async id => { opened.push(id) },
+    })
+    const row = () => elements(app.render()).find(item => item.props.className === 'seatMain')!
+    assert.equal(row().props['aria-expanded'], false)
+    row().props.onClick()
+    await settle()
+    assert.equal(row().props['aria-expanded'], true)
+    assert.equal(created, 0)
+    assert.deepEqual(opened, [])
+    if (seats > 0) {
+      button(app.render(), 'Seat 1').props.onClick()
+      await settle()
+      assert.deepEqual(opened, ['seat-1'])
+    }
+    row().props.onClick()
+    await settle()
+    assert.equal(row().props['aria-expanded'], false)
+    assert.equal(created, 0)
+    assert.deepEqual(opened, seats > 0 ? ['seat-1'] : [])
+  })
+}
+
+test('narrow seat buttons only expand the sidebar and keep that seat list open', async () => {
+  let created = 0
+  let opened = 0
+  let expanded = 0
+  const app = harness({
+    seats: 2,
+    wide: false,
+    expandSidebar: () => { expanded++; app.props.wide = true },
+    start: async () => { created++; return 'unexpected' },
+    open: async () => { opened++ },
+  })
+  for (let attempt = 0; attempt < 2; attempt++) {
+    app.props.wide = false
+    button(app.render(), '昔涟').props.onClick()
+    await settle()
+    assert.equal(elements(app.render()).find(item => item.props.className === 'seatMain')!.props['aria-expanded'], true)
+    assert.ok(button(app.render(), 'Seat 0'))
+  }
+  assert.equal(expanded, 2)
+  assert.equal(created, 0)
+  assert.equal(opened, 0)
+})
+
+test('sidebar plus executes its real creation assembly once and opens the returned id in chat', async () => {
+  const originalFetch = globalThis.fetch
+  const values = new Map<string, string>()
+  const opened: string[] = []
+  const activated: [string, string][] = []
+  let created = 0
+  let release!: () => void
+  let createdId = ''
+  const app = harness()
+  const ctx = { uiConversation: { binding: (id: string) => ({ activate: (view: string) => { activated.push([id, view]) } }) } }
+  const openDirectSession = evaluateAssembly(assemblyExpression(node =>
+    isVariableDeclaration(node) && node.name.getText(assembly) === 'openDirectSession'
+      ? node.initializer?.getText(assembly) : undefined), {
+    openDirectSeatChat,
+    localStorage: { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, value) } },
+    portal: { close: () => {} },
+    ctx,
+    directChatRequests: createDirectChatRequests(),
+    sessionsFace: { open: (id: string) => {
+      opened.push(id)
+      app.list.byId[id]!.retainedBy = { mainView: 1 }
+    } },
+  })
+  const injectionExpression = assemblyExpression(node => {
+    if (!isObjectLiteralExpression(node)) return undefined
+    const properties = node.properties.filter(isPropertyAssignment)
+    const name = properties.find(property => property.name.getText(assembly) === 'name')?.initializer
+    if (name === undefined || !isStringLiteral(name) || name.text !== 'sidebar.workspaces') return undefined
+    return properties.find(property => property.name.getText(assembly) === 'inject')?.initializer.getText(assembly)
+  })
+  const injected = evaluateAssembly(injectionExpression, {
+    model: app.props.model,
+    archiveSession: async () => {},
+    openBoundSeatSession: async () => {},
+    openDirectSession,
+    startSeatSession,
+    seatStartGuard: createSeatStartGuard({ hasSession: () => createdId in app.list.byId }),
+    seatDeps: {
+      nonce: () => 'fixture-nonce',
+      seatDirOf: () => 'D:/fixture',
+      sessions: {
+        create: async (options: { sessionId: string }) => {
+          created++
+          createdId = options.sessionId
+          await new Promise<void>(resolve => { release = resolve })
+          app.list.byId[createdId] = { id: createdId, displayTitle: 'New seat chat', updatedAt: 200, blank: true, retainedBy: {} }
+          app.list.ids.push(createdId)
+          app.snapshot.state.bindings.push({ sessionId: createdId, skillName: 'amphoreus-cyrene' })
+          return createdId
+        },
+        open: () => assert.fail('creation must defer opening to the direct chat assembly'),
+      },
+    },
+    ctx,
+  })()
+  app.props.startSeatSession = injected.startSeatSession
+  globalThis.fetch = async () => new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
+  try {
+    const plus = button(app.render(), '在此席新建会话')
+    plus.props.onClick()
+    plus.props.onClick()
+    await settle()
+    assert.equal(created, 1)
+    assert.deepEqual(opened, [])
+    assert.deepEqual(activated, [])
+    assert.equal(button(app.render(), '在此席新建会话').props.disabled, true)
+    release()
+    await settle()
+    assert.deepEqual(opened, [createdId])
+    assert.deepEqual(activated, [[createdId, 'chat']])
+    assert.equal(JSON.parse(values.get(`${CONVERSATION_PREF_PREFIX}.${createdId}`)!).view, 'chat')
+    assert.equal(button(app.render(), 'New seat chat').props['data-active'], true)
+    assert.equal(elements(app.render()).find(item => item.props.className === 'seatRow')!.props['data-current'], true)
+    assert.equal(button(app.render(), '在此席新建会话').props.disabled, false)
+  } finally {
+    release?.()
+    globalThis.fetch = originalFetch
+  }
+})
 
 test('active conversation follows the main-view reference without treating a workbench reference as selection', () => {
   const app = harness({ seats: 2 })
@@ -210,7 +389,7 @@ test('archive failure retains the conversation and a working retry action', asyn
   assert.equal(elements(app.render()).some(item => item.props['aria-label'] === '归档会话：新对话'), false)
 })
 
-test('rapid plus and empty-seat entry share one pending creation and allow another after it finishes', async () => {
+test('rapid plus clicks create once while the seat row remains a working disclosure', async () => {
   let calls = 0
   let complete!: (id: string) => void
   const app = harness({ start: async skill => {
@@ -227,7 +406,8 @@ test('rapid plus and empty-seat entry share one pending creation and allow anoth
   await settle()
   assert.equal(calls, 1)
   assert.equal(button(app.render(), '在此席新建会话').props.disabled, true)
-  assert.equal(elements(app.render()).find(item => item.type === 'button' && text(item.props.children).startsWith('昔涟'))!.props.disabled, true)
+  assert.notEqual(elements(app.render()).find(item => item.props.className === 'seatMain')!.props.disabled, true)
+  assert.equal(elements(app.render()).find(item => item.props.className === 'seatMain')!.props['aria-expanded'], false)
   complete('one')
   await settle()
   assert.equal(button(app.render(), '在此席新建会话').props.disabled, false)
@@ -238,7 +418,7 @@ test('rapid plus and empty-seat entry share one pending creation and allow anoth
   await settle()
 })
 
-test('failed seat creation unlocks both controls so a new attempt can succeed', async () => {
+test('failed seat creation is retried only by plus while the seat row remains a disclosure', async () => {
   let calls = 0
   const app = harness({ start: async () => {
     if (++calls === 1) throw new Error('creation unavailable')
@@ -249,6 +429,9 @@ test('failed seat creation unlocks both controls so a new attempt can succeed', 
   assert.match(text(app.render()), /creation unavailable/u)
   assert.equal(button(app.render(), '在此席新建会话').props.disabled, false)
   elements(app.render()).find(item => item.type === 'button' && text(item.props.children).startsWith('昔涟'))!.props.onClick()
+  await settle()
+  assert.equal(calls, 1)
+  button(app.render(), '在此席新建会话').props.onClick()
   await settle()
   assert.equal(calls, 2)
   assert.equal(elements(app.render()).some(item => item.props.role === 'alert'), false)

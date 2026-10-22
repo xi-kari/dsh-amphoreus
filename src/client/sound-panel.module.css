@@ -66,3 +66,13 @@
   .slotRow { grid-template-columns: 1fr; }
   .slotActions { justify-content: flex-start; }
 }
+
+@media (max-width: 620px) {
+  .masterRow { flex-wrap: wrap; min-width: 0; }
+  .slotName { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+  .slotMeta { white-space: normal; overflow-wrap: anywhere; }
+  .slotActions { min-width: 0; }
+  .volume { flex: 1 1 100%; min-width: 0; max-width: 100%; }
+  .volume input[type="range"] { flex: 1 1 auto; width: auto; min-width: 0; min-height: 44px; }
+  .volume output { flex: none; }
+}

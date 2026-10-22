@@ -10,7 +10,7 @@ import { fixtureConfig, fixtureSnapshot } from './fixture-suite.ts'
 test('first-frame rows put boot data first and add wallpaper style/html/script only when enabled', () => {
   const config = fixtureConfig()
   const snapshot = fixtureSnapshot()
-  const options = { config, nonce: 'fixture-nonce', current: () => snapshot, wallpaperIndex: 2 }
+  const options = { config, nonce: 'fixture-nonce', current: () => snapshot, wallpaperIndex: 2, backgroundMode: () => 'preset' as const }
   const boot = createBootPayload(options)
   assert.equal(boot.revision, snapshot.generation)
   assert.equal(boot.level, 'L0')
@@ -54,7 +54,7 @@ test('first-frame rows put boot data first and add wallpaper style/html/script o
     assert.ok(script.text.indexOf("localStorage.getItem('dsh-amphoreus:last-seat')") < script.text.indexOf("layer.style.setProperty('--amphoreus-wallpaper-url'"))
   }
 
-  const disabled = createFirstFrameRows({ ...options, config: { ...config, wallpaper: { ...config.wallpaper, enabled: false } } })
+  const disabled = createFirstFrameRows({ ...options, backgroundMode: () => 'none' })
   assert.deepEqual(disabled.map(row => row.kind), ['global'])
 })
 
@@ -76,6 +76,7 @@ test('first-frame boot emits distinct main and sidebar wallpaper URLs when asset
     config: { ...config, assetsRoot: 'X:/assets', wallpaper: { ...config.wallpaper, global: 'fixed', globalIndex: 4, sidebarIndex: 5 } },
     nonce: 'n',
     current: () => undefined,
+    backgroundMode: () => 'preset',
   })
   assert.equal(boot.level, 'loading')
   assert.equal(boot.wallpaper.url, `/amphoreus/wallpaper/${encodeURIComponent(GLOBAL_WALLPAPERS[4]!)}`)

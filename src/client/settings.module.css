@@ -3,6 +3,7 @@
   --amphoreus-font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Helvetica, Arial, sans-serif;
   --amphoreus-font-mono: ui-monospace, "Cascadia Code", Consolas, "SFMono-Regular", monospace;
   container-type: inline-size;
+  box-sizing: border-box;
   width: min(1120px, 100%);
   margin: 0 auto;
   padding: 26px clamp(18px, 3vw, 38px) 48px;
@@ -180,6 +181,7 @@
 .sideColumn { display: flex; flex-direction: column; gap: 16px; }
 
 .panel {
+  container: amph-settings-panel / inline-size;
   border: 1px solid var(--dsw-alias-border-l1);
   border-radius: var(--amph-radius, 10px);
   background: var(--dsw-alias-bg-layer-1);
@@ -345,13 +347,95 @@
 }
 
 @media (max-width: 620px) {
+  :global([role="dialog"][data-shortcut-modal="settings"]:has([data-amph-console])) {
+    flex-direction: column;
+    width: calc(100vw - 16px);
+    max-width: calc(100vw - 16px);
+    height: min(800px, calc(100dvh - 2 * max(24px, var(--dsh-frame-overlay-top, 24px))));
+  }
+
+  :global([role="dialog"][data-shortcut-modal="settings"]:has([data-amph-console]) > nav) {
+    width: auto;
+    min-width: 0;
+    gap: 8px;
+    padding: 12px 12px 0;
+  }
+
+  :global([role="dialog"][data-shortcut-modal="settings"]:has([data-amph-console]) > nav > div:first-child) {
+    padding-inline: 4px;
+  }
+
+  :global([role="dialog"][data-shortcut-modal="settings"]:has([data-amph-console]) > nav > div:last-child) {
+    flex-direction: row;
+    min-width: 0;
+    padding: 2px 2px 4px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    scroll-padding-inline: 2px;
+  }
+
+  :global([role="dialog"][data-shortcut-modal="settings"]:has([data-amph-console]) > nav > div:last-child > button) {
+    flex: 0 0 auto;
+    height: auto;
+    min-height: 44px;
+    padding-inline: 12px;
+    white-space: nowrap;
+  }
+
+  :global([role="dialog"][data-shortcut-modal="settings"]:has([data-amph-console]) > div:has([data-amph-console])) {
+    min-width: 0;
+    min-height: 0;
+  }
+
+  :global([role="dialog"][data-shortcut-modal="settings"]:has([data-amph-console]) > div:has([data-amph-console]) > div:first-child) {
+    height: auto;
+    min-height: 52px;
+    align-items: center;
+    padding: 4px 12px;
+  }
+
+  :global([role="dialog"][data-shortcut-modal="settings"]:has([data-amph-console]) > div:has([data-amph-console]) > div:first-child > div) {
+    flex-wrap: wrap;
+  }
+
+  :global([role="dialog"][data-shortcut-modal="settings"]:has([data-amph-console]) > div:has([data-amph-console]) > div:first-child > button) {
+    flex: 0 0 44px;
+    width: 44px;
+    height: 44px;
+  }
+
+  :global([role="dialog"][data-shortcut-modal="settings"]:has([data-amph-console]) > div:has([data-amph-console]) > div:last-child) {
+    min-width: 0;
+    min-height: 0;
+    padding: 0 8px 16px;
+  }
+
   .page { padding-inline: 12px; }
+  .page :is(input, select, textarea, button) { box-sizing: border-box; max-width: 100%; }
+  .page :is(input, select, textarea) { min-width: 0; }
   .hero { padding: 22px 18px; }
   .heroActions { flex-direction: column; align-items: stretch; }
-  .primaryButton, .secondaryButton { min-height: 40px; }
-  .cardRow { grid-template-columns: 28px minmax(0, 1fr) auto; }
-  .duties { grid-column: 2 / -1; }
-  .warning { grid-column: 2 / -1; }
+  .heroActions > * { min-width: 0; max-width: 100%; }
+  .primaryButton, .secondaryButton, .linkButton { min-height: 44px; overflow-wrap: anywhere; }
+  .sectionHeading { flex-wrap: wrap; }
+  .sectionHeading > div { min-width: 0; }
+  .sectionHeading h2, .sectionHeading p, .actionError, .cardIdentity strong, .metric span { overflow-wrap: anywhere; }
+  .metric strong { overflow: visible; white-space: normal; overflow-wrap: anywhere; text-overflow: clip; }
+  .cardList { grid-template-columns: repeat(auto-fill, minmax(min(150px, 100%), 1fr)); }
+  .cardRow { grid-template-columns: auto minmax(0, 1fr); }
+  .duties, .warning { grid-column: 1 / -1; }
+  .policy, .warning { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+  .switchRow { min-width: 0; min-height: 44px; max-width: 100%; white-space: normal; }
+  .switchRow input { flex: none; }
+  .segmented { display: flex; flex-wrap: wrap; min-width: 0; }
+  .segment { flex: 1 1 72px; min-width: 0; min-height: 44px; padding: 8px 10px; white-space: normal; overflow-wrap: anywhere; }
+  .segment:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: -2px; }
+  .sliderRow { grid-template-columns: minmax(0, 1fr) auto; gap: 6px 8px; }
+  .sliderRow label { grid-column: 1; grid-row: 1; min-width: 0; overflow-wrap: anywhere; }
+  .sliderRow input[type="range"] { grid-column: 1 / -1; grid-row: 2; min-width: 0; min-height: 44px; }
+  .sliderRow output { grid-column: 2; grid-row: 1; }
+  .wpName, .wpMeta { min-width: 0; overflow-wrap: anywhere; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -366,4 +450,28 @@
   .metrics { border-color: var(--dsw-alias-border-l4); }
   .cardRow,
   .factList dd { font-weight: 500; }
+}
+.backgroundCustom { display: grid; gap: 12px; margin-top: 16px; min-width: 0; }
+.backgroundPreview { width: 100%; max-height: 200px; object-fit: contain; border-radius: 8px; background: var(--dsw-alias-bg-base); }
+.backgroundActions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+
+@container amph-settings-panel (max-width: 480px) {
+  .index { min-width: 0; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+  .heroActions { justify-content: flex-start; }
+  .heroActions > * { min-width: 0; max-width: 100%; }
+  .heroActions :is(.primaryButton, .secondaryButton, .linkButton) {
+    min-height: 40px;
+    padding-block: 8px;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+  }
+}
+
+@container amph-settings-panel (max-width: 384px) {
+  .heroActions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; }
+  .heroActions > :only-child { grid-column: 1 / -1; }
+}
+
+@media (pointer: coarse) {
+  .heroActions :is(.primaryButton, .secondaryButton, .linkButton) { min-height: 44px; }
 }

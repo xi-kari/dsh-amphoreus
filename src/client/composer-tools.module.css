@@ -1,0 +1,51 @@
+.root {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 2px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--dsw-radius-md);
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.button:hover, .button[aria-pressed='true'] {
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.button:focus-visible {
+  outline: 2px solid var(--dsw-alias-brand-primary);
+  outline-offset: 2px;
+}
+
+.button:disabled { opacity: 0.45; cursor: default; }
+.count { padding-inline: 4px; font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+:global([data-composer-card]):has(.root[data-expanded]) {
+  --dsh-composer-text-max-height: min(55dvh, 620px);
+}
+
+:global([data-composer-card]):has(.root[data-expanded]) :global([data-input-scroll]) {
+  min-height: min(34dvh, 360px);
+}
+
+@media (max-width: 640px) {
+  .count { display: none; }
+  .button { width: 26px; }
+}
+
+@media (pointer: coarse) {
+  .button { min-width: 32px; min-height: 36px; }
+}

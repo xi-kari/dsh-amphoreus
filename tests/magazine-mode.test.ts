@@ -153,7 +153,7 @@ test('client setMagazineMode writes the nonce-gated preference and refreshes sta
   const requests: Array<{ input: string; init?: RequestInit }> = []
   Object.defineProperty(globalThis, 'window', {
     configurable: true,
-    value: { __AMPHOREUS_BOOT__: { nonce: 'client-magazine-nonce' } },
+    value: { setTimeout, clearTimeout, __AMPHOREUS_BOOT__: { nonce: 'client-magazine-nonce' } },
   })
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
     const path = String(input)

@@ -1,30 +1,25 @@
 /**
- * Dev-time module linking for an out-of-tree DSH plugin on Windows.
- *
- * `dsh-amphoreus` is installed into the `web` profile with `link:` and imports
- * the installation's own `@deepseek-ai/*` packages plus a few third-party
- * libraries. For typechecking and building from this directory, this script
- * junctions each declared dependency into `./node_modules` from:
- *   1. the profile module fallback `$WORKSPACE/.dsh-home/profiles/node_modules`
- *      (mirrors the running dsh installation; one entry per package)
- *   2. the dev checkout's `apps/web/node_modules` (static assembly libraries: store, slots, primitives, web)
- *      then its root `node_modules` (toolchain: tsdown, typescript, lightningcss)
- *   3. the dev checkout's `node_modules/.pnpm/<name>@<version>/node_modules/<name>` store
- * Junctions never require admin rights; realpath resolution keeps every
- * package's own dependencies resolvable from its true location. Only links this
- * script created (reparse points under ./node_modules) are ever removed.
+ * Create Windows junctions for local plugin development.
+ * Resolve workspace packages by manifest name, then consult the profile fallback,
+ * Web and root dependencies, and the pnpm store. Existing real directories are preserved.
  */
-import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmdirSync, symlinkSync } from 'node:fs'
+import { existsSync, globSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmdirSync, symlinkSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const pluginDir = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const workspace = process.env.DSH_WORKSPACE_ROOT ?? resolve(pluginDir, '..', '..')
+const devDirectory = join(workspace, 'deepseek-harness-dev')
 const fallback = join(workspace, '.dsh-home', 'profiles', 'node_modules')
 const devRoot = join(workspace, 'deepseek-harness-dev', 'node_modules')
 const webAppRoot = join(workspace, 'deepseek-harness-dev', 'apps', 'web', 'node_modules')
 const pnpmStore = join(devRoot, '.pnpm')
 const manifest = JSON.parse(readFileSync(join(pluginDir, 'package.json'), 'utf8'))
+const workspacePackages = new Map(globSync(['vendor/*/package.json', 'packages/*/*/package.json'], { cwd: devDirectory })
+  .map(path => {
+    const absolutePath = join(devDirectory, path)
+    return [JSON.parse(readFileSync(absolutePath, 'utf8')).name, dirname(absolutePath)]
+  }))
 const names = [...new Set([
   ...Object.keys(manifest.dependencies ?? {}),
   ...Object.keys(manifest.peerDependencies ?? {}),
@@ -47,6 +42,8 @@ function fromPnpmStore(name) {
 }
 
 function locate(name) {
+  const source = workspacePackages.get(name)
+  if (source !== undefined) return realDir(source)
   for (const root of [fallback, webAppRoot, devRoot]) {
     const candidate = join(root, name)
     if (existsSync(join(candidate, 'package.json'))) return realDir(candidate)

@@ -6,6 +6,8 @@ import { PLATFORM_MODULES } from '../tsdown.config.ts'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const REQUIRED_OUTPUTS = [
+  'compat/dsh-v0.2.1-rc.2-workspace-visibility.patch',
+  'icon.svg',
   'lib/index.js',
   'lib/client.js',
   'lib/derive.js',
@@ -13,7 +15,7 @@ const REQUIRED_OUTPUTS = [
   'lib/types/client/index.d.ts',
 ]
 const EXPECTED_TOP_LEVEL_JS = ['client.js', 'derive.js', 'index.js']
-const ALLOWED_TARBALL_PATH = /^(?:LICENSE|NOTICE|README\.md|cordis\.patch\.yml|package\.json|lib\/(?:index|client|derive)\.js(?:\.map)?|lib\/types\/.+\.d\.ts|workbench\/(?:app\.js|styles\.css|mark\.svg)|scripts\/derive-assets\.mjs)$/u
+const ALLOWED_TARBALL_PATH = /^(?:LICENSE|NOTICE|README\.md|compat\/dsh-v0\.2\.1-rc\.2-workspace-visibility\.patch|cordis\.patch\.yml|package\.json|icon\.svg|lib\/(?:index|client|derive)\.js(?:\.map)?|lib\/types\/.+\.d\.ts|workbench\/(?:app\.js|styles\.css|mark\.svg)|scripts\/derive-assets\.mjs)$/u
 const FORBIDDEN_MEDIA = /\.(?:png|jpe?g|webp|gif|zip|svgz)$/iu
 const FORBIDDEN_PACKAGE_PATH = /^(?:src|tests|reference|docs)\/|(?:^|\/)(?:SKILL\.md|persona\.md|common\.md|relations\.md|HANDOFF\.md|\.npmrc|package-lock\.json)$/u
 
@@ -27,6 +29,16 @@ function check(condition, reason) {
 
 function read(relativePath) {
   return readFileSync(resolve(ROOT, relativePath), 'utf8')
+}
+
+function verifyPortablePath(file) {
+  const source = read(file)
+  const roots = [ROOT, ROOT.replaceAll('\\', '/'), ROOT.replaceAll('\\', '\\\\')]
+  check(!roots.some(root => source.includes(root)), `${file} contains the absolute build directory`)
+  check(
+    !/^\s*\/\/#region[^\n]*(?:[A-Za-z]:[\\/]|file:\/\/\/|\/(?:Users|home|tmp|var|private)\/)/mu.test(source),
+    `${file} contains an absolute module path`,
+  )
 }
 
 function packageNameOf(specifier) {
@@ -147,6 +159,7 @@ function verifyTarball() {
       !path.startsWith('scripts/') || path === 'scripts/derive-assets.mjs',
       `tarball contains non-runtime script: ${path}`,
     )
+    if (existsSync(resolve(ROOT, path))) verifyPortablePath(path)
   }
   check(
     Number.isFinite(packed.unpackedSize) && packed.unpackedSize < 2_000_000,

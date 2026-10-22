@@ -22,6 +22,7 @@ test('derived wallpaper wins even without assetsRoot and null falls back to conf
     config: config(''),
     nonce: 'n',
     current: () => undefined,
+    backgroundMode: () => 'preset',
     derivedWallpaper: index => `/amphoreus/derived/_global/wallpaper-${index}.webp`,
   })
   assert.equal(derived.wallpaper.url, '/amphoreus/derived/_global/wallpaper-2.webp')
@@ -31,10 +32,29 @@ test('derived wallpaper wins even without assetsRoot and null falls back to conf
     config: config('X:/assets'),
     nonce: 'n',
     current: () => undefined,
+    backgroundMode: () => 'preset',
     derivedWallpaper: () => null,
   })
   assert.match(original.wallpaper.url ?? '', /^\/amphoreus\/wallpaper\//u)
   assert.match(original.wallpaper.sidebarUrl ?? '', /^\/amphoreus\/wallpaper\//u)
+})
+
+test('no background is the default and custom mode never falls back to preset resources', () => {
+  const options = { config: config('X:/assets'), nonce: 'n', current: () => undefined,
+    derivedWallpaper: (index: number) => `/amphoreus/derived/_global/wallpaper-${index}.webp` }
+  const none = createBootPayload(options)
+  assert.equal(none.wallpaper.enabled, false)
+  assert.equal(none.wallpaper.url, undefined)
+  assert.equal(none.wallpaper.sidebarUrl, undefined)
+  const missing = createBootPayload({ ...options, backgroundMode: () => 'custom' })
+  assert.equal(missing.wallpaper.url, undefined)
+  assert.equal(missing.wallpaper.sidebarUrl, undefined)
+  const custom = createBootPayload({ ...options, backgroundMode: () => 'custom', customWallpaper: () => ({
+    heroId: 'global', kind: 'image', url: '/amphoreus/custom-wallpaper/global/photo.png', mime: 'image/png', bytes: 100,
+    placement: { fit: 'cover', x: 50, y: 40, scale: 1, muted: true, loop: true, playbackRate: 1, paused: false },
+  }) })
+  assert.equal(custom.wallpaper.url, '/amphoreus/custom-wallpaper/global/photo.png')
+  assert.equal(custom.wallpaper.sidebarUrl, custom.wallpaper.url)
 })
 
 test('host apply awaits asset preparation before route and first-frame registration', () => {

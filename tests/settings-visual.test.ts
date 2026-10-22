@@ -6,6 +6,7 @@ import { en, zh } from '../src/client/locales.ts'
 const settings = readFileSync(new URL('../src/client/settings.tsx', import.meta.url), 'utf8')
 const styles = readFileSync(new URL('../src/client/settings.module.css', import.meta.url), 'utf8')
 const localeSource = readFileSync(new URL('../src/client/locales.ts', import.meta.url), 'utf8')
+const segmented = readFileSync(new URL('../src/client/segmented-choice.tsx', import.meta.url), 'utf8')
 
 const VISUAL_KEYS = [
   'settings.visualHeading',
@@ -44,7 +45,8 @@ test('visual panel is between runtime and workbench and keeps assetsRoot read-on
   const workbench = settings.indexOf('aria-labelledby="amphoreus-workbench"')
   assert.ok(runtime >= 0 && runtime < visual && visual < workbench)
   const panel = settings.slice(visual, workbench)
-  assert.match(panel, /role="radiogroup"[\s\S]*role="radio"/)
+  assert.match(panel, /<SegmentedChoice label=\{t\('settings\.magazineMode'\)\} value=\{state\.effectiveConfig\.magazineMode\}/)
+  assert.match(segmented, /role="radiogroup"[\s\S]*role="radio"/)
   assert.match(panel, /model\.setMagazineMode\(mode\)/)
   assert.match(panel, /model\.setMagazineMode\(null\)/)
   assert.match(panel, /model\.deriveAssets\(false\)/)

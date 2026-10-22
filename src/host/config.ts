@@ -1,9 +1,11 @@
 /** Host plugin configuration (schemastery; every nested object defaults so partial patches keep the rest). */
 import z from '@deepseek-ai/schemastery'
+import type { WidgetConfiguredPrice } from './widget-pricing.ts'
 
 export type SessionStartSourceName = 'startup' | 'resume' | 'clear' | 'compact'
 
 export interface AmphoreusConfig {
+  widget?: { refreshSeconds: number; balanceSource: 'auto' | 'api-key' | 'account'; apiKeyRef: string; priceCurrency: 'CNY' | 'USD'; prices: WidgetConfiguredPrice[] }
   skillRoots: string[]
   dataDir: string
   assetsRoot: string
@@ -44,6 +46,16 @@ export interface AmphoreusConfig {
 const EMPTY_OBJECT = {} as unknown as never
 
 export const Config: z<AmphoreusConfig> = z.object({
+  widget: z.object({
+    refreshSeconds: z.natural().min(15).max(3600).default(60),
+    balanceSource: z.union(['auto', 'api-key', 'account']).default('auto'),
+    apiKeyRef: z.string().default(''),
+    priceCurrency: z.union(['CNY', 'USD']).default('CNY'),
+    prices: z.array(z.object({
+      provider: z.string(), model: z.string(), currency: z.string(),
+      input: z.string(), cacheRead: z.string(), cacheWrite: z.string(), output: z.string(), asOf: z.string(),
+    })).default([]),
+  }).default(EMPTY_OBJECT),
   skillRoots: z.array(z.string()).default(['~/.claude/skills', '~/.codex/skills']),
   dataDir: z.string().default(''),
   assetsRoot: z.string().default(''),
@@ -59,7 +71,7 @@ export const Config: z<AmphoreusConfig> = z.object({
   magazineMode: z.union(['light', 'full']).default('light'),
   seatStyle: z.boolean().default(true),
   wallpaper: z.object({
-    enabled: z.boolean().default(true),
+    enabled: z.boolean().default(false),
     global: z.union(['rotate', 'fixed']).default('fixed'),
     globalIndex: z.natural().max(5).default(4),
     sidebarIndex: z.natural().max(5).default(5),

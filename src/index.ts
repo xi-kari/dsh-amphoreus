@@ -1,7 +1,7 @@
 /** dsh-amphoreus host half. @module dsh-amphoreus */
 import type { Context } from '@deepseek-ai/cordis'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
-import { randomBytes, randomInt } from 'node:crypto'
+import { randomBytes } from 'node:crypto'
 import { join } from 'node:path'
 import { AmphoreusBridge } from './host/bridge.ts'
 import { Config, type AmphoreusConfig } from './host/config.ts'
@@ -20,6 +20,8 @@ import type { WorkbenchStatus } from './shared/api.ts'
 import { registerSeatPermission } from './host/seat-permission.ts'
 import { registerSeatMemory } from './host/memory.ts'
 import { inspectColdSession, listColdHeaders, type ColdPersistence } from './host/session-replay.ts'
+import { activateSeatWorkspaces, requireWorkspaceVisibility } from './host/workspace-visibility.ts'
+import { registerWidgetAccounting } from './host/widget.ts'
 /** Effective assets root: the runtime pref chosen in the setup wizard wins over cordis.patch.yml. */
 function effectiveAssetsRoot(config: AmphoreusConfig, stores: AmphoreusStores | undefined): string {
   const saved = stores?.main.global.get().prefs.assetsRoot ?? ''
@@ -33,10 +35,11 @@ export type { AmphoreusConfig }
 export const name = 'amphoreus'
 
 /** Host services this row waits for before mounting. */
-export const inject = ['webServer', 'connection', 'skills', 'storageDomain', 'sessions', 'sessionPersistence', 'agents', 'commands']
+export const inject = ['webServer', 'connection', 'skills', 'storageDomain', 'sessions', 'sessionPersistence', 'agents', 'commands', 'workspaceRegistry']
 
 export function apply(ctx: Context, config: AmphoreusConfig): void {
   ctx.effect(async () => {
+    const workspaceRegistry = requireWorkspaceVisibility(ctx.get('workspaceRegistry'))
     const bridge = new AmphoreusBridge(ctx, config)
     const nonce = randomBytes(24).toString('base64url')
     const dataDir = config.dataDir.trim() === '' ? join(resolveDshHome(), 'amphoreus') : config.dataDir
@@ -183,6 +186,12 @@ export function apply(ctx: Context, config: AmphoreusConfig): void {
       }
     }
 
+    let widget: Awaited<ReturnType<typeof registerWidgetAccounting>> | undefined
+    let widgetError = false
+    if (stores !== undefined) {
+      try { widget = await registerWidgetAccounting(ctx, config) }
+      catch { widgetError = true; ctx.logger.warn('amphoreus widget accounting unavailable; existing ledger was preserved') }
+    }
     const webApi = stores === undefined
       ? undefined
       : new AmphoreusWebApi(ctx, {
@@ -190,6 +199,8 @@ export function apply(ctx: Context, config: AmphoreusConfig): void {
           stores,
           resolver: bridge.resolver,
           nonce,
+          ...(widget === undefined ? {} : { widget: widget.service }),
+          widgetError,
           assetsCacheDir: join(dataDir, 'assets-cache'),
           dataDir,
           // @anchor webapi-construct
@@ -212,9 +223,11 @@ export function apply(ctx: Context, config: AmphoreusConfig): void {
       config,
       nonce,
       current: () => bridge.resolver.current(),
-      wallpaperIndex: randomInt(6),
+      wallpaperIndex: stores?.main.global.get().prefs.wallpaperCursor ?? 0,
       derivedWallpaper: index => webApi?.derivedWallpaperUrl(index) ?? null,
       assetsRoot: () => effectiveAssetsRoot(config, stores),
+      backgroundMode: () => stores?.main.global.get().prefs.backgroundMode ?? 'none',
+      customWallpaper: () => webApi?.globalCustomWallpaper(),
     })
     await bridge.start()
     const disposeObserver = stores === undefined
@@ -225,23 +238,37 @@ export function apply(ctx: Context, config: AmphoreusConfig): void {
     const disposeSeatMemory = stores === undefined
       ? () => Promise.resolve()
       : registerSeatMemory(ctx, { config, stores, current: () => bridge.resolver.current() })
-    startColdReplay()
-    return async () => {
-      await disposeObserver()
-      // @anchor host-dispose
-      disposeSeatPermission()
-      await disposeSeatMemory()
-      disposeFirstFrame()
-      disposeSeatPrompt()
-      disposeInjector()
-      disposeWebApi()
-      disposeProjection()
-      detach()
-      coldReplayAbort.abort()
-      await coldReplayTask
-      workbench?.flush()
-      await bridge.close()
-      await stores?.close()
+    let hideSeatWorkspaces = async () => {}
+    const dispose = async () => {
+      try {
+        await hideSeatWorkspaces()
+      } finally {
+        await disposeObserver()
+        // @anchor host-dispose
+        disposeSeatPermission()
+        await disposeSeatMemory()
+        await widget?.dispose().catch(() => ctx.logger.warn('amphoreus widget shutdown could not flush its ledger'))
+        disposeFirstFrame()
+        disposeSeatPrompt()
+        disposeInjector()
+        disposeWebApi()
+        disposeProjection()
+        detach()
+        coldReplayAbort.abort()
+        await coldReplayTask
+        workbench?.flush()
+        await bridge.close()
+        await stores?.close()
+      }
     }
+    try {
+      if (seatDirs === undefined) throw new Error('Seat directories are unavailable; workspace visibility cannot be managed safely.')
+      hideSeatWorkspaces = await activateSeatWorkspaces(workspaceRegistry, seatDirs.dirs)
+    } catch (error) {
+      await dispose()
+      throw error
+    }
+    startColdReplay()
+    return dispose
   }, 'dsh-amphoreus/bridge')
 }

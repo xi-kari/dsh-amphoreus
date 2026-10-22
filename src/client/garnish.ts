@@ -34,21 +34,59 @@ export function chimeraFor(title: string): string {
 const HEADLINE_TEXTS = new Set(['探索未至之境', 'Into the Unknown'])
 const GARNISH_MARK = 'amphoreusGarnish'
 
-function swapHeadline(root: ParentNode, now: () => Date, seat: () => string | null): void {
+interface HeadlineRecord {
+  original: string | null
+  applied: string
+  holder: HTMLElement | null
+  previousMark: string | undefined
+}
+
+interface FolderRecord {
+  image: HTMLImageElement
+  previousMark: string | undefined
+  icons: Array<{ node: SVGElement; display: string; priority: string }>
+}
+
+function restoreMark(holder: HTMLElement | null, expected: string, previous: string | undefined): void {
+  if (holder?.dataset[GARNISH_MARK] !== expected) return
+  if (previous === undefined) delete holder.dataset[GARNISH_MARK]
+  else holder.dataset[GARNISH_MARK] = previous
+}
+
+function isHeroHeadline(node: Node): boolean {
+  const holder = node.parentElement
+  const group = holder?.parentElement
+  return holder?.tagName === 'SPAN' && group !== undefined && group !== null
+    && /(^|\s|_)titleGroup(\s|$|_)/u.test(group.className)
+    && group.firstElementChild === holder && group.closest("[data-content-phase='hero']") !== null
+}
+
+function swapHeadline(root: ParentNode, now: () => Date, seat: () => string | null, records: Map<Node, HeadlineRecord>): void {
   const walker = document.createTreeWalker(root as Node, NodeFilter.SHOW_TEXT)
   for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
     const text = node.textContent?.trim()
-    if (text !== undefined && HEADLINE_TEXTS.has(text)) {
-      node.textContent = seatGreetingFor(seat(), now().getHours())
+    if (text !== undefined && HEADLINE_TEXTS.has(text) && isHeroHeadline(node)) {
       const holder = node.parentElement
+      const previous = records.get(node)
+      const record = { original: node.textContent, applied: seatGreetingFor(seat(), now().getHours()),
+        holder, previousMark: previous === undefined ? holder?.dataset[GARNISH_MARK] : previous.previousMark }
+      records.set(node, record)
+      node.textContent = record.applied
       if (holder !== null) holder.dataset[GARNISH_MARK] = 'headline'
     }
   }
 }
 
-function refreshHeadlines(now: () => Date, seat: () => string | null): void {
-  for (const holder of document.querySelectorAll<HTMLElement>(`[data-amphoreus-garnish="headline"]`)) {
-    holder.textContent = seatGreetingFor(seat(), now().getHours())
+function refreshHeadlines(now: () => Date, seat: () => string | null, records: Map<Node, HeadlineRecord>): void {
+  for (const [node, record] of records) {
+    if (!node.isConnected || node.textContent !== record.applied) {
+      if (!node.isConnected && node.textContent === record.applied) node.textContent = record.original
+      restoreMark(record.holder, 'headline', record.previousMark)
+      records.delete(node)
+      continue
+    }
+    record.applied = seatGreetingFor(seat(), now().getHours())
+    node.textContent = record.applied
   }
 }
 
@@ -58,7 +96,7 @@ function isFolderIconHost(el: Element): boolean {
   return el instanceof HTMLElement && /(^|\s|_)folder(\s|$|[A-Z_])/.test(el.className)
 }
 
-function swapFolderIcons(root: ParentNode): void {
+function swapFolderIcons(root: ParentNode, records: Map<HTMLElement, FolderRecord>): void {
   const spans = (root as Element | Document).querySelectorAll?.('span[class*="folder"]') ?? []
   for (const span of spans) {
     if (!isFolderIconHost(span) || !(span instanceof HTMLElement)) continue
@@ -72,10 +110,13 @@ function swapFolderIcons(root: ParentNode): void {
     img.alt = ''
     img.setAttribute('aria-hidden', 'true')
     img.style.cssText = 'width:20px;height:20px;object-fit:contain;display:block;filter:drop-shadow(0 1px 2px rgba(59,45,107,.25));'
+    const icons = [...span.querySelectorAll<SVGElement>('svg')].map(node => ({ node,
+      display: node.style.getPropertyValue('display'), priority: node.style.getPropertyPriority('display') }))
+    records.set(span, { image: img, previousMark: span.dataset[GARNISH_MARK], icons })
     span.dataset[GARNISH_MARK] = 'chimera'
     // Hide the pair of folder svgs (open/close) rather than removing them, so
     // React reconciliation never trips over a missing child.
-    for (const child of span.querySelectorAll('svg')) (child as SVGElement & { style: CSSStyleDeclaration }).style.display = 'none'
+    for (const icon of icons) icon.node.style.setProperty('display', 'none')
     span.prepend(img)
     void svg
   }
@@ -92,27 +133,59 @@ export interface GarnishOptions {
 export function installGarnish(options: GarnishOptions): () => void {
   const now = options.now ?? (() => new Date())
   const seat = (): string | null => options.seat?.getSnapshot() ?? null
+  const headlines = new Map<Node, HeadlineRecord>()
+  const folders = new Map<HTMLElement, FolderRecord>()
+  let disposed = false
+  const releaseFolder = (holder: HTMLElement, record: FolderRecord): void => {
+    record.image.remove()
+    for (const { node, display, priority } of record.icons) {
+      if (node.style.getPropertyValue('display') !== 'none' || node.style.getPropertyPriority('display') !== '') continue
+      if (display === '') node.style.removeProperty('display')
+      else node.style.setProperty('display', display, priority)
+    }
+    restoreMark(holder, 'chimera', record.previousMark)
+  }
   const apply = (root: ParentNode): void => {
-    swapHeadline(root, now, seat)
-    if (options.assetsConfigured()) swapFolderIcons(root)
+    swapHeadline(root, now, seat, headlines)
+    if (options.assetsConfigured()) swapFolderIcons(root, folders)
   }
   apply(document.body)
   const observer = new MutationObserver(mutations => {
+    if (disposed) return
+    for (const [node, record] of headlines) if (!node.isConnected) {
+      if (node.textContent === record.applied) node.textContent = record.original
+      restoreMark(record.holder, 'headline', record.previousMark)
+      headlines.delete(node)
+    }
+    for (const [holder, record] of folders) if (!holder.isConnected) {
+      releaseFolder(holder, record)
+      folders.delete(holder)
+    }
     for (const mutation of mutations) {
       for (const added of mutation.addedNodes) {
         if (added.nodeType === Node.ELEMENT_NODE) apply(added as Element)
-        else if (added.nodeType === Node.TEXT_NODE && added.parentNode !== null) swapHeadline(added.parentNode, now, seat)
+        else if (added.nodeType === Node.TEXT_NODE && added.parentNode !== null) swapHeadline(added.parentNode, now, seat, headlines)
       }
     }
   })
   observer.observe(document.body, { childList: true, subtree: true })
   // Re-greet across a day boundary without a remount (hourly check is plenty),
   // and immediately whenever the seat changes.
-  const timer = window.setInterval(() => refreshHeadlines(now, seat), 60 * 60 * 1000)
-  const unsubscribeSeat = options.seat?.subscribe(() => refreshHeadlines(now, seat)) ?? (() => {})
+  const refresh = (): void => { if (!disposed) refreshHeadlines(now, seat, headlines) }
+  const timer = window.setInterval(refresh, 60 * 60 * 1000)
+  const unsubscribeSeat = options.seat?.subscribe(refresh) ?? (() => {})
   return () => {
+    if (disposed) return
+    disposed = true
     unsubscribeSeat()
     observer.disconnect()
     window.clearInterval(timer)
+    for (const [node, record] of headlines) {
+      if (node.textContent === record.applied) node.textContent = record.original
+      restoreMark(record.holder, 'headline', record.previousMark)
+    }
+    for (const [holder, record] of folders) releaseFolder(holder, record)
+    headlines.clear()
+    folders.clear()
   }
 }

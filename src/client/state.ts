@@ -1,5 +1,7 @@
-import type { AmphoreusState, CustomWallpaperPlacement, DeriveKind, DeriveProgress, GrammarPrefs, SeatSoundPrefsPatch, SeatSoundSlot } from '../shared/api.ts'
+import type { AmphoreusState, BackgroundMode, CustomWallpaperPlacement, DeriveKind, DeriveProgress, GrammarPrefs, SeatSoundPrefsPatch, SeatSoundSlot, WidgetPrefs } from '../shared/api.ts'
 import type { AssetsCheckReport } from '../shared/api.ts'
+import type { CodeBackgroundPrefs } from '../shared/code-background.ts'
+import { prepareWallpaperUpload } from './wallpaper-upload.ts'
 
 export interface AmphoreusClientSnapshot {
   readonly phase: 'loading' | 'ready' | 'error'
@@ -11,6 +13,11 @@ export interface AmphoreusClientSnapshot {
 
 const INITIAL: AmphoreusClientSnapshot = { phase: 'loading', refreshing: false }
 const DERIVE_KINDS: readonly DeriveKind[] = ['covers', 'chronicle', 'cards', 'stickers', 'wallpapers', 'home']
+const RECOVERY_DELAY = 500
+const MAX_RECOVERY_DELAY = 10_000
+const EVENT_SOURCE_CLOSED = 2
+const STATE_REQUEST_TIMEOUT = 20_000
+const UPLOAD_REQUEST_TIMEOUT = 120_000
 
 export function parseDeriveProgress(value: unknown): DeriveProgress | undefined {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined
@@ -36,9 +43,15 @@ export class AmphoreusClientModel {
   #snapshot: AmphoreusClientSnapshot = INITIAL
   #eventSource: EventSource | undefined
   #refreshTimer: number | undefined
+  #recoveryTimer: number | undefined
+  #recoveryDelay = RECOVERY_DELAY
+  #recoveryRunning = false
+  #refreshFailed = false
+  #started = false
   #refreshRequest = 0
   #pendingDeriveProgress: DeriveProgress | undefined
   #abort = new AbortController()
+  #refreshAbort: AbortController | undefined
   #closed = false
 
   getSnapshot = (): AmphoreusClientSnapshot => this.#snapshot
@@ -49,11 +62,22 @@ export class AmphoreusClientModel {
   }
 
   async start(): Promise<void> {
+    if (this.#closed || this.#started) return
+    this.#started = true
     await this.refresh()
-    if (this.#closed) return
-    this.#eventSource = new EventSource('/amphoreus/api/events')
-    const changed = (): void => this.scheduleRefresh()
+    this.connectEvents()
+  }
+
+  private connectEvents(): void {
+    if (this.#closed || !this.#started) return
+    if (this.#eventSource !== undefined && this.#eventSource.readyState !== EVENT_SOURCE_CLOSED) return
+    this.#eventSource?.close()
+    const source = new EventSource('/amphoreus/api/events')
+    this.#eventSource = source
+    const active = (): boolean => !this.#closed && this.#eventSource === source
+    const changed = (): void => { if (active()) this.scheduleRefresh() }
     const deriveProgress = (event: MessageEvent<string>): void => {
+      if (!active()) return
       let value: unknown
       try {
         value = JSON.parse(event.data)
@@ -66,23 +90,46 @@ export class AmphoreusClientModel {
       if (this.#snapshot.state?.assets?.running !== true) return
       this.#publish({ ...this.#snapshot, deriveProgress: progress })
     }
-    this.#eventSource.addEventListener('snapshot', changed)
-    this.#eventSource.addEventListener('state-change', changed)
-    this.#eventSource.addEventListener('derive-progress', deriveProgress)
-    this.#eventSource.onerror = () => {
+    source.addEventListener('snapshot', changed)
+    source.addEventListener('state-change', changed)
+    source.addEventListener('derive-progress', deriveProgress)
+    source.addEventListener('open', () => { if (active()) this.#recoveryDelay = RECOVERY_DELAY })
+    source.onerror = () => {
+      if (!active()) return
       if (this.#snapshot.phase === 'ready') this.#publish({ ...this.#snapshot, error: '实时连接正在重试' })
+      if (source.readyState === EVENT_SOURCE_CLOSED) {
+        this.#eventSource = undefined
+        source.close()
+        this.scheduleRecovery()
+      }
     }
   }
 
   async refresh(): Promise<void> {
     if (this.#closed) return
     const request = ++this.#refreshRequest
+    this.#refreshAbort?.abort(new Error('状态请求已被新的刷新替代'))
+    const controller = new AbortController()
+    this.#refreshAbort = controller
+    const closeRequest = (): void => { controller.abort(this.#abort.signal.reason) }
+    this.#abort.signal.addEventListener('abort', closeRequest, { once: true })
+    const timeout = window.setTimeout(() => controller.abort(new Error('状态请求超时，将自动重试')), STATE_REQUEST_TIMEOUT)
+    let rejectAborted!: () => void
+    const aborted = new Promise<never>((_resolve, reject) => {
+      rejectAborted = () => reject(controller.signal.reason)
+      controller.signal.addEventListener('abort', rejectAborted, { once: true })
+    })
     this.#publish({ ...this.#snapshot, refreshing: true })
     try {
-      const response = await fetch('/amphoreus/api/state', { credentials: 'include', cache: 'no-store', signal: this.#abort.signal })
-      if (!response.ok) throw new Error(`状态请求失败（HTTP ${response.status}）`)
-      const state = await response.json() as AmphoreusState
+      const state = await Promise.race([aborted, (async () => {
+        const response = await fetch('/amphoreus/api/state', { credentials: 'include', cache: 'no-store', signal: controller.signal })
+        if (!response.ok) throw new Error(`状态请求失败（HTTP ${response.status}）`)
+        return await response.json() as AmphoreusState
+      })()])
       if (this.#closed || request !== this.#refreshRequest) return
+      this.#refreshFailed = false
+      if (this.#recoveryTimer !== undefined) window.clearTimeout(this.#recoveryTimer)
+      this.#recoveryTimer = undefined
       const deriveProgress = this.#pendingDeriveProgress ?? this.#snapshot.deriveProgress
       if (state.assets?.running !== true) this.#pendingDeriveProgress = undefined
       this.#publish({
@@ -91,14 +138,22 @@ export class AmphoreusClientModel {
         refreshing: false,
         ...(state.assets?.running === true && deriveProgress !== undefined ? { deriveProgress } : {}),
       })
+      this.connectEvents()
     } catch (error) {
       if (this.#closed || this.#abort.signal.aborted || request !== this.#refreshRequest) return
+      this.#refreshFailed = true
       this.#publish({
         phase: this.#snapshot.state === undefined ? 'error' : 'ready',
         ...(this.#snapshot.state === undefined ? {} : { state: this.#snapshot.state }),
         error: error instanceof Error ? error.message : String(error),
         refreshing: false,
       })
+      this.scheduleRecovery()
+    } finally {
+      window.clearTimeout(timeout)
+      this.#abort.signal.removeEventListener('abort', closeRequest)
+      controller.signal.removeEventListener('abort', rejectAborted)
+      if (this.#refreshAbort === controller) this.#refreshAbort = undefined
     }
   }
 
@@ -128,6 +183,53 @@ export class AmphoreusClientModel {
     await this.refresh()
   }
 
+  async setBackgroundMode(mode: BackgroundMode): Promise<void> {
+    const nonce = this.#snapshot.state?.nonce ?? window.__AMPHOREUS_BOOT__?.nonce
+    if (nonce === undefined) throw new Error('首帧 nonce 尚未就绪')
+    const response = await fetch('/amphoreus/api/prefs', {
+      method: 'PUT', credentials: 'include',
+      headers: { 'content-type': 'application/json', 'x-amphoreus-nonce': nonce },
+      body: JSON.stringify({ backgroundMode: mode }),
+    })
+    if (!response.ok) throw new Error(`背景设置保存失败（HTTP ${response.status}）`)
+    await this.refresh()
+  }
+
+  async setCodeBackgroundPrefs(codeBackground: Partial<CodeBackgroundPrefs> | null): Promise<void> {
+    const nonce = this.#snapshot.state?.nonce ?? window.__AMPHOREUS_BOOT__?.nonce
+    if (nonce === undefined) throw new Error('首帧 nonce 尚未就绪')
+    const response = await fetch('/amphoreus/api/prefs', {
+      method: 'PUT', credentials: 'include',
+      headers: { 'content-type': 'application/json', 'x-amphoreus-nonce': nonce },
+      body: JSON.stringify({ codeBackground }),
+    })
+    if (!response.ok) throw new Error(`代码背景设置保存失败（HTTP ${response.status}）`)
+    await this.refresh()
+  }
+
+  async setWidgetPrefs(widget: Partial<WidgetPrefs> | null): Promise<void> {
+    const nonce = this.#snapshot.state?.nonce ?? window.__AMPHOREUS_BOOT__?.nonce
+    if (nonce === undefined) throw new Error('首帧 nonce 尚未就绪')
+    const response = await fetch('/amphoreus/api/prefs', {
+      method: 'PUT', credentials: 'include',
+      headers: { 'content-type': 'application/json', 'x-amphoreus-nonce': nonce },
+      body: JSON.stringify({ widget }),
+    })
+    if (!response.ok) throw new Error(`挂件设置保存失败（HTTP ${response.status}）`)
+    await this.refresh()
+  }
+
+  async refreshWidget(): Promise<void> {
+    const nonce = this.#snapshot.state?.nonce ?? window.__AMPHOREUS_BOOT__?.nonce
+    if (nonce === undefined) throw new Error('首帧 nonce 尚未就绪')
+    const response = await fetch('/amphoreus/api/widget/refresh', {
+      method: 'POST', credentials: 'include',
+      headers: { 'content-type': 'application/json', 'x-amphoreus-nonce': nonce }, body: '{}',
+    })
+    if (!response.ok) throw new Error(`余额更新失败（HTTP ${response.status}）`)
+    await this.refresh()
+  }
+
   /** Patch the durable grammar knobs (null resets to defaults); refreshes state afterwards. */
   async setGrammar(patch: Partial<GrammarPrefs> | null): Promise<void> {
     const nonce = this.#snapshot.state?.nonce ?? window.__AMPHOREUS_BOOT__?.nonce
@@ -144,17 +246,44 @@ export class AmphoreusClientModel {
 
   /** Upload (replace) a seat's custom wallpaper: any image/video the browser can hand us, no size cap. */
   async uploadCustomWallpaper(heroId: string, file: File): Promise<void> {
+    const mime = await prepareWallpaperUpload(file, this.#abort.signal)
+    this.#abort.signal.throwIfAborted()
     const nonce = this.#snapshot.state?.nonce ?? window.__AMPHOREUS_BOOT__?.nonce
     if (nonce === undefined) throw new Error('首帧 nonce 尚未就绪')
-    const response = await fetch(`/amphoreus/api/custom-wallpaper/${encodeURIComponent(heroId)}`, {
-      method: 'PUT',
-      credentials: 'include',
-      headers: { 'content-type': file.type || 'application/octet-stream', 'x-amphoreus-nonce': nonce },
-      body: file,
+    const controller = new AbortController()
+    const closeUpload = (): void => { controller.abort(this.#abort.signal.reason) }
+    this.#abort.signal.addEventListener('abort', closeUpload, { once: true })
+    const timeout = window.setTimeout(() => controller.abort(new Error('壁纸上传超时')), UPLOAD_REQUEST_TIMEOUT)
+    let rejectAborted!: () => void
+    const aborted = new Promise<never>((_resolve, reject) => {
+      rejectAborted = () => reject(controller.signal.reason)
+      controller.signal.addEventListener('abort', rejectAborted, { once: true })
     })
+    let response: Response
+    try {
+      response = await Promise.race([aborted, fetch(`/amphoreus/api/custom-wallpaper/${encodeURIComponent(heroId)}`, {
+        method: 'PUT', credentials: 'include',
+        headers: { 'content-type': mime, 'x-amphoreus-nonce': nonce },
+        body: file, signal: controller.signal,
+      })])
+    } catch (error) {
+      if (this.#closed) throw error
+      void this.refresh()
+      throw new Error('壁纸上传的保存结果未确认，正在重新读取状态。请检查预览后再重试。')
+    } finally {
+      window.clearTimeout(timeout)
+      this.#abort.signal.removeEventListener('abort', closeUpload)
+      controller.signal.removeEventListener('abort', rejectAborted)
+    }
     if (response.status === 415) throw new Error('不支持的文件类型：请用 PNG / JPG / WebP / GIF / AVIF / MP4 / WebM')
-    if (!response.ok) throw new Error(`壁纸上传失败（HTTP ${response.status}）`)
+    if (!response.ok) {
+      const detail = await response.json().catch(() => undefined) as { error?: string } | undefined
+      throw new Error(`壁纸保存失败（HTTP ${response.status}）。${detail?.error ?? '请检查后重试。'}`)
+    }
     await this.refresh()
+    if (!this.#closed && (this.#refreshFailed || this.#snapshot.refreshing)) {
+      throw new Error('壁纸已保存，界面同步失败或尚未完成；正在自动重试，请稍后检查预览。')
+    }
   }
 
   async removeCustomWallpaper(heroId: string): Promise<void> {
@@ -406,8 +535,29 @@ export class AmphoreusClientModel {
     this.#closed = true
     this.#abort.abort()
     this.#eventSource?.close()
+    this.#eventSource = undefined
     if (this.#refreshTimer !== undefined) window.clearTimeout(this.#refreshTimer)
+    if (this.#recoveryTimer !== undefined) window.clearTimeout(this.#recoveryTimer)
+    this.#refreshTimer = undefined
+    this.#recoveryTimer = undefined
     this.#listeners.clear()
+  }
+
+  private scheduleRecovery(): void {
+    if (this.#closed || !this.#started || this.#recoveryRunning || this.#recoveryTimer !== undefined) return
+    const delay = this.#recoveryDelay
+    this.#recoveryDelay = Math.min(delay * 2, MAX_RECOVERY_DELAY)
+    this.#recoveryTimer = window.setTimeout(() => {
+      this.#recoveryTimer = undefined
+      if (this.#closed) return
+      this.#recoveryRunning = true
+      void this.refresh().finally(() => {
+        this.#recoveryRunning = false
+        if (this.#closed) return
+        this.connectEvents()
+        if (this.#refreshFailed) this.scheduleRecovery()
+      })
+    }, delay)
   }
 
   private scheduleRefresh(): void {

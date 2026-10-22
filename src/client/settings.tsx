@@ -2,9 +2,14 @@ import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots
 import { useRef, useState, useSyncExternalStore, type CSSProperties } from 'react'
 import { GrammarPanel } from './grammar-panel.tsx'
 import { WallpaperPanel } from './wallpaper-panel.tsx'
+import { BackgroundPanel } from './background-panel.tsx'
+import { CodeBackgroundPanel } from './code-background-panel.tsx'
+import { CODE_BACKGROUND_DEFAULTS } from '../shared/code-background.ts'
+import { WidgetSettingsPanel } from './widget-settings-panel.tsx'
+import { SegmentedChoice } from './segmented-choice.tsx'
 import { SchemePanel } from './scheme-panel.tsx'
 import { SoundPanel } from './sound-panel.tsx'
-import { SEAT_SOUND_MASTER_DEFAULT } from '../shared/api.ts'
+import { SEAT_SOUND_MASTER_DEFAULT, WIDGET_PREF_DEFAULTS } from '../shared/api.ts'
 import { MemoryPanel } from './memory-panel.tsx'
 import { SetupPanel } from './setup-panel.tsx'
 import { setupStoreOf } from './setup-store.ts'
@@ -20,7 +25,7 @@ export interface AmphoreusSettingsInjected {
 
 export type AmphoreusSettingsProps = PropsRuntime<'settings.section'> & PropsLocale<'amphoreus'> & AmphoreusSettingsInjected
 
-type SettingsAction = 'reparse' | 'magazine-light' | 'magazine-full' | 'magazine-reset' | 'derive' | 'derive-force' | 'grammar' | 'wallpaper' | 'scheme-export' | 'scheme-import' | 'sound' | 'memory'
+type SettingsAction = 'reparse' | 'magazine-light' | 'magazine-full' | 'magazine-reset' | 'derive' | 'derive-force' | 'grammar' | 'wallpaper' | 'code-background' | 'scheme-export' | 'scheme-import' | 'sound' | 'memory' | 'widget'
 // @anchor settings-actions
 // Seat preset panel (import kept beside its action so the pinned header above stays untouched; ESM hoists it).
 import { SeatPresetPanel } from './seat-preset-panel.tsx'
@@ -30,8 +35,8 @@ export function AmphoreusSettings({ model, previewSound, t }: AmphoreusSettingsP
   const [actionError, setActionError] = useState<string>()
   const [activeAction, setActiveAction] = useState<SettingsAction>()
   const actionLock = useRef(false)
-  const run = async (action: SettingsAction, operation: () => Promise<void>): Promise<void> => {
-    if (actionLock.current) return
+  const run = async (action: SettingsAction, operation: () => Promise<void>): Promise<boolean> => {
+    if (actionLock.current) return false
     actionLock.current = true
     setActionError(undefined)
     setActiveAction(action)
@@ -43,11 +48,12 @@ export function AmphoreusSettings({ model, previewSound, t }: AmphoreusSettingsP
       actionLock.current = false
       setActiveAction(undefined)
     }
+    return true
   }
 
   if (snapshot.phase === 'loading') {
     return (
-      <section className={css.page} aria-busy="true">
+      <section className={css.page} data-amph-console="" aria-busy="true">
         <header className={css.hero}>
           <p className={css.eyebrow}>{t('settings.eyebrow')}</p>
           <h1>{t('settings.loading')}</h1>
@@ -59,7 +65,7 @@ export function AmphoreusSettings({ model, previewSound, t }: AmphoreusSettingsP
 
   if (snapshot.phase === 'error' || snapshot.state === undefined) {
     return (
-      <section className={css.page}>
+      <section className={css.page} data-amph-console="">
         <header className={css.hero} data-level="L3">
           <p className={css.eyebrow}>{t('settings.eyebrow')}</p>
           <h1>{t('settings.error')}</h1>
@@ -152,21 +158,9 @@ export function AmphoreusSettings({ model, previewSound, t }: AmphoreusSettingsP
 
           <section className={css.panel} aria-labelledby="amphoreus-visual">
             <div className={css.sectionHeading}><div><h2 id="amphoreus-visual">{t('settings.visualHeading')}</h2><p>{t('settings.visualHint')}</p></div></div>
-            <div className={css.segmented} role="radiogroup" aria-label={t('settings.magazineMode')}>
-              {(['light', 'full'] as const).map(mode => (
-                <button
-                  key={mode}
-                  type="button"
-                  role="radio"
-                  aria-checked={state.effectiveConfig.magazineMode === mode}
-                  className={css.segment}
-                  disabled={busy}
-                  onClick={() => { void run(`magazine-${mode}`, () => model.setMagazineMode(mode)) }}
-                >
-                  {t(mode === 'light' ? 'settings.magazineLight' : 'settings.magazineFull')}
-                </button>
-              ))}
-            </div>
+            <SegmentedChoice label={t('settings.magazineMode')} value={state.effectiveConfig.magazineMode}
+              choices={[{ value: 'light', label: t('settings.magazineLight') }, { value: 'full', label: t('settings.magazineFull') }]}
+              disabled={busy} onChange={mode => { void run(`magazine-${mode}`, () => model.setMagazineMode(mode)) }} />
             <p className={css.hintLine}>
               {state.effectiveConfig.magazineModeSource === 'prefs' ? t('settings.magazineFromPrefs') : t('settings.magazineFromConfig')}
               {state.effectiveConfig.magazineModeSource === 'prefs'
@@ -205,6 +199,20 @@ export function AmphoreusSettings({ model, previewSound, t }: AmphoreusSettingsP
             onPatch={patch => { void run('grammar', () => model.setGrammar(patch)) }}
           />
 
+          <BackgroundPanel
+            mode={state.effectiveConfig.wallpaper.mode}
+            presetUrl={state.effectiveConfig.wallpaper.mode === 'preset' ? state.visualBoot?.wallpaper.url : undefined}
+            custom={state.customWallpapers.find(item => item.heroId === 'global')}
+            busy={busy}
+            t={t}
+            onMode={mode => { void run('wallpaper', () => model.setBackgroundMode(mode)) }}
+            onUpload={file => { void run('wallpaper', () => model.uploadCustomWallpaper('global', file)) }}
+            onRemove={() => { void run('wallpaper', () => model.removeCustomWallpaper('global')) }}
+          />
+          <CodeBackgroundPanel prefs={state.effectiveConfig.codeBackground ?? CODE_BACKGROUND_DEFAULTS} busy={busy} t={t}
+            onPatch={patch => { void run('code-background', () => model.setCodeBackgroundPrefs(patch)) }} />
+          <WidgetSettingsPanel prefs={state.effectiveConfig.widget ?? WIDGET_PREF_DEFAULTS} busy={busy}
+            refreshMs={state.widget?.refreshMs} t={t} onPatch={patch => { void run('widget', () => model.setWidgetPrefs(patch)) }} />
           <WallpaperPanel
             customWallpapers={state.customWallpapers ?? []}
             seatNames={new Map(state.seats.map(seat => [seat.skillName, seat.userDisplayName ?? suite?.cards.find(card => card.name === seat.skillName)?.displayName ?? seat.displayName]))}
@@ -212,7 +220,7 @@ export function AmphoreusSettings({ model, previewSound, t }: AmphoreusSettingsP
             t={t}
             onUpload={(heroId, file) => { void run('wallpaper', () => model.uploadCustomWallpaper(heroId, file)) }}
             onRemove={heroId => { void run('wallpaper', () => model.removeCustomWallpaper(heroId)) }}
-            onPlacement={(heroId, patch) => { void run('wallpaper', () => model.setCustomWallpaperPlacement(heroId, patch)) }}
+            onPlacement={(heroId, patch) => run('wallpaper', () => model.setCustomWallpaperPlacement(heroId, patch))}
           />
           {/* @anchor settings-panels */}
           <SchemePanel

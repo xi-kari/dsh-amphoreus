@@ -112,6 +112,18 @@ export const GlobalSchema = z.object({
   prefs: z.object({
     lastSeat: z.string().nullable(),
     wallpaperCursor: z.number().int().nonnegative(),
+    backgroundMode: z.enum(['none', 'preset', 'custom']).optional(),
+    codeBackground: z.object({
+      enabled: z.boolean().optional(),
+      intensity: z.number().min(0).max(1).optional(),
+      interactive: z.boolean().optional(),
+    }).optional(),
+    widget: z.object({
+      enabled: z.boolean().optional(),
+      allowTopDock: z.boolean().optional(),
+      showTurnBubble: z.boolean().optional(),
+      autoHideSeconds: z.number().min(0).max(300).optional(),
+    }).optional(),
     quickPhrases: z.array(z.string()),
     quickPhrasesInitialized: z.boolean().default(false),
     magazineMode: z.enum(['light', 'full']).optional(),

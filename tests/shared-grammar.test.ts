@@ -49,6 +49,53 @@ test('the seven dimensions spread: radii, ambients, edge signatures and style na
   assert.equal(new Set(all.map(g => g.composer.tintLight)).size, all.length, 'composer paper differs per seat')
 })
 
+test('signature hairlines stay inside the rim without an additional outer spread', () => {
+  const shadows = (value: string) => {
+    let depth = 0, start = 0
+    const result: string[] = []
+    for (let i = 0; i < value.length; i++) {
+      if (value[i] === '(') depth++
+      if (value[i] === ')') depth--
+      if (value[i] === ',' && depth === 0) { result.push(value.slice(start, i).trim()); start = i + 1 }
+    }
+    result.push(value.slice(start).trim())
+    return result.map(shadow => {
+      const inset = shadow.startsWith('inset ')
+      const lengths = shadow.replace(/^inset /u, '').split(/\s+/u).slice(0, 4)
+        .filter(token => /^-?(?:\d+\.?\d*|\.\d+)(?:px)?$/u.test(token)).map(Number.parseFloat)
+      return { inset, x: lengths[0], y: lengths[1], blur: lengths[2] ?? 0, spread: lengths[3] ?? 0, value: shadow }
+    })
+  }
+  for (const heroId of ['tribbie', 'cerydra', 'march7th', 'phainon', 'anaxa']) {
+    const grammar = seatGrammarOf(heroId)
+    for (const dark of [false, true]) {
+      const variables = grammarVariables(grammar, dark, '#111111', '#222222')
+      const stack = shadows(variables['--amph-edge']!)
+      assert.ok(stack.every(shadow => shadow.inset || shadow.spread === 0), `${heroId}/${dark}: no outer spread`)
+      assert.ok(stack.some(shadow => !shadow.inset && shadow.y! > 0 && shadow.blur > 0), `${heroId}/${dark}: drop retained`)
+      assert.ok(stack.some(shadow => shadow.inset && shadow.x === 0 && shadow.y === 1 && shadow.value.includes('rgba(255, 255, 255,')), `${heroId}/${dark}: top light retained`)
+      if (heroId === 'anaxa') {
+        assert.equal(variables['--amph-rim-style'], 'double')
+        assert.equal(variables['--amph-rim-width'], '3px')
+      } else {
+        assert.equal(stack.filter(shadow => shadow.inset && shadow.x === 0 && shadow.y === 0 && shadow.blur === 0 && shadow.spread === 1).length, 1, `${heroId}/${dark}: one inner hairline`)
+      }
+    }
+  }
+})
+
+test('Hyacine retains the three-colour rainbow edge and its two-pixel rim', () => {
+  const grammar = seatGrammarOf('hyacine')
+  for (const dark of [false, true]) {
+    const variables = grammarVariables(grammar, dark, '#111111', '#222222')
+    assert.equal(variables['--amph-rim-width'], '2px')
+    assert.equal(variables['--amph-rim-style'], 'solid')
+    for (const [height, colour] of [[3, '#6891d6'], [5, '#a7ddf8'], [7, '#f2c9a0']] as const) {
+      assert.ok(variables['--amph-edge']!.includes(`inset 0 ${height}px 0 color-mix(in srgb, ${colour}`))
+    }
+  }
+})
+
 test('grammar variables are all --amph-*, scheme-aware, and the layer scales them by prefs with a frost floor', () => {
   for (const name of GRAMMAR_VARIABLE_NAMES) assert.match(name, /^--amph-[a-z0-9-]+$/u)
   const light = grammarVariables(GLOBAL_GRAMMAR, false, '#111111', '#222222')

@@ -34,6 +34,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
+
 2. This package is built on DeepSeek Harness (DSH). It is not an official DeepSeek
 
    product and implies no endorsement.
@@ -41,3 +42,138 @@ SOFTWARE.
 3. Honkai: Star Rail artwork is NOT bundled. Visual assets are read at runtime from a
 
    user-provided assetsRoot directory; the package ships only file-name references.
+
+4. open-claude-ui (https://github.com/Caho1/open-claude-ui), MIT License,
+   commit c1f923ae0051a871941b98a0e2e3183a545e6a85.
+   Adapted from code-examples/:
+   - useClaudeRovingFocus.ts: keyboard navigation in segmented-choice.tsx.
+   - ContainerResponsiveBar.tsx: container-aware settings and handoff actions.
+   - MediaLightboxViewer.tsx: image zoom anchoring and nearby-image preloading.
+   - useClaudeScrollPinning.ts and ScrollFadeContainer.tsx: workbench reading
+     position, follow-latest behavior and scroll-edge indicators.
+   - ArtifactsSplitPaneResizer.tsx: workbench inspector drag intent, width
+     adjustment and gesture rollback.
+   - DraggableSessionList.tsx: pinned-session organization, pointer drag intent
+     and keyboard reordering, connected to the current visible DSH sessions.
+   - ChatMessageBubbles.tsx and CodeBlock.tsx: focused response reading and
+     code presentation with copy feedback confirmed by the clipboard result.
+   - ChatComposer.tsx and RichComposerWithMentions.tsx: composer action grouping
+     and bounded writing-area expansion around the resident DSH editor.
+   - ClaudeMotionPresets.ts, ThinkingAccordion.tsx and ConfirmationDialog.tsx:
+     finite role transitions, grid-based seat disclosure and dialog arrival.
+   The adapters use DSH tokens, native modal handling and existing host state.
+
+MIT License
+
+Copyright (c) 2026 Caho1
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+5. DeepSeek Harness (https://github.com/deepseek-ai/deepseek-harness).
+   The compatibility patch under compat/ contains changes and context from
+   DeepSeek Harness at 687f282e8625c6b8d11ff58211a90524be2e4317.
+
+MIT License
+
+Copyright (c) 2026 DeepSeek
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+6. DeepSeek Balance Whale Widget (https://github.com/MeteorNOX/DeepSeek-Balance-Whale-Widget),
+   commit 5247dd6813d6e4430728f39ccc63d43cda046022. Balance observation accounting and
+   drag/docking interactions are adapted from its code. Its artwork, icons and audio
+   are not included. Original code license follows.
+
+MIT License
+
+Copyright (c) 2026 MeteorNOX
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+7. dsh-wallpaper-engine (https://github.com/elysia395/dsh-wallpaper-engine),
+   commit 3b0103bc1d5431840208966ce67155f392c4095c. Glass material composition,
+   independent readability coverage, single-carrier blur and opaque fallback
+   are adapted from src/glass.js, src/glass-surfaces.js, src/effects.js,
+   src/styles-base.js, src/styles-shell.js and src/styles-chrome.js, including
+   directional surface sheen, inner-edge highlights and soft elevation.
+   Wallpaper Engine rendering,
+   media integration and artwork are not included.
+
+MIT License
+
+Copyright (c) 2026 elysia395
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+8. CodeRipple, the owner's standalone xi-kari-site component
+   (src/components/CodeRipple.astro), adapted at the owner's request.
+   Source component commit: 4975e3596896edbcdd470c18430da0b54afae00a.
+   Source SHA256: 5500743b841696285b9107a83d94909f96f0222423c05818b459eb9183f76a17.
+   The original site repository carries GPL-3.0; its independent CodeRipple
+   component was introduced by the site owner in commit
+   fabde43fc2d0e24ae614f86d4c1434760258ac47 and is reused here with the owner's
+   authorization. Site framework, theme styles, images and audio are not included.

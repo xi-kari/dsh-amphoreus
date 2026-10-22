@@ -153,7 +153,7 @@
 
 .sessionEntry {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) 28px auto;
   align-items: center;
   gap: 2px;
 }
@@ -360,3 +360,37 @@
   font-size: 12px;
   overflow-wrap: anywhere;
 }
+
+.search { flex: none; display: grid; gap: 5px; margin: 0; }
+.searchField { display: flex; min-width: 0; align-items: center; border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; background: var(--dsw-alias-bg-layer-1); }
+.searchField:focus-within { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: -1px; }
+.searchField input { box-sizing: border-box; width: 100%; min-width: 0; min-height: 34px; border: 0; outline: none; padding: 6px 8px; background: transparent; color: var(--dsw-alias-label-primary); font: inherit; font-size: 12px; }
+.searchField input::placeholder { color: var(--dsw-alias-label-secondary); }
+.searchField input::-webkit-search-cancel-button { display: none; }
+.clearSearch, .pin, .dragHandle { display: inline-grid; flex: none; min-width: 28px; min-height: 30px; place-items: center; border: 0; border-radius: 6px; padding: 4px; background: transparent; color: var(--dsw-alias-label-secondary); cursor: pointer; }
+.clearSearch svg, .pin svg, .dragHandle svg, .searchIcon { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.dragHandle svg { stroke-width: 2.5; }
+.pin[aria-pressed='true'] { color: var(--dsw-alias-brand-primary); background: var(--dsw-specific-sidebar-nav-item-active); }
+.clearSearch:hover, .pin:hover, .dragHandle:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.pin:disabled { opacity: .55; cursor: default; }
+.contentSearch { min-height: 30px; border: 0; border-radius: 6px; padding: 5px 8px; background: var(--dsw-alias-button-elevated-fill); color: var(--dsw-alias-label-primary); font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
+.contentSearch:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.contentSearch:disabled { opacity: .65; cursor: wait; }
+.searchSummary, .navigationHint { margin: 3px 4px 7px; color: var(--dsw-alias-label-secondary); font-size: 11px; line-height: 1.5; }
+.navigationList { list-style: none; margin: 0; padding: 0; }
+.navigationRow { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) 28px; align-items: center; gap: 2px; border-radius: 7px; }
+.pinnedRow { grid-template-columns: minmax(0, 1fr) 28px 28px; }
+.navigationOpen { display: flex; min-width: 0; min-height: 40px; flex-direction: column; align-items: stretch; gap: 3px; border: 0; border-radius: 7px; padding: 6px; background: transparent; color: var(--dsw-alias-label-primary); font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
+.navigationOpen small { overflow: hidden; color: var(--dsw-alias-label-secondary); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.navigationOpen:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.navigationOpen[data-active] { background: var(--dsw-specific-sidebar-nav-item-active); }
+.navigationOpen .sessionName { flex: none; }
+.snippet { display: -webkit-box; overflow: hidden; -webkit-line-clamp: 2; -webkit-box-orient: vertical; color: var(--dsw-alias-label-secondary); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+.dragHandle { cursor: grab; touch-action: none; }
+.navigationList[data-pin-dragging], .navigationList[data-pin-dragging] * { cursor: grabbing; user-select: none; }
+.navigationRow[data-dragging] { opacity: .55; }
+.navigationRow[data-drop-edge]::before { position: absolute; z-index: 1; right: 2px; left: 2px; height: 2px; border-radius: 1px; background: var(--dsw-alias-brand-primary); content: ''; pointer-events: none; }
+.navigationRow[data-drop-edge='before']::before { top: -1px; }
+.navigationRow[data-drop-edge='after']::before { bottom: -1px; }
+.navigationOpen:focus-visible, .pin:focus-visible, .dragHandle:focus-visible, .contentSearch:focus-visible, .clearSearch:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: -2px; }
+.srOnly { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

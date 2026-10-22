@@ -1,5 +1,23 @@
 import type { AmphoreusGlobal, BindingRecord, CanvasRecord, MemoryRecord, ObservationRecord, SeatRecord, SuiteEventRecord } from '../host/store.ts'
 import type { DiagnosticCode, FeatureSwitches, SuiteLevel } from '../host/suite/types.ts'
+import type { WidgetAccountingSnapshot, WidgetTurnRecord, WidgetUsageRoute } from '../host/widget-accounting-types.ts'
+import type { CodeBackgroundPrefs } from './code-background.ts'
+export { CODE_BACKGROUND_DEFAULTS, type CodeBackgroundPrefs } from './code-background.ts'
+
+export interface WidgetPrefs {
+  readonly enabled: boolean
+  readonly allowTopDock: boolean
+  readonly showTurnBubble: boolean
+  readonly autoHideSeconds: number
+}
+
+export const WIDGET_PREF_DEFAULTS: WidgetPrefs = Object.freeze({ enabled: true, allowTopDock: false, showTurnBubble: true, autoHideSeconds: 8 })
+export type WidgetPublicTurn = Omit<WidgetTurnRecord, 'records'> & { readonly routes?: readonly WidgetUsageRoute[] }
+export type WidgetPublicState = Omit<WidgetAccountingSnapshot, 'turns' | 'activeTurns'> & {
+  readonly priceReferences?: readonly { readonly source: string; readonly asOf: string }[]
+  readonly turns: readonly WidgetPublicTurn[]
+  readonly activeTurns: readonly WidgetPublicTurn[]
+}
 
 export interface PublicCard {
   readonly name: string
@@ -146,6 +164,8 @@ export interface DeriveProgress {
   readonly error?: string
 }
 
+export type BackgroundMode = 'none' | 'preset' | 'custom'
+
 export interface AmphoreusBoot {
   readonly revision: number
   readonly nonce: string
@@ -207,6 +227,9 @@ export interface AmphoreusAssetsStatus {
 export interface AmphoreusState {
   readonly revision: number
   readonly nonce: string
+  readonly visualBoot: AmphoreusBoot
+  readonly widget?: WidgetPublicState
+  readonly widgetError?: 'unavailable'
   readonly suite: PublicSuite | undefined
   readonly seats: readonly SeatRecord[]
   readonly seatDirs: readonly { readonly heroId: string; readonly skillName: string; readonly dir: string }[]
@@ -227,7 +250,9 @@ export interface AmphoreusState {
     readonly unprojectable: readonly UnprojectableRecord[]
   }
   readonly effectiveConfig: {
-    readonly wallpaper: { readonly enabled: boolean; readonly global: 'rotate' | 'fixed'; readonly globalIndex: number; readonly sidebarIndex: number; readonly perSeat: boolean; readonly darkMask: number; readonly lightMask: number; readonly surfaceAlpha: { readonly light: number; readonly dark: number } }
+    readonly codeBackground?: CodeBackgroundPrefs
+    readonly widget: WidgetPrefs
+    readonly wallpaper: { readonly mode: BackgroundMode; readonly enabled: boolean; readonly global: 'rotate' | 'fixed'; readonly globalIndex: number; readonly sidebarIndex: number; readonly perSeat: boolean; readonly darkMask: number; readonly lightMask: number; readonly surfaceAlpha: { readonly light: number; readonly dark: number } }
     readonly magazineMode: 'light' | 'full'
     readonly magazineModeSource: 'config' | 'prefs'
     /** Effective grammar knobs (defaults merged under stored prefs). */

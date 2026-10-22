@@ -24,8 +24,7 @@ export interface SchemePanelProps {
 const ACCEPT = 'application/json,.json'
 
 /**
- * Settings panel: export the stored visual prefs (magazine mode, grammar, wallpaper
- * placements) to a JSON file, or restore them from one. Wallpaper binaries are not part of
+ * Settings panel: export the stored visual prefs to a JSON file, or restore them from one. Wallpaper binaries are not part of
  * the file. The file input is visually hidden and triggered by the import button, like the
  * wallpaper panel. A success line appears once the running action has finished; failures
  * are surfaced by the page-level action error line, and the success line is suppressed then.

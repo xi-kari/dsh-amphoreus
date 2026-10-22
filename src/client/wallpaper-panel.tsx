@@ -1,9 +1,13 @@
-import { useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { CUSTOM_WALLPAPER_PLACEMENT_DEFAULTS, type CustomWallpaperInfo, type CustomWallpaperPlacement } from '../shared/api.ts'
+import { WALLPAPER_ACCEPT } from '../shared/wallpaper-media.ts'
 import { HERO_VISUALS, type HeroVisual } from '../shared/heroes.ts'
 import type { AmphoreusKey } from './locales.ts'
 import { seatColorOf } from './seat-model.ts'
+import { SegmentedChoice } from './segmented-choice.tsx'
+import { ImagePreview, type ImagePreviewItem } from './image-preview.tsx'
 import css from './settings.module.css'
+import previewCss from './wallpaper-panel.module.css'
 
 type Translate = (key: AmphoreusKey, params?: Record<string, unknown>) => string
 
@@ -14,10 +18,8 @@ export interface WallpaperPanelProps {
   readonly t: Translate
   readonly onUpload: (heroId: string, file: File) => void
   readonly onRemove: (heroId: string) => void
-  readonly onPlacement: (heroId: string, patch: Partial<CustomWallpaperPlacement> | null) => void
+  readonly onPlacement: (heroId: string, patch: Partial<CustomWallpaperPlacement> | null) => boolean | void | Promise<boolean | void>
 }
-
-const ACCEPT = 'image/png,image/jpeg,image/webp,image/gif,image/avif,image/apng,video/mp4,video/webm'
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -34,24 +36,84 @@ function formatBytes(bytes: number): string {
  */
 export function WallpaperPanel({ customWallpapers, seatNames, busy, t, onUpload, onRemove, onPlacement }: WallpaperPanelProps) {
   const [open, setOpen] = useState<string | undefined>(undefined)
+  const [previewId, setPreviewId] = useState<string | null>(null)
   const [drafts, setDrafts] = useState<Record<string, Partial<CustomWallpaperPlacement>>>({})
   const timers = useRef(new Map<string, number>())
+  const pending = useRef(new Map<string, Partial<CustomWallpaperPlacement> | null>())
+  const busyRef = useRef(busy)
+  const placement = useRef(onPlacement)
+  const running = useRef(false)
+  const alive = useRef(true)
+  busyRef.current = busy
+  placement.current = onPlacement
+  useEffect(() => {
+    alive.current = true
+    return () => {
+      alive.current = false
+      for (const timer of timers.current.values()) window.clearTimeout(timer)
+      timers.current.clear()
+      pending.current.clear()
+    }
+  }, [])
   const inputs = useRef(new Map<string, HTMLInputElement | null>())
   const byHero = new Map(customWallpapers.map(item => [item.heroId, item]))
+  const previewItems: ImagePreviewItem[] = HERO_VISUALS.flatMap(hero => {
+    const info = byHero.get(hero.heroId)
+    return info !== undefined && info.kind !== 'video'
+      ? [{ id: hero.heroId, url: info.url, label: seatNames.get(hero.skill) ?? hero.heroId }] : []
+  })
+
+  const drain = async (): Promise<void> => {
+    if (!alive.current || busyRef.current || running.current) return
+    const entry = [...pending.current].find(([heroId]) => !timers.current.has(heroId))
+    if (entry === undefined) return
+    const [heroId, batch] = entry
+    running.current = true
+    let accepted = false
+    let refused = false
+    try {
+      const result = await placement.current(heroId, batch)
+      accepted = result !== false
+      refused = result === false
+      if (accepted && alive.current && pending.current.get(heroId) === batch) {
+        pending.current.delete(heroId)
+        setDrafts(current => {
+          const { [heroId]: _drop, ...rest } = current
+          return rest
+        })
+      }
+    } catch { /* The settings action owns the visible error; keep a refused draft available for retry. */ }
+    finally {
+      running.current = false
+      if (accepted && alive.current) void drain()
+      else if (refused && alive.current && !busyRef.current && !timers.current.has(heroId)) {
+        timers.current.set(heroId, window.setTimeout(() => {
+          timers.current.delete(heroId)
+          void drain()
+        }, 200))
+      }
+    }
+  }
+  useEffect(() => { if (!busy) void drain() }, [busy])
 
   const patch = (heroId: string, next: Partial<CustomWallpaperPlacement>): void => {
-    setDrafts(current => ({ ...current, [heroId]: { ...current[heroId], ...next } }))
-    const pending = timers.current.get(heroId)
-    if (pending !== undefined) window.clearTimeout(pending)
+    const batch = { ...pending.current.get(heroId), ...next }
+    pending.current.set(heroId, batch)
+    setDrafts(current => ({ ...current, [heroId]: batch }))
+    const timer = timers.current.get(heroId)
+    if (timer !== undefined) window.clearTimeout(timer)
     timers.current.set(heroId, window.setTimeout(() => {
       timers.current.delete(heroId)
-      setDrafts(current => {
-        const batch = current[heroId]
-        if (batch !== undefined) onPlacement(heroId, batch)
-        const { [heroId]: _drop, ...rest } = current
-        return rest
-      })
+      void drain()
     }, 200))
+  }
+  const reset = (heroId: string): void => {
+    const timer = timers.current.get(heroId)
+    if (timer !== undefined) window.clearTimeout(timer)
+    timers.current.delete(heroId)
+    pending.current.set(heroId, null)
+    setDrafts(current => ({ ...current, [heroId]: CUSTOM_WALLPAPER_PLACEMENT_DEFAULTS }))
+    void drain()
   }
 
   const row = (hero: HeroVisual) => {
@@ -74,7 +136,7 @@ export function WallpaperPanel({ customWallpapers, seatNames, busy, t, onUpload,
             ref={element => { inputs.current.set(hero.heroId, element) }}
             className={css.wpFile}
             type="file"
-            accept={ACCEPT}
+            accept={WALLPAPER_ACCEPT}
             disabled={busy}
             onChange={event => {
               const file = event.currentTarget.files?.[0]
@@ -96,48 +158,50 @@ export function WallpaperPanel({ customWallpapers, seatNames, busy, t, onUpload,
             </>
           )}
         </div>
+        {info?.kind === 'video' && <video className={css.backgroundPreview} src={info.url} controls muted playsInline preload="metadata" aria-label={seatNames.get(hero.skill) ?? hero.heroId} />}
+        {info !== undefined && info.kind !== 'video' && <button type="button" className={previewCss.thumbnail}
+          aria-label={t('imagePreview.open', { name: seatNames.get(hero.skill) ?? hero.heroId })} onClick={() => setPreviewId(hero.heroId)}>
+          <img src={info.url} alt={seatNames.get(hero.skill) ?? hero.heroId} loading="lazy" />
+          <span>{t('imagePreview.enlarge')}</span>
+        </button>}
         {info !== undefined && expanded && (
           <div className={css.wpControls}>
-            <div className={css.segmented} role="radiogroup" aria-label={t('settings.wallpaperFit')}>
-              {(['cover', 'contain', 'fill'] as const).map(fit => (
-                <button key={fit} type="button" role="radio" aria-checked={placement.fit === fit} className={css.segment} onClick={() => patch(hero.heroId, { fit })}>
-                  {t(`settings.wallpaperFit.${fit}` as AmphoreusKey)}
-                </button>
-              ))}
-            </div>
+            <SegmentedChoice label={t('settings.wallpaperFit')} value={placement.fit} disabled={busy}
+              choices={(['cover', 'contain', 'fill'] as const).map(value => ({ value, label: t(`settings.wallpaperFit.${value}` as AmphoreusKey) }))}
+              onChange={fit => patch(hero.heroId, { fit })} />
             <div className={css.sliderList}>
               <div className={css.sliderRow}>
                 <label htmlFor={`${inputId}-x`}>{t('settings.wallpaperX')}</label>
-                <input id={`${inputId}-x`} type="range" min={0} max={100} step={1} value={placement.x} onChange={event => patch(hero.heroId, { x: Number(event.currentTarget.value) })} />
+                <input id={`${inputId}-x`} type="range" min={0} max={100} step={1} value={placement.x} disabled={busy} onChange={event => patch(hero.heroId, { x: Number(event.currentTarget.value) })} />
                 <output>{placement.x}%</output>
               </div>
               <div className={css.sliderRow}>
                 <label htmlFor={`${inputId}-y`}>{t('settings.wallpaperY')}</label>
-                <input id={`${inputId}-y`} type="range" min={0} max={100} step={1} value={placement.y} onChange={event => patch(hero.heroId, { y: Number(event.currentTarget.value) })} />
+                <input id={`${inputId}-y`} type="range" min={0} max={100} step={1} value={placement.y} disabled={busy} onChange={event => patch(hero.heroId, { y: Number(event.currentTarget.value) })} />
                 <output>{placement.y}%</output>
               </div>
               <div className={css.sliderRow}>
                 <label htmlFor={`${inputId}-scale`}>{t('settings.wallpaperScale')}</label>
-                <input id={`${inputId}-scale`} type="range" min={1} max={3} step={0.05} value={placement.scale} onChange={event => patch(hero.heroId, { scale: Number(event.currentTarget.value) })} />
+                <input id={`${inputId}-scale`} type="range" min={1} max={3} step={0.05} value={placement.scale} disabled={busy} onChange={event => patch(hero.heroId, { scale: Number(event.currentTarget.value) })} />
                 <output>×{placement.scale.toFixed(2)}</output>
               </div>
               {info.kind === 'video' && (
                 <div className={css.sliderRow}>
                   <label htmlFor={`${inputId}-rate`}>{t('settings.wallpaperRate')}</label>
-                  <input id={`${inputId}-rate`} type="range" min={0.25} max={2} step={0.05} value={placement.playbackRate} onChange={event => patch(hero.heroId, { playbackRate: Number(event.currentTarget.value) })} />
+                  <input id={`${inputId}-rate`} type="range" min={0.25} max={2} step={0.05} value={placement.playbackRate} disabled={busy} onChange={event => patch(hero.heroId, { playbackRate: Number(event.currentTarget.value) })} />
                   <output>×{placement.playbackRate.toFixed(2)}</output>
                 </div>
               )}
             </div>
             {info.kind === 'video' && (
               <p className={css.hintLine}>
-                <label className={css.switchRow}><input type="checkbox" checked={!placement.paused} onChange={event => patch(hero.heroId, { paused: !event.currentTarget.checked })} /><span>{t('settings.wallpaperPlay')}</span></label>
-                <label className={css.switchRow}><input type="checkbox" checked={placement.loop} onChange={event => patch(hero.heroId, { loop: event.currentTarget.checked })} /><span>{t('settings.wallpaperLoop')}</span></label>
-                <label className={css.switchRow}><input type="checkbox" checked={!placement.muted} onChange={event => patch(hero.heroId, { muted: !event.currentTarget.checked })} /><span>{t('settings.wallpaperSound')}</span></label>
+                <label className={css.switchRow}><input type="checkbox" checked={!placement.paused} disabled={busy} onChange={event => patch(hero.heroId, { paused: !event.currentTarget.checked })} /><span>{t('settings.wallpaperPlay')}</span></label>
+                <label className={css.switchRow}><input type="checkbox" checked={placement.loop} disabled={busy} onChange={event => patch(hero.heroId, { loop: event.currentTarget.checked })} /><span>{t('settings.wallpaperLoop')}</span></label>
+                <label className={css.switchRow}><input type="checkbox" checked={!placement.muted} disabled={busy} onChange={event => patch(hero.heroId, { muted: !event.currentTarget.checked })} /><span>{t('settings.wallpaperSound')}</span></label>
               </p>
             )}
             <p className={css.hintLine}>
-              <button type="button" className={css.linkButton} onClick={() => onPlacement(hero.heroId, null)}>{t('settings.wallpaperResetPlacement')}</button>
+              <button type="button" className={css.linkButton} disabled={busy} onClick={() => reset(hero.heroId)}>{t('settings.wallpaperResetPlacement')}</button>
             </p>
           </div>
         )}
@@ -152,9 +216,10 @@ export function WallpaperPanel({ customWallpapers, seatNames, busy, t, onUpload,
           <h2 id="amphoreus-wallpapers">{t('settings.wallpaperHeading')}</h2>
           <p>{t('settings.wallpaperHint')}</p>
         </div>
-        <span className={css.index}>{String(customWallpapers.length).padStart(2, '0')} / 13</span>
+        <span className={css.index}>{String(customWallpapers.filter(item => item.heroId !== 'global').length).padStart(2, '0')} / 13</span>
       </div>
       <ul className={css.wpList}>{HERO_VISUALS.map(row)}</ul>
+      <ImagePreview items={previewItems} activeId={previewId} onActiveIdChange={setPreviewId} onClose={() => setPreviewId(null)} t={t} />
     </section>
   )
 }

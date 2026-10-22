@@ -13,7 +13,7 @@
 import { readFile } from 'node:fs/promises'
 import { readFileSync } from 'node:fs'
 import { isBuiltin } from 'node:module'
-import { basename, dirname, resolve as resolvePath } from 'node:path'
+import { basename, dirname, relative, resolve as resolvePath } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { browserslistToTargets, transform } from 'lightningcss'
 
@@ -26,6 +26,7 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 
 export const PLATFORM_MODULES = [
   'react', 'react/jsx-runtime', 'react-dom', 'react-dom/client', '@deepseek-ai/cordis',
+  'zod', '@tanstack/react-virtual',
   '@deepseek-ai/dsh-client-store',
   '@deepseek-ai/dsh-client-ui-slots',
   '@deepseek-ai/dsh-client-ui-primitives',
@@ -73,7 +74,8 @@ function styleInjectionModule(fileId: string, css: string, classMap?: Readonly<R
 }
 
 function assetPath(source: string, importer: string | undefined): string {
-  return importer === undefined ? source : resolvePath(dirname(importer), source)
+  const absolute = resolvePath(importer === undefined ? HERE : dirname(importer), source)
+  return relative(HERE, absolute).replaceAll('\\', '/')
 }
 
 const hostConfig: UserConfig = {
@@ -144,9 +146,10 @@ const clientConfig: UserConfig = {
     },
     async load(this: WatchingLoader, id: string) {
       if (!id.startsWith(CSS_VIRTUAL_PREFIX)) return null
-      const fileId = id.slice(CSS_VIRTUAL_PREFIX.length, -CSS_VIRTUAL_SUFFIX.length)
+      const filename = id.slice(CSS_VIRTUAL_PREFIX.length, -CSS_VIRTUAL_SUFFIX.length)
+      const fileId = resolvePath(HERE, filename)
       this.addWatchFile(fileId)
-      const { code, exports } = transform({ filename: fileId, code: await readFile(fileId), cssModules: { pattern: '[hash]_[local]' }, minify: true, targets: CSS_TARGETS })
+      const { code, exports } = transform({ filename, code: await readFile(fileId), cssModules: { pattern: '[hash]_[local]' }, minify: true, targets: CSS_TARGETS })
       const classMap: Record<string, string> = {}
       for (const [local, exp] of Object.entries(exports ?? {}).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) classMap[local] = exp.name
       return styleInjectionModule(fileId, code.toString(), classMap)
@@ -159,9 +162,10 @@ const clientConfig: UserConfig = {
     },
     async load(this: WatchingLoader, id: string) {
       if (!id.startsWith(INLINE_CSS_VIRTUAL_PREFIX)) return null
-      const fileId = id.slice(INLINE_CSS_VIRTUAL_PREFIX.length, -CSS_VIRTUAL_SUFFIX.length)
+      const filename = id.slice(INLINE_CSS_VIRTUAL_PREFIX.length, -CSS_VIRTUAL_SUFFIX.length)
+      const fileId = resolvePath(HERE, filename)
       this.addWatchFile(fileId)
-      const { code } = transform({ filename: fileId, code: await readFile(fileId), minify: true, targets: CSS_TARGETS })
+      const { code } = transform({ filename, code: await readFile(fileId), minify: true, targets: CSS_TARGETS })
       return `export default ${JSON.stringify(code.toString())};`
     },
   }, {
@@ -172,9 +176,10 @@ const clientConfig: UserConfig = {
     },
     async load(this: WatchingLoader, id: string) {
       if (!id.startsWith(GLOBAL_CSS_VIRTUAL_PREFIX)) return null
-      const fileId = id.slice(GLOBAL_CSS_VIRTUAL_PREFIX.length, -CSS_VIRTUAL_SUFFIX.length)
+      const filename = id.slice(GLOBAL_CSS_VIRTUAL_PREFIX.length, -CSS_VIRTUAL_SUFFIX.length)
+      const fileId = resolvePath(HERE, filename)
       this.addWatchFile(fileId)
-      const { code } = transform({ filename: fileId, code: await readFile(fileId), minify: true, targets: CSS_TARGETS })
+      const { code } = transform({ filename, code: await readFile(fileId), minify: true, targets: CSS_TARGETS })
       return styleInjectionModule(fileId, code.toString())
     },
   }],

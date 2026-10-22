@@ -1,8 +1,17 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 import { BRAND_ICON_DATA_URL, BRAND_ICON_SVG, BRAND_MANIFEST, BRAND_MANIFEST_DATA_URL } from '../src/client/brand-icon.ts'
 import { rebrandTitle } from '../src/client/brand-shell.ts'
 import { en, zh } from '../src/client/locales.ts'
+
+test('installed plugin artwork is the same glyph as the browser tab', () => {
+  const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
+  const icon = readFileSync(new URL(`../${manifest.icon}`, import.meta.url), 'utf8').trim()
+  assert.equal(icon, BRAND_ICON_SVG)
+  assert.equal(manifest.exports['./icon'], manifest.icon)
+  assert.ok(manifest.files.includes(manifest.icon.replace(/^\.\//, '')))
+})
 
 test('rebrandTitle replaces the official product title in both locales and leaves foreign titles alone', () => {
   assert.equal(rebrandTitle('DSH 本地构建', 'δ-me13'), 'δ-me13')

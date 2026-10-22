@@ -71,56 +71,58 @@ export function HandoffDock({ session, model, seatDeps, t }: HandoffDockProps) {
   }
 
   return (
-    <div
-      className={css.dock}
-      role="status"
-      aria-busy={busy}
-      data-amphoreus-handoff=""
-      data-magazine={state.effectiveConfig.magazineMode}
-    >
-      <SeatBadge
-        skill={open.targetSkillName ?? null}
-        label={name}
-        size={state.effectiveConfig.magazineMode === 'full' ? 48 : 28}
-        assetsConfigured={state.effectiveConfig.assetsConfigured}
-        {...(open.targetFace === undefined ? {} : { face: open.targetFace })}
-      />
-      <div className={css.copy}>
-        <strong>
-          {deployed ? t('handoff.ask', { name }) : t('handoff.absent', { name })}
-        </strong>
-        {showPayload && (
-          <pre id={payloadId} className={css.payload}>{open.payload ?? ''}</pre>
-        )}
-        {error === undefined ? null : <span className={css.error}>{error}</span>}
-      </div>
-      <div className={css.actions}>
-        <button
-          type="button"
-          title={t('handoff.payloadTip')}
-          aria-controls={payloadId}
-          aria-expanded={showPayload}
-          onClick={() => setShowPayload(value => !value)}
-        >
-          {t('handoff.view')}
-        </button>
-        {deployed && (
+    <div className={css.container}>
+      <div
+        className={css.dock}
+        role="status"
+        aria-busy={busy}
+        data-amphoreus-handoff=""
+        data-magazine={state.effectiveConfig.magazineMode}
+      >
+        <SeatBadge
+          skill={open.targetSkillName ?? null}
+          label={name}
+          size={state.effectiveConfig.magazineMode === 'full' ? 48 : 28}
+          assetsConfigured={state.effectiveConfig.assetsConfigured}
+          {...(open.targetFace === undefined ? {} : { face: open.targetFace })}
+        />
+        <div className={css.copy}>
+          <strong>
+            {deployed ? t('handoff.ask', { name }) : t('handoff.absent', { name })}
+          </strong>
+          {showPayload && (
+            <pre id={payloadId} className={css.payload}>{open.payload ?? ''}</pre>
+          )}
+          {error === undefined ? null : <span className={css.error}>{error}</span>}
+        </div>
+        <div className={css.actions}>
           <button
             type="button"
-            className={css.primary}
-            disabled={busy}
-            onClick={() => { void runAction(() => acceptHandoff(seatDeps, open)) }}
+            title={t('handoff.payloadTip')}
+            aria-controls={payloadId}
+            aria-expanded={showPayload}
+            onClick={() => setShowPayload(value => !value)}
           >
-            {t('handoff.accept')}
+            {t('handoff.view')}
           </button>
-        )}
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => { void runAction(() => dismissHandoff(seatDeps, open)) }}
-        >
-          {t('handoff.dismiss')}
-        </button>
+          {deployed && (
+            <button
+              type="button"
+              className={css.primary}
+              disabled={busy}
+              onClick={() => { void runAction(() => acceptHandoff(seatDeps, open)) }}
+            >
+              {t('handoff.accept')}
+            </button>
+          )}
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => { void runAction(() => dismissHandoff(seatDeps, open)) }}
+          >
+            {t('handoff.dismiss')}
+          </button>
+        </div>
       </div>
     </div>
   )
