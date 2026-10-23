@@ -166,12 +166,12 @@ test('thread tree groups multiple cwd values stably and stays flat for one direc
   assert.equal(renderThreadTree([], null), '<p class="tree-empty">暂未同步会话</p>')
 })
 
-test('portal iframe close control is present only for the embedded portal mode', () => {
-  const renderControl = (mode: 'portal' | 'tab', embedded: boolean): string => {
+test('portal iframe close control defers to its host when the overlay owns closing', () => {
+  const renderControl = (mode: 'portal' | 'tab', embedded: boolean, hostOwnsClose = false): string => {
     const top = {}
     const window = { parent: embedded ? {} : top }
     if (!embedded) window.parent = window
-    const context = { BOOT_MODE: mode, window, globalThis: {} as Record<string, unknown> }
+    const context = { BOOT_MODE: mode, HOST_OWNS_CLOSE: hostOwnsClose, window, globalThis: {} as Record<string, unknown> }
     context.globalThis = context
     vm.createContext(context)
     vm.runInContext(`${functionSource('portalCloseControl')}\nglobalThis.__portalCloseControl = portalCloseControl`, context)
@@ -179,8 +179,28 @@ test('portal iframe close control is present only for the embedded portal mode',
   }
 
   assert.match(renderControl('portal', true), /data-action="close-portal"/u)
+  assert.equal(renderControl('portal', true, true), '')
   assert.equal(renderControl('portal', false), '')
   assert.equal(renderControl('tab', true), '')
+})
+
+test('portal cards disclose the complete escaped duty without adding another interactive target', () => {
+  const duty = '完整说明 <检查> 与 "引号"'
+  const context = {
+    state: { seats: [{ heroId: 'anaxa', displayName: '那刻夏', duties: [duty, '评审'], ordinal: 5, volume: 5, deployed: true }] },
+    seatSessionCount: () => 0,
+    escapeHtml: (value: unknown) => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]!),
+    globalThis: {} as Record<string, unknown>,
+  }
+  context.globalThis = context
+  vm.createContext(context)
+  vm.runInContext(`${functionSource('renderPortal')}\nglobalThis.__renderPortal = renderPortal`, context)
+  const html = (context.globalThis.__renderPortal as () => string)()
+  assert.match(html, /class="portal-duty" title="完整说明 &lt;检查&gt; 与 &quot;引号&quot; · 评审"/u)
+  assert.equal(count(html, 'data-action="enter-seat"'), 2)
+  const card = html.match(/<button class="portal-card[\s\S]*?<\/button>/u)?.[0]
+  assert.ok(card)
+  assert.equal(count(card, '<button'), 1)
 })
 
 test('seat UI preserves canvas contracts while splitting tab and portal behavior', () => {

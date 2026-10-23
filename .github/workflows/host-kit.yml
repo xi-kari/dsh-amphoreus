@@ -1,0 +1,66 @@
+name: host-kit
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: checkout verified skill suite
+        uses: actions/checkout@v4
+        with:
+          repository: xi-kari/delta-me13-skill
+          ref: 4ecfa005d61db118518deff8512aaeadd04cc478
+          path: .suite-fixture
+          sparse-checkout: skills
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+          registry-url: https://registry.npmjs.org
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - run: npm run verify:dist
+      - name: checkout host baseline
+        uses: actions/checkout@v4
+        with:
+          repository: deepseek-ai/deepseek-harness
+          ref: 687f282e8625c6b8d11ff58211a90524be2e4317
+          path: .host-source
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.28.5
+      - name: apply compatibility patch
+        working-directory: .host-source
+        run: |
+          git apply --check ../compat/dsh-v0.2.1-rc.2-workspace-visibility.patch
+          git apply ../compat/dsh-v0.2.1-rc.2-workspace-visibility.patch
+      - name: build compatible host
+        working-directory: .host-source
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm run build:artifacts
+      - name: assemble host kit
+        run: npm run host:pack -- --source .host-source --out .host-kit
+      - name: verify and install frozen kit
+        working-directory: .host-kit
+        run: |
+          node runtime.mjs verify
+          node runtime.mjs install
+          node runtime.mjs start --dump-config > "$RUNNER_TEMP/amphoreus-host-config.yaml"
+      - name: smoke installed host
+        run: npm run host:smoke -- --kit .host-kit --suite .suite-fixture/skills
+      - name: archive distribution
+        run: tar --exclude='.tools' --exclude='node_modules' --exclude='.dsh-home' -czf dsh-amphoreus-host.tgz -C .host-kit .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dsh-amphoreus-host
+          path: dsh-amphoreus-host.tgz
+          retention-days: 30

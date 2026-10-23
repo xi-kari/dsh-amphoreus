@@ -1,6 +1,6 @@
 {
   "name": "dsh-amphoreus",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "翁法罗斯 × DSH：黄金裔席位、技能无损桥接、画布工作台与用量挂件（基于 DeepSeek Harness 构建，非官方）",
   "repository": {
     "type": "git",
@@ -57,10 +57,14 @@
     "prepare": "npm run build:types && npm run build:js",
     "prepublishOnly": "node scripts/check-publish.mjs",
     "verify:dist": "node scripts/verify-dist.mjs",
+    "host:pack": "node scripts/build-host-kit.mjs",
+    "host:smoke": "node scripts/host-kit-smoke.mjs",
+    "desktop:pack": "node scripts/desktop-build.mjs",
     "assets:check": "node scripts/check-assets.mjs",
     "release:check": "npm run test && npm run build && npm run verify:dist"
   },
   "engines": {
+    "dsh": "0.2.1-rc.2",
     "node": "^22.19.0 || >=24"
   },
   "license": "MIT",

@@ -18,15 +18,19 @@
 
 ## 兼容性
 
-本源码版本为 **0.5.0**，宿主基线为 **dsh-v0.2.1-rc.2**，并且必须包含工作区可见性扩展：`workspaceRegistry.setHiddenByOwner(owner, workspaceIds)`、持久化 `workspace_visibility` 域，以及原生侧栏和工作区选择器对隐藏状态的支持。未经扩展的官方 `0.2.1-rc.2` 不满足要求；插件会在启动时检查接口并给出明确错误。Node.js 要求为 **22.19+ 或 24+**。
+本源码版本为 **0.5.1**，宿主基线为 **dsh-v0.2.1-rc.2**，并且必须包含工作区可见性扩展：`workspaceRegistry.setHiddenByOwner(owner, workspaceIds)`、持久化 `workspace_visibility` 域，以及原生侧栏和工作区选择器对隐藏状态的支持。未经扩展的官方 `0.2.1-rc.2` 不满足要求；插件会在启动时检查接口并给出明确错误。Node.js 要求为 **22.19+ 或 24+**。
 
-下面的命令仅安装宿主基线，还需应用上述兼容扩展才能运行本插件：
+推荐使用与插件配套的 **DSH Amphoreus Host** 安装包。它包含五个已经构建的 DSH 兼容包、插件 tarball、固定版本的 pnpm 和依赖锁文件，无需自行编译 DSH。解压后执行：
 
 ```bash
-npx @deepseek-ai/dsh@0.2.1-rc.2 web
+node runtime.mjs verify
+node runtime.mjs install
+node runtime.mjs start
 ```
 
-安装此版本请使用 `dsh plugin --profile web add dsh-amphoreus@0.5.0`，并确认宿主已包含下述可见性扩展。`0.4.2` 对应旧宿主，不适用于此兼容基线。
+Windows 也可使用包中的 `Install.cmd` 和 `Start.cmd`。首次安装需要网络；宿主默认使用解压目录下独立的 `.dsh-home`，已有目录可通过 `DSH_HOME` 显式指定。技能和图片仍由用户在插件设置中配置，不随宿主包分发。`provenance.json` 记录宿主来源、兼容补丁和包摘要，`integrity.json` 用于安装前校验。
+
+已有兼容宿主时，可以只安装 `dsh-amphoreus-0.5.1.tgz`。单独安装插件、或运行 `npx @deepseek-ai/dsh@0.2.1-rc.2 web`，不会自动把官方宿主变成兼容宿主。`0.4.2` 对应旧宿主，不适用于此兼容基线。
 
 插件停用时只隐藏专属席位目录，保留工作区 ID、排序、会话归属和运行中的任务；重新启用后恢复显示。普通项目不受影响。启停可在当前页面完成，主题、代码背景与视频资源随插件一起卸载和恢复。
 
@@ -79,7 +83,45 @@ npx @deepseek-ai/dsh@0.2.1-rc.2 web
 
 ## 安装
 
-以下命令以 `web` profile 为例。插件被加入后，launcher 会把它 reconcile 进 `dsh.profile.bundles`；bundle 列表只在启动时组合，所以每种安装方式完成后都要**重启 `dsh web`**。`patchReload: live` 只重载 `cordis.patch.yml`，不能代替这次重启。
+以下命令适用于已经包含工作区可见性扩展的宿主，以 `web` profile 为例。插件被加入后，launcher 会把它 reconcile 进 `dsh.profile.bundles`；bundle 列表只在启动时组合，所以每种安装方式完成后都要**重启 `dsh web`**。`patchReload: live` 只重载 `cordis.patch.yml`，不能代替这次重启。
+
+### Desktop
+
+DSH Desktop 使用同一份 `web` client bundle。插件沿用桌面壳的 `dsh-app://app` 同源代理与原生目录选择器；门户、首次设置、阅读面板和图片预览按窗口可用区域布局，角色挂件避开原生标题栏，并随全屏切换重新计算位置。
+
+Windows x64 配套桌面包使用 DSH 的 Electron 壳、兼容运行时和本插件。解压后运行 `Start-Amphoreus.cmd`。它是非官方便携构建，默认将数据保存在 `%LOCALAPPDATA%/dsh-amphoreus-desktop/0.5.1`；可用 `Start-Amphoreus.cmd --data "D:/Amphoreus Data"` 指定长期使用的数据目录。用户的普通 DSH 安装和 `~/.dsh` 保持独立。桌面包包含运行所需的解释器，技能与模型凭据仍由用户配置。
+
+带素材的桌面包同时提供角色封面、卡牌、贴纸、壁纸和已优化缓存，首次启动自动接好图片路径，无需安装 ImageMagick 或重复派生。初始视觉方案为预置壁纸、完整杂志模式、角色动态挂件与强度 0.7 的字符水波；已有偏好和缓存文件不会被覆盖。用户自定义背景、音频、对话和记忆不随包复制。图片权利说明见素材包的独立说明，代码的 MIT 许可不适用于这些图片。
+
+已有包含兼容扩展的 Desktop 时，先启动一次以初始化，再完全退出应用，使用 **Desktop 自带的 dsh 命令**安装：
+
+```bash
+dsh plugin --profile desktop add ./dsh-amphoreus-0.5.1.tgz
+```
+
+然后重新打开 Desktop。`desktop` 是桌面端管理的专用 profile，普通 npm 安装的 `dsh` 命令不能代替桌面端命令管理它。Web 宿主安装包不会修改 Desktop 内置运行时；未经扩展的官方 Desktop 仍需配套兼容宿主。
+
+### 制作配套 Web 宿主
+
+在固定 DSH 源码提交上应用兼容补丁、安装依赖并完成官方构建后，执行：
+
+```bash
+npm ci
+npm run build
+npm run host:pack -- --source /path/to/patched-dsh --out /path/to/new-host-kit
+```
+
+打包器检查源码提交与完整差异，要求它们和仓库提供的兼容补丁一致；将编译产物打成独立包后，在安装根目录固定全部替换和依赖锁。输出目录必须为空。GitHub Actions 的 `host-kit` 工作流提供同一构建入口。
+
+Windows 桌面包还需要同版本的官方 Desktop 安装目录，以提取带许可证的第三方运行库和 Electron。构建器用指定源码的编译产物替换 DSH 工作区包，核对兼容包摘要，并重新生成完整运行时文件清单：
+
+```bash
+npm run desktop:pack -- --source /path/to/patched-dsh --official-desktop /path/to/official-desktop --host-kit /path/to/host-kit --plugin . --out /path/to/new-desktop-kit
+```
+
+附带图片时再传入 `--assets /path/to/artwork --cache /path/to/derived-cache`。构建器只收取插件素材清单中的图片和有效派生 WebP，不复制整个输入目录或技能正文；原始杂志 ZIP 与用户自定义文件不在白名单内。
+
+`desktop-host.json` 分别记录源码提交、原始安装器构建提交、补丁与运行时摘要。此构建入口目前仅支持 Windows x64；macOS 的标题栏布局已覆盖，macOS 原生分发包仍需在对应平台构建和验收。
 
 ### 构建与 tarball
 
@@ -88,7 +130,7 @@ npm ci
 npm run build
 npm run verify:dist
 npm pack --ignore-scripts
-dsh plugin --profile web add ./dsh-amphoreus-0.5.0.tgz
+dsh plugin --profile web add ./dsh-amphoreus-0.5.1.tgz
 ```
 
 ### GitHub

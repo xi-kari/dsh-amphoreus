@@ -11,7 +11,7 @@ export interface SeatWorkspaceRegistry {
 export function requireWorkspaceVisibility(value: unknown): SeatWorkspaceRegistry {
   const registry = value as Partial<SeatWorkspaceRegistry> | undefined
   if (typeof registry?.list !== 'function' || typeof registry.setHiddenByOwner !== 'function') {
-    throw new Error('dsh-amphoreus requires DSH workspaceRegistry.setHiddenByOwner and workspace visibility support. Stock dsh-v0.2.1-rc.2 does not provide this capability; install the compatible host patch first.')
+    throw new Error('dsh-amphoreus requires DSH workspaceRegistry.setHiddenByOwner and workspace visibility support. Stock dsh-v0.2.1-rc.2 does not provide this capability; use the matching dsh-amphoreus host kit or rebuild DSH with the included compatibility patch. Installing the plugin alone does not upgrade the host.')
   }
   return registry as SeatWorkspaceRegistry
 }

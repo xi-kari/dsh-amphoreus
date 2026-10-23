@@ -20,6 +20,8 @@ function harness(initial: Record<string, any> = {}, stored = new Map<string, str
   const timers = new Map<number, () => void>()
   const captures = new Set<number>()
   const nodes = new Map<string, any>()
+  const frameObservers = new Set<() => void>()
+  let frameClearance = 0, fullscreen = false
   let cursor = 0, pending: (() => void)[] = [], tree: any, key: string | undefined
   let props = { heroKey: 'amphoreus-anaxa', heroLabel: '那刻夏', imageUrl: '/anaxa.webp', ...initial }
   const eventTarget = (prefix: string) => ({
@@ -30,6 +32,7 @@ function harness(initial: Record<string, any> = {}, stored = new Map<string, str
   })
   const protectedNodes = protectedRects.map(rect => ({ getBoundingClientRect: () => rect }))
   const doc = { ...eventTarget('document:'), activeElement: null as any, layers: [] as { role: string; ariaModal?: boolean }[],
+    documentElement: { hasAttribute: (name: string) => name === 'data-fullscreen' && fullscreen },
     querySelectorAll: () => protectedNodes,
     querySelector: (selector: string) => selector.startsWith('[data-composer-card') ? protectedNodes[0] ?? null
       : doc.layers.find(layer => layer.role === 'menu' || (layer.role === 'dialog' && layer.ariaModal === true)) ?? null }
@@ -54,9 +57,15 @@ function harness(initial: Record<string, any> = {}, stored = new Map<string, str
   const source = readFileSync(new URL('../src/client/mascot-widget.tsx', import.meta.url), 'utf8')
   const code = transpileModule(source, { compilerOptions: { module: ModuleKind.CommonJS, jsx: JsxEmit.ReactJSX } }).outputText
   vm.runInNewContext(code, { exports, window: win, document: doc,
+    getComputedStyle: () => ({ getPropertyValue: () => `${frameClearance}px` }),
     localStorage: { getItem: (name: string) => stored.get(name) ?? null, setItem: (name: string, value: string) => stored.set(name, value), removeItem: (name: string) => stored.delete(name) },
     ResizeObserver: class { observe() {} unobserve() {} disconnect() {} },
-    MutationObserver: class { observe() {} disconnect() {} },
+    MutationObserver: class {
+      callback: () => void
+      constructor(callback: () => void) { this.callback = callback }
+      observe(target: unknown) { if (target === doc.documentElement) frameObservers.add(this.callback) }
+      disconnect() { frameObservers.delete(this.callback) }
+    },
     requestAnimationFrame: () => 1, cancelAnimationFrame: () => {},
     require: (name: string) => {
       if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx }
@@ -95,9 +104,47 @@ function harness(initial: Record<string, any> = {}, stored = new Map<string, str
   const event = (override = {}) => ({ pointerId: 1, button: 0, isPrimary: true, clientX: 950, clientY: 650, detail: 1,
     preventDefault() {}, stopPropagation() {}, currentTarget: button().props.ref.current, ...override })
   render(); render()
-  return { render, find, button, event, fire, stored, timers, captures, viewport, doc, cleanup,
+  const setFrame = (clearance: number, isFullscreen = false) => {
+    frameClearance = clearance; fullscreen = isFullscreen
+    for (const callback of frameObservers) callback()
+  }
+  return { render, find, button, event, fire, stored, timers, captures, viewport, doc, cleanup, setFrame,
     get tree() { return tree }, get listenerCount() { return [...listeners.values()].reduce((sum, set) => sum + set.size, 0) } }
 }
+
+test('desktop chrome stays outside mascot dragging, keyboard movement, and panels across fullscreen changes', () => {
+  const stored = new Map([['amphoreus.mascot-position.v1:amphoreus-anaxa', JSON.stringify({ version: 1, x: 0, y: 0, dock: 'top-left' })]])
+  const h = harness({ allowTopDock: true }, stored)
+  h.setFrame(48)
+  h.render()
+  assert.equal(h.tree.props.style.top, 60)
+  h.button().props.onKeyDown(h.event({ key: 'ArrowUp' }))
+  h.render()
+  assert.equal(h.tree.props.style.top, 60)
+  h.button().props.onPointerDown(h.event({ clientX: 20, clientY: 70 }))
+  h.button().props.onPointerMove(h.event({ clientX: 20, clientY: -300 }))
+  h.button().props.onPointerUp(h.event({ clientX: 20, clientY: -300 }))
+  h.render()
+  assert.equal(h.tree.props.style.top, 60)
+  h.button().props.onClick(h.event({ detail: 0 }))
+  h.render()
+  const panel = h.find(node => node.props.role === 'dialog')
+  assert.ok(panel.props.style.top >= 60)
+  assert.equal(panel.props.style.maxHeight, 628)
+  h.setFrame(48, true)
+  h.render()
+  assert.equal(h.tree.props.style.top, 12)
+  h.setFrame(32)
+  h.render()
+  assert.equal(h.tree.props.style.top, 44)
+  h.viewport.offsetTop = 120
+  h.viewport.height = 300
+  h.fire('viewport:resize')
+  h.render()
+  assert.equal(h.tree.props.style.top, 132)
+  h.cleanup()
+  assert.equal(h.listenerCount, 0)
+})
 
 test('default docking clears both the composer and the handoff action area above it', () => {
   const h = harness({}, new Map(), [

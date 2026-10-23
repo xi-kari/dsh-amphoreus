@@ -54,8 +54,17 @@ export interface MascotWidgetProps {
 
 function currentViewport(): MascotViewport {
   const viewport = window.visualViewport
-  return { width: viewport?.width ?? window.innerWidth, height: viewport?.height ?? window.innerHeight,
-    left: viewport?.offsetLeft ?? 0, top: viewport?.offsetTop ?? 0 }
+  const height = viewport?.height ?? window.innerHeight
+  const offsetTop = viewport?.offsetTop ?? 0
+  const root = document.documentElement
+  const style = getComputedStyle(root)
+  const clearance = root.hasAttribute('data-fullscreen') ? 0 : Math.max(
+    Number.parseFloat(style.getPropertyValue('--dsh-frame-top-clearance')) || 0,
+    Number.parseFloat(style.getPropertyValue('--dsh-frame-chrome-top')) || 0,
+  )
+  const top = Math.min(offsetTop + height, Math.max(offsetTop, clearance))
+  return { width: viewport?.width ?? window.innerWidth, height: height - (top - offsetTop),
+    left: viewport?.offsetLeft ?? 0, top }
 }
 
 function readPosition(key: string): MascotPosition {
@@ -145,12 +154,16 @@ function MascotWidgetSurface({ heroKey, heroLabel, imageUrl, data, loading = fal
   useEffect(() => {
     mounted.current = true
     const resize = () => { cancelDrag(); setViewport(currentViewport()) }
+    const chrome = new MutationObserver(resize)
+    chrome.observe(document.documentElement, { attributes: true,
+      attributeFilter: ['data-platform', 'data-windows-titlebar', 'data-fullscreen', 'style', 'class'] })
     window.addEventListener('resize', resize)
     window.addEventListener('blur', cancelDrag)
     window.visualViewport?.addEventListener('resize', resize)
     window.visualViewport?.addEventListener('scroll', resize)
     return () => {
       mounted.current = false
+      chrome.disconnect()
       window.removeEventListener('resize', resize)
       window.removeEventListener('blur', cancelDrag)
       window.visualViewport?.removeEventListener('resize', resize)

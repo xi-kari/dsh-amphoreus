@@ -214,8 +214,7 @@ test('setup locale keys are balanced and the wizard CSS uses only DSW tokens', (
   for (const declaration of wizardCss.matchAll(/(?:color|background|border-color|outline):\s*([^;]+);/gu)) {
     assert.match(declaration[1]!, /var\(--dsw-|transparent|^0$/u, declaration[0])
   }
-  assert.match(wizardCss, /\.scrim \{[^}]*position: absolute;[^}]*inset: 0;[^}]*pointer-events: auto;/su)
-  // Both scrims are absolute siblings inside shell.overlay; the wizard (order -10, painted first) needs z-index to sit above the portal scrim.
+  assert.match(wizardCss, /\.scrim \{[^}]*position: fixed;[^}]*inset: var\(--dsh-frame-chrome-top, 0px\) 0 0;[^}]*pointer-events: auto;/su)
   assert.match(wizardCss, /\.scrim \{[^}]*z-index: 1;/su)
 })
 

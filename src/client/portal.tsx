@@ -131,7 +131,7 @@ export function PortalOverlay({
         <iframe
           ref={frameRef}
           className={css.frame}
-          src="/amphoreus/workbench/?mode=portal"
+          src="/amphoreus/workbench/?mode=portal&close=host"
           title={t('seats.portal')}
           onLoad={onFrameLoad}
         />

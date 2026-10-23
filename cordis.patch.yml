@@ -8,4 +8,4 @@
       config:
         skillRoots: ['~/.claude/skills', '~/.codex/skills']
         dataDir: !!js dshHomePath('amphoreus')
-        assetsRoot: ''
+        assetsRoot: !!js process.env.DSH_AMPHOREUS_ASSETS_ROOT || ''
