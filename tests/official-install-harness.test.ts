@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { verifyInstallReport } from '../scripts/verify-official-install.mjs'
+import { parseBootGraph, verifyInstallReport } from '../scripts/verify-official-install.mjs'
 
 function completeReport(): any {
   const report: any = {
     install: { code: 0 }, stockUnmodified: true, checks: [], createdWorkspace: { status: 200 },
     workspacePreserved: true, disabledStoreUnchanged: true, userStorePreserved: true, uninstall: { code: 0 },
     stockSticker: { authenticatedStatus: 200, type: 'image/webp', matchesOriginal: true, unauthenticatedStatus: 401 },
+    stickerMapping: { count: 96, status: 200, matchesOriginal: true },
     liveToggle: { disableStatus: 200, disabledApiStatus: 404, disabledClientStatus: 404, enableStatus: 200,
       enabledApiStatus: 200, enabledClientStatus: 200, storeUnchangedWhileDisabled: true },
   }
@@ -51,6 +52,13 @@ test('official installation gate accepts a complete lifecycle and rejects incomp
     mutate(report)
     assert.equal(verifyInstallReport(report, full).passed, false)
   }
+})
+
+test('client reload verification reads the current graph revision from fresh HTML', () => {
+  const graph = { rev: 'new-graph', entries: [{ id: 'dsh-amphoreus', url: 'plugins/??dsh-amphoreus/client.js&rev=new', rev: 'new' }] }
+  const html = '<html><script>globalThis["__DSH_BOOT__"] = ' + JSON.stringify(graph) + '</script></html>'
+  assert.deepEqual(parseBootGraph(html), graph)
+  assert.equal(parseBootGraph('<html></html>'), undefined)
 })
 
 test('basic plugin checks do not require the optional artwork pack', () => {

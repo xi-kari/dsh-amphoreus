@@ -113,6 +113,20 @@ export async function bootStockHost({ executable, runtime, support, profile, env
   }
 }
 
+export function parseBootGraph(html) {
+  const value = /<script>globalThis\["__DSH_BOOT__"\] = ([\s\S]*?)<\/script>/u.exec(html)?.[1]
+  return value === undefined ? undefined : JSON.parse(value)
+}
+
+async function currentClient(host) {
+  const response = await host.request('/')
+  const graph = parseBootGraph(await response.text())
+  const entry = graph?.entries?.find(entry => entry.id === 'dsh-amphoreus')
+  const previous = host.bootGraph?.entries?.find(entry => entry.id === 'dsh-amphoreus')
+  const client = await host.request(entry?.url ?? previous?.url ?? '/plugins/??dsh-amphoreus/client.js')
+  return { status: client.status, graphHasPlugin: Boolean(entry), graphRev: graph?.rev, entryRev: entry?.rev }
+}
+
 export async function inspectPlugin(host) {
   if (!host.request) return { startup: host.startup }
   const frontend = await host.request('/')
@@ -125,7 +139,7 @@ export async function inspectPlugin(host) {
     if (response.ok) { state = await response.json(); break }
     await new Promise(resolvePromise => setTimeout(resolvePromise, 250))
   }
-  const clientEntry = host.bootGraph?.entries?.find(entry => entry.id === 'dsh-amphoreus')
+  const clientEntry = parseBootGraph(html)?.entries?.find(entry => entry.id === 'dsh-amphoreus')
   const client = await host.request(clientEntry?.url ?? '/plugins/??dsh-amphoreus/client.js')
   const diagnosticsResponse = await host.request('/official-test/diagnostics')
   const diagnostics = diagnosticsResponse.ok ? await diagnosticsResponse.json() : undefined
@@ -144,6 +158,7 @@ export async function inspectPlugin(host) {
     result.setupNeeded = state.effectiveConfig?.setupNeeded
     result.backgroundMode = state.effectiveConfig?.wallpaper?.mode
     result.heroWorkspaceMode = state.effectiveConfig?.heroWorkspaceMode
+    result.stickerSources = state.stickerSources ?? {}
     result.visualDefaults = { magazineMode: state.effectiveConfig?.magazineMode, codeBackground: state.effectiveConfig?.codeBackground,
       mascot: state.effectiveConfig?.grammar?.mascot, ambient: state.effectiveConfig?.grammar?.ambient }
     result.assets = []
@@ -221,6 +236,8 @@ export function verifyInstallReport(report, options = {}) {
     require(report.stockSticker?.authenticatedStatus === 200 && report.stockSticker?.type?.startsWith('image/')
       && report.stockSticker?.matchesOriginal === true && report.stockSticker?.unauthenticatedStatus === 401,
     'official local-file image route or authentication failed')
+    require(report.stickerMapping?.count > 0 && report.stickerMapping?.status === 200 && report.stickerMapping?.matchesOriginal === true,
+      'validated sticker path mapping or mapped image failed')
   }
   return { passed: failures.length === 0, failures }
 }
@@ -327,6 +344,12 @@ ${rejectionProbe}
       const authenticated = await host.request(path)
       const bytes = Buffer.from(await authenticated.arrayBuffer())
       const unauthenticated = await host.unauthenticatedRequest(path)
+      const mappings = report.checks[0].stickerSources
+      const mappedPath = mappings[resolve(values.sticker).replaceAll('\\', '/')]
+      const mappedResponse = mappedPath ? await host.request(mappedPath) : undefined
+      const mappedBytes = mappedResponse ? Buffer.from(await mappedResponse.arrayBuffer()) : undefined
+      report.stickerMapping = { count: Object.keys(mappings).length, path: mappedPath, status: mappedResponse?.status,
+        matchesOriginal: mappedBytes ? createHash('sha256').update(mappedBytes).digest('hex') === sha256(resolve(values.sticker)) : false }
       report.stockSticker = { authenticatedStatus: authenticated.status, type: authenticated.headers.get('content-type'),
         bytes: bytes.length, matchesOriginal: createHash('sha256').update(bytes).digest('hex') === sha256(resolve(values.sticker)),
         unauthenticatedStatus: unauthenticated.status }
@@ -335,15 +358,23 @@ ${rejectionProbe}
       const store = join(directory, 'home', 'storages', 'amphoreus.json')
       const before = sha256(store)
       const disabled = await host.request('/official-test/disable', { method: 'POST' })
+      const disableResult = await disabled.json()
       const disabledApi = await host.request('/amphoreus/api/state')
-      const disabledClient = await host.request('/plugins/??dsh-amphoreus/client.js')
+      const disabledClient = await currentClient(host)
       const unchanged = before === sha256(store)
       const enabled = await host.request('/official-test/enable', { method: 'POST' })
+      const enableResult = await enabled.json()
       const enabledApi = await host.request('/amphoreus/api/state')
-      const enabledClient = await host.request('/plugins/??dsh-amphoreus/client.js')
-      report.liveToggle = { disableStatus: disabled.status, disabledApiStatus: disabledApi.status,
+      let enabledClient = await currentClient(host)
+      const enabledClientStatuses = [enabledClient]
+      for (let attempt = 0; (enabledClient.status !== 200 || !enabledClient.graphHasPlugin) && attempt < 20; attempt += 1) {
+        await new Promise(resolvePromise => setTimeout(resolvePromise, 250))
+        enabledClient = await currentClient(host)
+        enabledClientStatuses.push(enabledClient)
+      }
+      report.liveToggle = { disableStatus: disabled.status, disableResult, disabledApiStatus: disabledApi.status,
         disabledClientStatus: disabledClient.status, enableStatus: enabled.status, enabledApiStatus: enabledApi.status,
-        enabledClientStatus: enabledClient.status, storeUnchangedWhileDisabled: unchanged }
+        enabledClientStatus: enabledClient.status, enableResult, enabledClientStatuses, storeUnchangedWhileDisabled: unchanged }
     }
   }
   finally { report.enabledShutdown = await host.stop(); writeJson(join(directory, 'report.json'), report) }
@@ -382,7 +413,7 @@ ${rejectionProbe}
     sticker: Boolean(values.sticker), expectedSeats: count(values['expect-seats'], values['skills-root'] ? 13 : undefined),
     expectedAssets: count(values['expect-assets']) })
   writeJson(join(directory, 'report.json'), report)
-  console.log(JSON.stringify({ report: join(directory, 'report.json'), installCode: install.code, checks: report.checks.map(({ assets, covers, diagnostics, ...check }) => ({ ...check, assets: assets?.length, covers: covers?.length })), stockUnmodified: report.stockUnmodified, expectedFailureReproduced: report.expectedFailureReproduced, verification: report.verification }))
+  console.log(JSON.stringify({ report: join(directory, 'report.json'), installCode: install.code, checks: report.checks.map(({ assets, covers, diagnostics, stickerSources, ...check }) => ({ ...check, assets: assets?.length, covers: covers?.length, stickerSources: stickerSources ? Object.keys(stickerSources).length : undefined })), stockUnmodified: report.stockUnmodified, expectedFailureReproduced: report.expectedFailureReproduced, verification: report.verification }))
   if (!report.verification.passed) process.exitCode = 1
 }
 
