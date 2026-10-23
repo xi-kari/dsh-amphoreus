@@ -18,23 +18,11 @@
 
 ## 兼容性
 
-本源码版本为 **0.5.1**，宿主基线为 **dsh-v0.2.1-rc.2**，并且必须包含工作区可见性扩展：`workspaceRegistry.setHiddenByOwner(owner, workspaceIds)`、持久化 `workspace_visibility` 域，以及原生侧栏和工作区选择器对隐藏状态的支持。未经扩展的官方 `0.2.1-rc.2` 不满足要求；插件会在启动时检查接口并给出明确错误。Node.js 要求为 **22.19+ 或 24+**。
+本源码版本为 **0.5.1**，适配官方 **DSH 0.2.1-rc.2** 的 Desktop 与 Web。插件通过标准 bundle 加载宿主端和客户端，安装后重启当前 DSH 即可生效。Node.js 要求为 **22.19+ 或 24+**，Desktop 使用其自带运行时。
 
-推荐使用与插件配套的 **DSH Amphoreus Host** 安装包。它包含五个已经构建的 DSH 兼容包、插件 tarball、固定版本的 pnpm 和依赖锁文件，无需自行编译 DSH。解压后执行：
+停用插件会卸载界面、主题、监听和动画。已创建的角色目录、工作区与会话保留在 DSH 中；官方宿主没有按插件隐藏工作区的接口，因此这些工作区仍可从原生界面访问。宿主若提供可选的工作区可见性能力，插件会使用该能力处理自己的工作区。
 
-```bash
-node runtime.mjs verify
-node runtime.mjs install
-node runtime.mjs start
-```
-
-Windows 也可使用包中的 `Install.cmd` 和 `Start.cmd`。首次安装需要网络；宿主默认使用解压目录下独立的 `.dsh-home`，已有目录可通过 `DSH_HOME` 显式指定。技能和图片仍由用户在插件设置中配置，不随宿主包分发。`provenance.json` 记录宿主来源、兼容补丁和包摘要，`integrity.json` 用于安装前校验。
-
-已有兼容宿主时，可以只安装 `dsh-amphoreus-0.5.1.tgz`。单独安装插件、或运行 `npx @deepseek-ai/dsh@0.2.1-rc.2 web`，不会自动把官方宿主变成兼容宿主。`0.4.2` 对应旧宿主，不适用于此兼容基线。
-
-插件停用时只隐藏专属席位目录，保留工作区 ID、排序、会话归属和运行中的任务；重新启用后恢复显示。普通项目不受影响。启停可在当前页面完成，主题、代码背景与视频资源随插件一起卸载和恢复。
-
-兼容扩展随本包提供：[DSH 工作区可见性补丁](compat/dsh-v0.2.1-rc.2-workspace-visibility.patch)。它适用于 DSH 源码提交 `687f282e8625c6b8d11ff58211a90524be2e4317`。在该源码副本中先执行 `git apply --check <补丁路径>`，检查通过后执行 `git apply <补丁路径>`，按 DSH 官方构建流程重建并运行这个宿主副本。此扩展尚不属于官方 npm 发布版；仅更新或重新安装官方 npm 包不能替代它。
+带图插件包包含角色图片与预先生成的显示缓存。首次启动由插件校验并补齐缺失缓存，通过 DSH 的存储接口初始化视觉偏好；已有设置、缓存和用户选定的素材目录优先。外部技能仍由 skillRoots 读取，模型登录沿用当前 DSH。
 
 背景默认“无背景”。在 δ-me13 设置中可切换“配置图片1”（已配置的预置素材）或上传自定义图片、MP4／WebM 视频。上传前会检查当前浏览器能否读取文件，保存成功后直接启用自定义背景；上传失败保留原文件。全局背景用于没有单独壁纸的席位，角色自己的壁纸优先。切换到“无背景”或“配置图片1”不会删除上传文件，角色配色独立于背景。文件保存在本机插件数据目录，不进入 npm 包。
 
@@ -83,45 +71,34 @@ Windows 也可使用包中的 `Install.cmd` 和 `Start.cmd`。首次安装需要
 
 ## 安装
 
-以下命令适用于已经包含工作区可见性扩展的宿主，以 `web` profile 为例。插件被加入后，launcher 会把它 reconcile 进 `dsh.profile.bundles`；bundle 列表只在启动时组合，所以每种安装方式完成后都要**重启 `dsh web`**。`patchReload: live` 只重载 `cordis.patch.yml`，不能代替这次重启。
+安装到当前使用的 DSH profile 后重启。插件包已包含编译好的宿主端和浏览器端，不需要重建 DSH。
 
 ### Desktop
 
-DSH Desktop 使用同一份 `web` client bundle。插件沿用桌面壳的 `dsh-app://app` 同源代理与原生目录选择器；门户、首次设置、阅读面板和图片预览按窗口可用区域布局，角色挂件避开原生标题栏，并随全屏切换重新计算位置。
-
-Windows x64 配套桌面包使用 DSH 的 Electron 壳、兼容运行时和本插件。解压后运行 `Start-Amphoreus.cmd`。它是非官方便携构建，默认将数据保存在 `%LOCALAPPDATA%/dsh-amphoreus-desktop/0.5.1`；可用 `Start-Amphoreus.cmd --data "D:/Amphoreus Data"` 指定长期使用的数据目录。用户的普通 DSH 安装和 `~/.dsh` 保持独立。桌面包包含运行所需的解释器，技能与模型凭据仍由用户配置。
-
-带素材的桌面包同时提供角色封面、卡牌、贴纸、壁纸和已优化缓存，首次启动自动接好图片路径，无需安装 ImageMagick 或重复派生。初始视觉方案为预置壁纸、完整杂志模式、角色动态挂件与强度 0.7 的字符水波；已有偏好和缓存文件不会被覆盖。用户自定义背景、音频、对话和记忆不随包复制。图片权利说明见素材包的独立说明，代码的 MIT 许可不适用于这些图片。
-
-已有包含兼容扩展的 Desktop 时，先启动一次以初始化，再完全退出应用，使用 **Desktop 自带的 dsh 命令**安装：
+先运行一次官方 DSH Desktop 完成初始化。在桌面端的插件管理页安装插件包后，按页面提示重启。也可以完全退出 Desktop，再使用 **Desktop 自带的 dsh 命令**安装：
 
 ```bash
-dsh plugin --profile desktop add ./dsh-amphoreus-0.5.1.tgz
+dsh plugin --profile desktop add ./dsh-amphoreus-0.5.1-with-assets.tgz
 ```
 
-然后重新打开 Desktop。`desktop` 是桌面端管理的专用 profile，普通 npm 安装的 `dsh` 命令不能代替桌面端命令管理它。Web 宿主安装包不会修改 Desktop 内置运行时；未经扩展的官方 Desktop 仍需配套兼容宿主。
+重新打开原来的 DSH Desktop 即可。desktop 是桌面端管理的专用 profile，普通 npm 安装的 dsh 命令不能代替桌面端命令管理它。插件不会安装第二套桌面程序。
 
-### 制作配套 Web 宿主
+带图包的角色封面、卡牌、贴纸和壁纸随插件到位，首次启动自动配置预置壁纸、完整杂志模式、角色动态挂件与强度 0.7 的字符水波。已有用户偏好保持不变；原始素材自检与已就绪的显示缓存分开计数。图片权利说明位于 resources/ASSETS-NOTICE.txt，代码 MIT 许可不适用于这些图片。
 
-在固定 DSH 源码提交上应用兼容补丁、安装依赖并完成官方构建后，执行：
+桌面端继续使用官方的同源代理与目录选择器。门户、设置向导、阅读面板、图片预览和角色挂件遵守原生标题栏留白与全屏状态。
+
+### 制作带图插件包
+
+在源码目录构建，再把经过校验的素材集装入普通插件 tarball：
 
 ```bash
 npm ci
 npm run build
-npm run host:pack -- --source /path/to/patched-dsh --out /path/to/new-host-kit
+npm run verify:dist
+npm run pack:with-assets -- --assets /path/to/bundled-art --out /path/to/new-package-output
 ```
 
-打包器检查源码提交与完整差异，要求它们和仓库提供的兼容补丁一致；将编译产物打成独立包后，在安装根目录固定全部替换和依赖锁。输出目录必须为空。GitHub Actions 的 `host-kit` 工作流提供同一构建入口。
-
-Windows 桌面包还需要同版本的官方 Desktop 安装目录，以提取带许可证的第三方运行库和 Electron。构建器用指定源码的编译产物替换 DSH 工作区包，核对兼容包摘要，并重新生成完整运行时文件清单：
-
-```bash
-npm run desktop:pack -- --source /path/to/patched-dsh --official-desktop /path/to/official-desktop --host-kit /path/to/host-kit --plugin . --out /path/to/new-desktop-kit
-```
-
-附带图片时再传入 `--assets /path/to/artwork --cache /path/to/derived-cache`。构建器只收取插件素材清单中的图片和有效派生 WebP，不复制整个输入目录或技能正文；原始杂志 ZIP 与用户自定义文件不在白名单内。
-
-`desktop-host.json` 分别记录源码提交、原始安装器构建提交、补丁与运行时摘要。此构建入口目前仅支持 Windows x64；macOS 的标题栏布局已覆盖，macOS 原生分发包仍需在对应平台构建和验收。
+输入素材集包含白名单原图、派生 WebP 和摘要清单；可用 scripts/bundled-assets.mjs 的 bundleArtwork 生成。打包结果保持普通 dsh-amphoreus 包的身份，安装不执行源码构建，不携带 Electron、官方宿主、技能正文、会话或用户存储。无图基础包继续支持用户自选 assetsRoot。
 
 ### 构建与 tarball
 
@@ -184,7 +161,7 @@ profile 的 `cordis.patch.yml` 按 id 整体替换该插件的 config，而不�
     assetsRoot: 'D:/我的素材/翁法罗斯'
 ```
 
-`dataDir` 留空时，插件回退到 `$DSH_HOME/amphoreus`。`skillRoots` 只是运行时解析的只读目录引用；`assetsRoot` 指向用户自己的本地素材根，留空时视觉层使用抽象回退，不读取原图。首次运行向导保存的素材目录写入插件自有偏好 `prefs.assetsRoot`，**优先于**这里的 `assetsRoot`；补丁值作为底层默认保留，在设置中清除向导目录后立即回退到它。
+`dataDir` 留空时，插件回退到 `$DSH_HOME/amphoreus`。`skillRoots` 只是运行时解析的只读目录引用；`assetsRoot` 指向用户自己的本地素材根，留空时优先使用包内素材，无包内素材时使用抽象视觉回退。首次运行向导保存的目录写入插件自有偏好 `prefs.assetsRoot`，**优先于**配置中的 `assetsRoot`；清除手动目录后恢复配置或包内资源。
 
 下表逐项对应当前 `src/host/config.ts`；嵌套对象的每个子键单独列出：
 
@@ -192,7 +169,7 @@ profile 的 `cordis.patch.yml` 按 id 整体替换该插件的 config，而不�
 |---|---|---|---|---|
 | 顶层 | `skillRoots` | `string[]` | `['~/.claude/skills', '~/.codex/skills']` | 按顺序搜索技能套件的只读目录。 |
 | 顶层 | `dataDir` | `string` | `''` | 插件自有文件数据目录；空值回退到 `$DSH_HOME/amphoreus`。 |
-| 顶层 | `assetsRoot` | `string` | `''` | 用户本地素材根；空值启用无原图回退。 |
+| 顶层 | `assetsRoot` | `string` | `''` | 用户本地素材根；空值自动使用包内资源，无资源时使用抽象回退。 |
 | 顶层 | `commonPath` | `string` | `amphoreus/references/common.md` | 相对技能根的共享合同文件。 |
 | 顶层 | `relationsPath` | `string` | `amphoreus/references/relations.md` | 相对技能根的关系文件。 |
 | 顶层 | `sectionAliases` | `Record<string, string[]>` | `{}` | 为解析器补充章节标题别名。 |
@@ -247,7 +224,7 @@ profile 的 `cordis.patch.yml` 按 id 整体替换该插件的 config，而不�
 
 ## 素材包
 
-素材为《崩坏：星穹铁道》官方图或相应二创；本仓库与 npm 包**不包含、不下载**任何原图。用户把自己持有的文件按下表命名并放入 `assetsRoot`。缺少素材不会让插件伪造角色内容，而会进入对应的抽象视觉回退。
+素材为《崩坏：星穹铁道》官方图或相应二创。源码仓库与无图基础包不含这些图像；显式制作的带图插件包附带经过清单校验的显示素材，图片权利说明独立于代码许可。用户也可以把自己持有的文件按下表命名并放入 `assetsRoot`。缺少素材时使用对应的抽象视觉回退。
 
 首次进入页面若尚无生效的素材目录或派生缓存为空，会弹出**首次运行向导**：选择素材文件夹 → 服务端自检（必需／可选／壁纸夹计数与缺失清单）→ 保存并一键派生。向导保存的目录写入 `prefs.assetsRoot`，不再需要手工编辑 `cordis.patch.yml`；目录必须至少命中一个已知文件或非空壁纸夹，否则拒绝保存。
 
@@ -457,7 +434,7 @@ npm run assets:check -- "<assetsRoot>"
 7. 全席征询的 13 席汇总是页面内存态；刷新、关闭总览或离开承载该工作台的视图会结束本轮未派出的调度，已经被 DSH 接受的独立会话则按各自的 turn 继续收口。
 8. DSH 原生启动导航可能准备一个新的空白草稿；它可在普通目录或“未绑定角色的对话”中打开、归档。归档保留原始日志，重新启动后出现的新草稿不代表旧聊天恢复。
 9. 外部技能卡可能要求角色开场、回执或多段输出；全席征询会保留模型的完整回复，不能保证每席严格只写一句话。
-10. 对话表情需要完整的外部技能资源；只安装插件或只复制技能正文无法提供图片。通过其他设备访问 DSH 时，模型输出的图片服务地址也必须能从该设备访问。
+10. 对话表情需要完整的外部技能资源。插件只向角色提供清单中已验证的图片路径，由 DSH 已认证的文件入口展示；工作台使用同一清单映射到本机表情路由。只复制技能正文无法提供这些表情资源。
 
 ## 致谢
 
@@ -469,7 +446,7 @@ npm run assets:check -- "<assetsRoot>"
 
 本项目采用 MIT License，详见 [LICENSE](LICENSE)。本项目基于 DeepSeek Harness 构建，不是 DeepSeek 官方产品，与深度求索公司无关联、无背书。项目命名遵循 DSH 品牌规范。
 
-《崩坏：星穹铁道》相关名称与美术归米哈游所有；本仓库和 npm 包不分发其图像，也不提供原图下载链接。
+《崩坏：星穹铁道》相关名称与官方美术归米哈游所有，二创素材保留各自作者的权利。源码仓库不收录这些图像；带图插件包的素材不适用本项目 MIT 许可，具体说明随资源清单提供。
 
 ## 相关文档
 

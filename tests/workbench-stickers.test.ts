@@ -6,11 +6,31 @@ import vm from 'node:vm'
 const source = readFileSync(new URL('../workbench/app.js', import.meta.url), 'utf8')
 const context = vm.createContext({
   URL,
+  state: { amph: { stickerSources: {} } },
   location: { origin: 'http://127.0.0.1:3080' },
   escapeHtml: (value: unknown) => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]!)),
 })
 vm.runInContext(source.slice(source.indexOf('function inlineMarkdown('), source.indexOf('const clampCardText')), context)
 const render = (value: string): string => vm.runInContext(`renderMarkdown(${JSON.stringify(value)})`, context)
+
+test('desktop workbench maps only exact host-confirmed native paths and legacy URLs to its authenticated origin', () => {
+  context.location.origin = 'dsh-app://app'
+  context.state.amph.stickerSources = {
+    'D:/Role Art/amphoreus/assets/stickers/cyrene.webp': '/amphoreus/stickers/cyrene.webp',
+    'http://127.0.0.1:43123/amphoreus/stickers/cyrene.webp': '/amphoreus/stickers/cyrene.webp',
+  }
+  try {
+    for (const url of Object.keys(context.state.amph.stickerSources)) {
+      assert.match(render(`![昔涟](<${url}>)`), /<img class="dialogue-sticker" src="\/amphoreus\/stickers\/cyrene\.webp"/)
+    }
+    for (const url of ['D:/Other/amphoreus/assets/stickers/cyrene.webp', 'http://127.0.0.1:43124/amphoreus/stickers/cyrene.webp', 'http://attacker.invalid/amphoreus/stickers/cyrene.webp']) {
+      assert.doesNotMatch(render(`![昔涟](<${url}>)`), /<img\b/)
+    }
+  } finally {
+    context.location.origin = 'http://127.0.0.1:3080'
+    context.state.amph.stickerSources = {}
+  }
+})
 
 test('workbench displays same-origin skill stickers between dialogue and the receipt', () => {
   for (const ext of ['webp', 'gif', 'png']) {

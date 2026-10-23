@@ -294,8 +294,10 @@ test('a failed write is warned and does not stop the serialized queue', async ()
 test('host assembly starts the observer after the resolver and drains it before bridge and stores close', async () => {
   const source = await readFile(new URL('../src/index.ts', import.meta.url), 'utf8')
   assert.ok(source.indexOf('await bridge.start()') < source.indexOf('registerObserver(ctx'))
-  assert.ok(source.indexOf('await disposeObserver()') < source.indexOf('await bridge.close()'))
-  assert.ok(source.indexOf('await disposeObserver()') < source.indexOf('await stores?.close()'))
+  const disposal = source.slice(source.indexOf('const dispose = async () => {'))
+  assert.ok(disposal.indexOf('await disposeObserver()') >= 0)
+  assert.ok(disposal.indexOf('await disposeObserver()') < disposal.indexOf('await bridge.close()'))
+  assert.ok(disposal.indexOf('await disposeObserver()') < disposal.indexOf('await stores?.close()'))
 })
 
 interface DomainChange {

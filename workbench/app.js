@@ -345,6 +345,7 @@ async function hydrateBootState(bootState) {
     || bootState.prefs.quickPhrasesInitialized !== undefined && typeof bootState.prefs.quickPhrasesInitialized !== 'boolean') {
     throw new Error('持久化状态响应无效')
   }
+  state.stickerSources = bootState.stickerSources ?? {}
   state.cardPositions.clear()
   state.legacyPositionKeys.clear()
   state.collapsedCardIds.clear()
@@ -826,6 +827,11 @@ function dialogueSticker(line) {
   const image = /^\s*!\[([^\]\n]*)\]\((?:<([^<>\n]+)>|([^\s()]+))\)\s*$/.exec(line)
   if (image === null) return null
   let path = image[2] ?? image[3]
+  const sources = typeof state === 'object' && state !== null ? state.amph?.stickerSources ?? state.stickerSources : undefined
+  if (sources !== null && typeof sources === 'object' && Object.hasOwn(sources, path)) {
+    if (typeof sources[path] !== 'string') return escapeHtml(image[1])
+    path = sources[path]
+  }
   if (!path.startsWith('/')) {
     try {
       const url = new URL(path)
@@ -3292,6 +3298,7 @@ window.addEventListener('message', event => {
       memory: data.memory ?? [],
       effectiveConfig: data.effectiveConfig ?? {},
       firewallWords: data.firewallWords ?? [],
+      stickerSources: data.stickerSources ?? {},
     }
     updateDispatchSuggestions(state.dispatch.text)
     patchDispatchSuggestions()

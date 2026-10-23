@@ -5,6 +5,8 @@ import * as seatPromptModule from '../src/host/seat-prompt.ts'
 import { registerSeatPrompt, seatPromptAssembly } from '../src/host/seat-prompt.ts'
 import type { BindingRecord, AmphoreusStores } from '../src/host/store.ts'
 import type { SuiteSnapshot } from '../src/host/suite/types.ts'
+import { fileMediaUrl } from '@deepseek-ai/dsh-util-workspace-path'
+import { stickerMarkdownPath } from '../src/host/stickers.ts'
 
 const binding: BindingRecord = {
   sessionId: 'session-role', skillName: 'amphoreus-anaxa', boundAt: 100,
@@ -26,23 +28,20 @@ function prompt() {
   }
 }
 
-test('sticker origin requires an available loopback TCP listener and preserves its actual origin', () => {
-  const unbound = {
-    host: '127.0.0.1', port: undefined,
-    getOrigin: (): string => { throw new Error('webserver: origin read before the listener bound a port') },
+test('catalog image paths use the official authenticated file route in Web and Desktop', () => {
+  for (const path of ['D:/Role Art/100%/角色.webp', '/skills/Role Art/sticker?#.png']) {
+    const destination = stickerMarkdownPath(path)
+    assert.equal(decodeURIComponent(destination), path)
+    for (const base of ['https://127.0.0.1:43123/', 'dsh-app://app/']) {
+      const url = fileMediaUrl(base, decodeURIComponent(destination))
+      assert.ok(url)
+      assert.equal(new URL(url).pathname, '/api/file')
+      assert.equal(new URL(url).searchParams.get('path'), path)
+      assert.ok(url.startsWith(base))
+    }
   }
-  assert.equal(seatPromptModule.stickerWebOrigin(unbound), undefined)
-  const socket = {
-    host: '/tmp/dsh.sock', port: undefined,
-    getOrigin: (): string => { throw new Error('socket listener has no browser origin') },
-  }
-  assert.equal(seatPromptModule.stickerWebOrigin(socket), undefined)
-  const listener = {
-    host: '127.0.0.1', port: 43123,
-    getOrigin: () => 'https://127.0.0.1:43123',
-  }
-  assert.equal(seatPromptModule.stickerWebOrigin(listener), 'https://127.0.0.1:43123')
-  assert.equal(seatPromptModule.stickerWebOrigin({ ...listener, host: '192.0.2.10' }), undefined)
+  assert.equal(fileMediaUrl('dsh-app://app/', 'file:///private.webp'), undefined)
+  assert.equal(fileMediaUrl('dsh-app://app/', '//remote/private.webp'), undefined)
 })
 
 test('seat prompt replaces only two default identity declarations and retains runtime contracts', () => {
@@ -187,18 +186,31 @@ test('assembly hook passes the binding to the memory reader and falls back to th
   assert.doesNotMatch(plain, /席位记忆/)
 })
 
-test('seat prompt names the exact served sticker file per key and keeps the manifest-extension URL template', () => {
+test('seat prompt names exact catalog-backed native image destinations for the official renderer', () => {
   const stickers = {
     index: '/skills/amphoreus/references/stickers.md', script: '/skills/amphoreus/scripts/stickers.py',
-    manifest: '/skills/amphoreus/assets/stickers/manifest.json', urlPrefix: 'http://127.0.0.1:3080/amphoreus/stickers/',
-    keys: ['cyrene.webp', 'phainon-ehe.gif', 'anaxa-still.png'],
+    manifest: '/skills/amphoreus/assets/stickers/manifest.json',
+    sources: [
+      { file: 'cyrene.webp', path: '/skills/amphoreus/assets/stickers/cyrene.webp', url: '/amphoreus/stickers/cyrene.webp' },
+      { file: 'phainon-ehe.gif', path: '/skills/amphoreus/assets/stickers/phainon-ehe.gif', url: '/amphoreus/stickers/phainon-ehe.gif' },
+      { file: 'anaxa-still.png', path: '/skills/amphoreus/assets/stickers/anaxa-still.png', url: '/amphoreus/stickers/anaxa-still.png' },
+    ],
   }
   const identity = seatPromptAssembly(prompt(), binding, '那刻夏', undefined, stickers).sections[0]!.text
-  assert.match(identity, /已确认可服务的表情文件（<key>\.<扩展名>，扩展名以 manifest 登记为准，不得改写；GIF 仅当 manifest 列出时才可用）：cyrene\.webp、phainon-ehe\.gif、anaxa-still\.png/)
-  assert.match(identity, /!\[角色·表情\]\(<http:\/\/127\.0\.0\.1:3080\/amphoreus\/stickers\/<文件名>>\) 单独一行输出/)
+  assert.match(identity, /已核实图片目录：\/skills\/amphoreus\/assets\/stickers\//)
+  assert.match(identity, /cyrene\.webp → cyrene\.webp/)
+  assert.match(identity, /phainon-ehe\.gif → phainon-ehe\.gif/)
+  assert.match(identity, /anaxa-still\.png → anaxa-still\.png/)
+  assert.match(identity, /!\[角色·表情\]\(<\/skills\/amphoreus\/assets\/stickers\/文件名>\)/)
+  assert.doesNotMatch(identity, /\]\(<[^>\n]*</u)
   assert.doesNotMatch(identity, /<key>\.webp/)
   assert.match(identity, /--format json/)
-  assert.match(identity, /不得使用脚本返回的本地 path 或 markdown 作为图片地址/)
+  assert.match(identity, /只使用下列已核实路径/)
+  assert.doesNotMatch(identity, /http:\/\/127\.0\.0\.1|浏览器不呈现本地绝对路径/)
   const silent = seatPromptAssembly(prompt(), binding, '那刻夏').sections[0]!.text
   assert.match(silent, /当前未确认可供浏览器呈现的技能表情资源入口/)
+  const mixed = seatPromptAssembly(prompt(), binding, '那刻夏', undefined, {
+    ...stickers, sources: [...stickers.sources, { file: 'other.webp', path: '/skills/other/sticker.webp', url: '/amphoreus/stickers/other.webp' }],
+  }).sections[0]!.text
+  assert.match(mixed, /other\.webp → !\[角色·表情\]\(<\/skills\/other\/sticker\.webp>\)/)
 })

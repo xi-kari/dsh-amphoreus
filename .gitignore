@@ -9,5 +9,4 @@ lib/
 *.tgz
 .runtime/
 .suite-fixture/
-.host-source/
-.host-kit/
+resources/

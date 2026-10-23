@@ -19,7 +19,7 @@ import type { SuiteResolver } from './bridge.ts'
 import type { SuiteSnapshot } from './suite/types.ts'
 import { InputError, NotFoundError, type ProjectionIndex } from './workbench.ts'
 import type { SeatDirRecord } from './seatdirs.ts'
-import { readSticker } from './stickers.ts'
+import { loadStickerSources, readSticker, stickerSourceMap } from './stickers.ts'
 import { appendSeatNote, deleteSeatNote, effectiveMemorySettings, enqueueMemoryWrite, patchSeatMemorySettings, withReplacementTombstones } from './memory.ts'
 
 const MAX_BODY_BYTES = 4 * 1024
@@ -418,7 +418,17 @@ export class AmphoreusWebApi {
       }
       if (path === '/amphoreus/api/state') {
         if (!method(request, response, 'GET')) return
-        const state = this.state()
+        const snapshot = this.#resolver.current()
+        const root = snapshot?.root?.canonical
+        const sources = root === undefined ? [] : await loadStickerSources(root)
+        let origin: string | undefined
+        try { origin = this.#ctx.webServer?.getOrigin() } catch {}
+        const current = this.#resolver.current()
+        const state: AmphoreusState = {
+          ...this.state(),
+          stickerSources: root === current?.root?.canonical && snapshot?.generation === current?.generation
+            ? stickerSourceMap(sources, origin) : {},
+        }
         const tag = `"${state.suite?.fingerprint?.manifestSha256 ?? `generation-${state.revision}`}"`
         if (request.headers['if-none-match'] === tag) {
           response.writeHead(304, { etag: tag, 'cache-control': 'no-store' })

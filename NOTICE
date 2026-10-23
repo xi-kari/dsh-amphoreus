@@ -39,9 +39,10 @@ SOFTWARE.
 
    product and implies no endorsement.
 
-3. Honkai: Star Rail artwork is NOT bundled. Visual assets are read at runtime from a
+3. The core source package does not bundle Honkai: Star Rail artwork. Visual assets are read at runtime from a
 
-   user-provided assetsRoot directory; the package ships only file-name references.
+   user-provided assetsRoot directory. Explicit resource-inclusive builds carry a
+   separate resources/ASSETS-NOTICE.txt; their artwork is not covered by the code's MIT license.
 
 4. open-claude-ui (https://github.com/Caho1/open-claude-ui), MIT License,
    commit c1f923ae0051a871941b98a0e2e3183a545e6a85.

@@ -26,6 +26,7 @@ export interface AmphoreusStateMessage {
   readonly memory: AmphoreusState['memory']
   readonly effectiveConfig: AmphoreusState['effectiveConfig']
   readonly firewallWords: readonly string[]
+  readonly stickerSources?: Readonly<Record<string, string>>
 }
 
 export function buildStateMessage(state: AmphoreusState): AmphoreusStateMessage {
@@ -49,5 +50,6 @@ export function buildStateMessage(state: AmphoreusState): AmphoreusStateMessage 
     memory: state.memory,
     effectiveConfig: state.effectiveConfig,
     firewallWords: state.suite?.contracts?.firewallWords ?? [],
+    ...(state.stickerSources === undefined ? {} : { stickerSources: state.stickerSources }),
   }
 }

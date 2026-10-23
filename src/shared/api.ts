@@ -230,6 +230,7 @@ export interface AmphoreusState {
   readonly visualBoot: AmphoreusBoot
   readonly widget?: WidgetPublicState
   readonly widgetError?: 'unavailable'
+  readonly stickerSources?: Readonly<Record<string, string>>
   readonly suite: PublicSuite | undefined
   readonly seats: readonly SeatRecord[]
   readonly seatDirs: readonly { readonly heroId: string; readonly skillName: string; readonly dir: string }[]

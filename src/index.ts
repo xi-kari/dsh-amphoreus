@@ -2,6 +2,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import { randomBytes } from 'node:crypto'
+import { access } from 'node:fs/promises'
 import { join } from 'node:path'
 import { AmphoreusBridge } from './host/bridge.ts'
 import { Config, type AmphoreusConfig } from './host/config.ts'
@@ -9,10 +10,11 @@ import { registerFirstFrame } from './host/firstframe.ts'
 import { registerInjector } from './host/injector.ts'
 import { migrateSynapse } from './host/migrate-synapse.ts'
 import { registerObserver } from './host/observer.ts'
-import { registerSeatPrompt, stickerWebOrigin } from './host/seat-prompt.ts'
+import { registerSeatPrompt } from './host/seat-prompt.ts'
 import { ensureSeatDirs, type EnsureSeatDirsResult } from './host/seatdirs.ts'
 import { reconcileSeats } from './host/seats.ts'
-import { openAmphoreusStores, updateAmphoreusGlobal, type AmphoreusStores } from './host/store.ts'
+import { INITIAL_GLOBAL, openAmphoreusStores, updateAmphoreusGlobal, type AmphoreusStores } from './host/store.ts'
+import { prepareBundledResources } from './host/bundled-resources.ts'
 import { AmphoreusWebApi } from './host/webapi.ts'
 import { ProjectionIndex, type ProjectableEvent, type ProjectableSession } from './host/workbench.ts'
 import type { WorkbenchStatus } from './shared/api.ts'
@@ -20,12 +22,12 @@ import type { WorkbenchStatus } from './shared/api.ts'
 import { registerSeatPermission } from './host/seat-permission.ts'
 import { registerSeatMemory } from './host/memory.ts'
 import { inspectColdSession, listColdHeaders, type ColdPersistence } from './host/session-replay.ts'
-import { activateSeatWorkspaces, requireWorkspaceVisibility } from './host/workspace-visibility.ts'
+import { activateSeatWorkspaces, requireWorkspaceRegistry } from './host/workspace-visibility.ts'
 import { registerWidgetAccounting } from './host/widget.ts'
 /** Effective assets root: the runtime pref chosen in the setup wizard wins over cordis.patch.yml. */
-function effectiveAssetsRoot(config: AmphoreusConfig, stores: AmphoreusStores | undefined): string {
+function effectiveAssetsRoot(config: AmphoreusConfig, stores: AmphoreusStores | undefined, bundledRoot: string): string {
   const saved = stores?.main.global.get().prefs.assetsRoot ?? ''
-  return saved.trim() !== '' ? saved.trim() : config.assetsRoot.trim()
+  return saved.trim() || config.assetsRoot.trim() || bundledRoot
 }
 
 export { Config }
@@ -37,12 +39,16 @@ export const name = 'amphoreus'
 /** Host services this row waits for before mounting. */
 export const inject = ['webServer', 'connection', 'skills', 'storageDomain', 'sessions', 'sessionPersistence', 'agents', 'commands', 'workspaceRegistry']
 
-export function apply(ctx: Context, config: AmphoreusConfig): void {
-  ctx.effect(async () => {
-    const workspaceRegistry = requireWorkspaceVisibility(ctx.get('workspaceRegistry'))
+export async function apply(ctx: Context, config: AmphoreusConfig): Promise<void> {
+  await ctx.effect(async () => {
+    const workspaceRegistry = requireWorkspaceRegistry(ctx.get('workspaceRegistry'))
     const bridge = new AmphoreusBridge(ctx, config)
     const nonce = randomBytes(24).toString('base64url')
-    const dataDir = config.dataDir.trim() === '' ? join(resolveDshHome(), 'amphoreus') : config.dataDir
+    const dshHome = resolveDshHome()
+    const dataDir = config.dataDir.trim() === '' ? join(dshHome, 'amphoreus') : config.dataDir
+    let hasExistingStore = true
+    try { await access(join(dshHome, 'storages', 'amphoreus.json')) }
+    catch (error) { hasExistingStore = (error as NodeJS.ErrnoException).code !== 'ENOENT' }
     let stores: AmphoreusStores | undefined
     try {
       stores = await openAmphoreusStores(ctx)
@@ -52,6 +58,29 @@ export function apply(ctx: Context, config: AmphoreusConfig): void {
     if (stores !== undefined) {
       await migrateSynapse(stores, resolveDshHome(), ctx.logger)
         .catch(error => ctx.logger.warn(`amphoreus synapse migration failed: ${String(error)}`))
+    }
+    let bundledAssetsRoot = ''
+    try {
+      const resources = await prepareBundledResources({
+        dataDir,
+        configuredAssetsRoot: config.assetsRoot,
+        savedAssetsRoot: stores?.main.global.get().prefs.assetsRoot,
+        hasExistingStore,
+        moduleUrl: import.meta.url,
+      })
+      if (resources !== undefined) {
+        bundledAssetsRoot = resources.assetsRoot
+        if (stores !== undefined && resources.defaultPrefs !== undefined) {
+          await updateAmphoreusGlobal(stores.main, current =>
+            JSON.stringify(current) === JSON.stringify(INITIAL_GLOBAL)
+              ? { ...current, prefs: { ...current.prefs, ...resources.defaultPrefs } }
+              : current)
+        }
+      }
+    } catch (error) {
+      await stores?.close()
+      await bridge.close()
+      throw error
     }
     const detach = stores === undefined
       ? () => {}
@@ -204,7 +233,7 @@ export function apply(ctx: Context, config: AmphoreusConfig): void {
           assetsCacheDir: join(dataDir, 'assets-cache'),
           dataDir,
           // @anchor webapi-construct
-          assetsRoot: () => effectiveAssetsRoot(config, stores),
+          assetsRoot: () => effectiveAssetsRoot(config, stores, bundledAssetsRoot),
           workbenchStatus: () => workbenchStatus,
           ...(workbench === undefined ? {} : { workbench }),
           ...(seatDirs === undefined ? {} : { seatDirs: seatDirs.dirs }),
@@ -217,7 +246,6 @@ export function apply(ctx: Context, config: AmphoreusConfig): void {
       current: () => bridge.resolver.current(),
       commonPath: config.commonPath,
       relationsPath: config.relationsPath,
-      stickerOrigin: () => webApi === undefined ? undefined : stickerWebOrigin(ctx.webServer),
     })
     const disposeFirstFrame = registerFirstFrame(ctx, {
       config,
@@ -225,7 +253,7 @@ export function apply(ctx: Context, config: AmphoreusConfig): void {
       current: () => bridge.resolver.current(),
       wallpaperIndex: stores?.main.global.get().prefs.wallpaperCursor ?? 0,
       derivedWallpaper: index => webApi?.derivedWallpaperUrl(index) ?? null,
-      assetsRoot: () => effectiveAssetsRoot(config, stores),
+      assetsRoot: () => effectiveAssetsRoot(config, stores, bundledAssetsRoot),
       backgroundMode: () => stores?.main.global.get().prefs.backgroundMode ?? 'none',
       customWallpaper: () => webApi?.globalCustomWallpaper(),
     })
@@ -262,8 +290,7 @@ export function apply(ctx: Context, config: AmphoreusConfig): void {
       }
     }
     try {
-      if (seatDirs === undefined) throw new Error('Seat directories are unavailable; workspace visibility cannot be managed safely.')
-      hideSeatWorkspaces = await activateSeatWorkspaces(workspaceRegistry, seatDirs.dirs)
+      if (seatDirs !== undefined) hideSeatWorkspaces = await activateSeatWorkspaces(workspaceRegistry, seatDirs.dirs)
     } catch (error) {
       await dispose()
       throw error

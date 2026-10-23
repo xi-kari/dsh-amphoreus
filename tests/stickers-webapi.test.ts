@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict'
 import { once } from 'node:events'
-import { mkdir, mkdtemp, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, realpath, rename, rm, symlink, writeFile } from 'node:fs/promises'
 import { createServer, request as httpRequest } from 'node:http'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { test } from 'node:test'
 import type { Context } from '@deepseek-ai/cordis'
 import type { SuiteResolver } from '../src/host/bridge.ts'
-import { loadStickerCatalog, readSticker, stickerFormatOf } from '../src/host/stickers.ts'
-import type { AmphoreusStores } from '../src/host/store.ts'
+import { loadStickerCatalog, loadStickerSources, readSticker, stickerFormatOf, stickerMarkdownPath, stickerSourceMap } from '../src/host/stickers.ts'
+import { INITIAL_GLOBAL, type AmphoreusStores } from '../src/host/store.ts'
 import type { SuiteSnapshot } from '../src/host/suite/types.ts'
 import { AmphoreusWebApi } from '../src/host/webapi.ts'
 import { fixtureConfig, fixtureSnapshot } from './fixture-suite.ts'
@@ -73,6 +73,69 @@ test('sticker catalog exposes only registered, existing WebP files and refreshes
   await rm(join(directory, 'manifest.json'))
   assert.equal(await loadStickerCatalog(root), undefined)
   assert.equal(await readSticker(root, 'fixture-happy'), undefined)
+})
+
+test('native sticker sources map only validated catalog files and the verified legacy host origin', async t => {
+  const root = await fixture()
+  t.after(() => cleanup(root))
+  const directory = join(root, 'amphoreus/assets/stickers')
+  await put(join(directory, 'happy.webp'), WEBP)
+  await put(join(directory, 'unregistered.webp'), WEBP)
+  const sources = await loadStickerSources(root)
+  const canonical = (await realpath(join(directory, 'happy.webp'))).replaceAll('\\', '/')
+  assert.equal(sources.length, 2)
+  assert.deepEqual(sources[1], { file: 'fixture-happy.webp', path: canonical, url: '/amphoreus/stickers/fixture-happy.webp' })
+  const map = stickerSourceMap(sources, 'http://127.0.0.1:43123')
+  assert.equal(map[canonical], '/amphoreus/stickers/fixture-happy.webp')
+  assert.equal(map[stickerMarkdownPath(canonical)], '/amphoreus/stickers/fixture-happy.webp')
+  assert.equal(map['http://127.0.0.1:43123/amphoreus/stickers/fixture-happy.webp'], '/amphoreus/stickers/fixture-happy.webp')
+  assert.equal(map['http://127.0.0.1:43124/amphoreus/stickers/fixture-happy.webp'], undefined)
+  for (const origin of ['https://attacker.invalid', 'http://user:password@127.0.0.1:43123', 'http://127.0.0.1:43123/?token=secret']) {
+    assert.equal(Object.keys(stickerSourceMap(sources, origin)).some(key => key.startsWith('http')), false)
+  }
+  await put(join(directory, 'happy.webp'), 'not a webp')
+  assert.equal((await loadStickerSources(root)).some(source => source.file === 'fixture-happy.webp'), false)
+})
+
+test('authenticated state publishes the live primary catalog mapping and clears replaced roots', async t => {
+  const root = await fixture()
+  const replacement = await fixture()
+  t.after(() => cleanup(root))
+  t.after(() => cleanup(replacement))
+  const snapshot = fixtureSnapshot()
+  let current: SuiteSnapshot | undefined = { ...snapshot, root: { ...snapshot.root!, canonical: root } }
+  let origin = ''
+  const empty = new Map()
+  const stores = {
+    main: { global: { get: () => structuredClone(INITIAL_GLOBAL) }, table: () => ({ entries: () => empty.entries() }) },
+    canvas: { table: () => ({ entries: () => empty.entries() }) },
+  } as unknown as AmphoreusStores
+  const ctx = {
+    connection: { requestRejection: (request: { headers: { cookie?: string } }) => request.headers.cookie === 'authorized=true' ? undefined : 401 },
+    webServer: { getOrigin: () => origin },
+  }
+  const api = new AmphoreusWebApi(ctx as unknown as Context, {
+    config: fixtureConfig(), stores, resolver: { current: () => current } as unknown as SuiteResolver, probeMagick: async () => undefined,
+  })
+  const server = createServer((request, response) => { void api.handle(request, response) })
+  server.listen(0, '127.0.0.1')
+  await once(server, 'listening')
+  t.after(async () => { server.close(); await once(server, 'close') })
+  const address = server.address()
+  assert.ok(address !== null && typeof address !== 'string')
+  origin = `http://127.0.0.1:${address.port}`
+  assert.equal((await fetch(`${origin}/amphoreus/api/state`)).status, 401)
+  const read = async () => {
+    const response = await fetch(`${origin}/amphoreus/api/state`, { headers: { cookie: 'authorized=true' } })
+    assert.equal(response.status, 200)
+    return (await response.json()).stickerSources as Record<string, string>
+  }
+  const key = (await realpath(join(root, 'amphoreus/assets/stickers/fixture.webp'))).replaceAll('\\', '/')
+  assert.equal((await read())[key], '/amphoreus/stickers/fixture.webp')
+  current = { ...snapshot, root: { ...snapshot.root!, canonical: replacement } }
+  assert.equal((await read())[key], undefined)
+  current = undefined
+  assert.deepEqual(await read(), {})
 })
 
 test('sticker catalog admits GIF and PNG by manifest extension and drops files whose bytes disagree with it', async t => {

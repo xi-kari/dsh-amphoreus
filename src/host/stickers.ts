@@ -52,6 +52,48 @@ export interface StickerAsset {
   readonly ext: StickerExtension
 }
 
+export interface StickerSource {
+  readonly file: string
+  readonly path: string
+  readonly url: string
+}
+
+export function stickerMarkdownPath(path: string): string {
+  return encodeURI(path).replace(/[?#]/gu, character => encodeURIComponent(character))
+}
+
+export async function loadStickerSources(root: string): Promise<readonly StickerSource[]> {
+  try {
+    const catalog = await loadStickerCatalog(root)
+    if (catalog === undefined) return []
+    const canonicalRoot = await realpath(root)
+    const directory = await realpath(join(canonicalRoot, 'amphoreus', 'assets', 'stickers'))
+    if (!contained(canonicalRoot, directory)) return []
+    const sources: StickerSource[] = []
+    for (const item of catalog.items) {
+      try {
+        const path = await realpath(join(directory, item.file))
+        if (!contained(directory, path) || /^[/\\]{2}/u.test(path) || /[<>\u0000-\u001f\u007f]/u.test(path)) continue
+        sources.push({ file: `${item.key}.${item.ext}`, path: path.replaceAll('\\', '/'), url: `/amphoreus/stickers/${item.key}.${item.ext}` })
+      } catch {}
+    }
+    return sources
+  } catch { return [] }
+}
+
+export function stickerSourceMap(sources: readonly StickerSource[], origin?: string): Readonly<Record<string, string>> {
+  let legacyOrigin: string | undefined
+  try {
+    const url = new URL(origin ?? '')
+    if ((url.protocol === 'http:' || url.protocol === 'https:') && url.hostname === '127.0.0.1'
+      && !url.username && !url.password && !url.search && !url.hash && url.pathname === '/') legacyOrigin = url.origin
+  } catch {}
+  return Object.fromEntries(sources.flatMap(source => [
+    [source.path, source.url], [stickerMarkdownPath(source.path), source.url],
+    ...(legacyOrigin === undefined ? [] : [[`${legacyOrigin}${source.url}`, source.url]]),
+  ]))
+}
+
 /** Fresh external metadata, limited to registered images whose bytes match their declared extension. */
 export async function loadStickerCatalog(root: string): Promise<StickerCatalog | undefined> {
   const loaded = await readCatalog(root)
