@@ -1,0 +1,63 @@
+name: cloud-publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing draft release tag
+        required: true
+        default: v0.5.1
+        type: string
+      manifest_sha256:
+        description: SHA-256 of the approved upload manifest
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: cloud-publish-dsh-amphoreus
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'xi-kari/dsh-amphoreus' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: npm-release
+    permissions:
+      contents: write
+      id-token: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ inputs.release_tag }}
+      MANIFEST_SHA256: ${{ inputs.manifest_sha256 }}
+      CLOUD_PUBLISH_DIR: ${{ runner.temp }}/amphoreus-cloud-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Use npm with trusted publishing and dist-tag support
+        run: npm install --global npm@11.21.0 --ignore-scripts --registry https://registry.npmjs.org
+      - name: Test publishing boundaries
+        run: node --test tests/cloud-publish.test.ts tests/release-chunks.test.ts
+      - name: Verify chunks and prepare unchanged runtime payload
+        run: node scripts/cloud-publish.mjs prepare
+      - name: Publish verified package using OIDC
+        run: node scripts/cloud-publish.mjs publish
+      - name: Verify npm readback and update draft assets
+        run: node scripts/cloud-publish.mjs verify
+      - name: Preserve release evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloud-publish-evidence
+          path: |
+            ${{ env.CLOUD_PUBLISH_DIR }}/state.json
+            ${{ env.CLOUD_PUBLISH_DIR }}/provenance.json
+            ${{ env.CLOUD_PUBLISH_DIR }}/*.sha256
+          if-no-files-found: ignore
