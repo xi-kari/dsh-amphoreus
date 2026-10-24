@@ -32,8 +32,9 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       RELEASE_TAG: ${{ inputs.release_tag }}
       MANIFEST_SHA256: ${{ inputs.manifest_sha256 }}
-      CLOUD_PUBLISH_DIR: ${{ runner.temp }}/amphoreus-cloud-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
+      - name: Select isolated publishing directory
+        run: echo "CLOUD_PUBLISH_DIR=$RUNNER_TEMP/amphoreus-cloud-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
