@@ -1,11 +1,6 @@
-/**
- * Runs the host `apply()` against a stub Cordis context (no platform process), in both the
- * degraded mode (storage domain unavailable) and the normal mode (in-memory domains), and
- * awaits the effect's disposer. The seven feature branches each appended to the register /
- * dispose blocks in src/index.ts; until now only `indexOf` pins covered that file.
- */
+/** Exercises host mounting and cleanup with stock and enhanced workspace registries. */
 import assert from 'node:assert/strict'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -72,7 +67,10 @@ function stubContext(trace: Trace, options: { storage: 'ok' | 'fail'; visibility
       trace.onEvents.push(event)
       return () => { trace.lines.push(`off:${event}`) }
     },
-    get: (name: string) => name === 'workspaceRegistry' ? { list: () => [], setHiddenByOwner: options.visibilityWrite ?? (async () => {}) } : undefined,
+    get: (name: string) => name === 'workspaceRegistry' ? {
+      list: () => [],
+      ...(options.visibilityWrite === undefined ? {} : { setHiddenByOwner: options.visibilityWrite }),
+    } : undefined,
     sessions: { list: () => [] },
     skills: { registerProvider: () => () => {}, get: () => undefined },
     commands: { register: () => () => { trace.lines.push('off:command') } },
@@ -105,9 +103,10 @@ for (const failOn of [1, 2]) {
       const { ctx, effects } = stubContext(trace, { storage: 'ok', visibilityWrite: async () => {
         if (++writes === failOn) throw new Error('visibility disk failure')
       } })
-      apply(ctx, config(dataDir))
-      if (failOn === 1) await assert.rejects(effects[0]!.result, /visibility disk failure/u)
+      const mounting = apply(ctx, config(dataDir))
+      if (failOn === 1) await assert.rejects(mounting, /visibility disk failure/u)
       else {
+        await mounting
         const dispose = await effects[0]!.result as () => Promise<void>
         await assert.rejects(dispose(), /visibility disk failure/u)
       }
@@ -123,7 +122,7 @@ test('apply() in degraded mode (storage unavailable) mounts, registers nothing t
   const trace: Trace = { lines: [], errors: [], warns: [], onEvents: [] }
   try {
     const { ctx, effects } = stubContext(trace, { storage: 'fail' })
-    apply(ctx, config(dataDir))
+    await apply(ctx, config(dataDir))
     assert.equal(effects.length, 1)
     assert.equal(effects[0]!.label, 'dsh-amphoreus/bridge')
     const dispose = await effects[0]!.result as () => Promise<void>
@@ -143,12 +142,34 @@ test('apply() in degraded mode (storage unavailable) mounts, registers nothing t
   }
 })
 
-test('apply() with in-memory domains registers every feature listener and disposes them in the documented order, stores last', async () => {
+test('stock host keeps its UI and routes available when seat directory creation fails', async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'amphoreus-apply-seat-file-'))
+  const trace: Trace = { lines: [], errors: [], warns: [], onEvents: [] }
+  try {
+    const existing = join(dataDir, 'seats')
+    await writeFile(existing, 'existing user file')
+    const { ctx, effects } = stubContext(trace, { storage: 'ok' })
+    await apply(ctx, config(dataDir))
+    const dispose = await effects[0]!.result as () => Promise<void>
+    assert.equal(typeof dispose, 'function')
+    assert.equal(trace.errors.filter(line => /seat dirs unavailable/u.test(line)).length, 1)
+    assert.ok(trace.onEvents.includes('webserver/index-inject'))
+    assert.ok(trace.onEvents.includes('domain/changed'))
+    await dispose()
+    assert.ok(trace.lines.includes('off:route'))
+    assert.deepEqual(trace.lines.slice(-2), ['close:amphoreus_canvas', 'close:amphoreus'])
+    assert.equal(await readFile(existing, 'utf8'), 'existing user file')
+  } finally {
+    await rm(dataDir, { recursive: true, force: true })
+  }
+})
+
+test('apply() on a stock host registers every feature listener and disposes them with stores last', async () => {
   const dataDir = await mkdtemp(join(tmpdir(), 'amphoreus-apply-full-'))
   const trace: Trace = { lines: [], errors: [], warns: [], onEvents: [] }
   try {
     const { ctx, effects } = stubContext(trace, { storage: 'ok' })
-    apply(ctx, config(dataDir))
+    await apply(ctx, config(dataDir))
     const dispose = await effects[0]!.result as () => Promise<void>
     assert.deepEqual(trace.errors, [])
     // Registration order pinned by seat-permission / remember-command tests: observer, permission and memory attach after bridge.start.

@@ -1,8 +1,8 @@
 .modal {
-  width: min(1120px, calc(100vw - 32px));
-  height: min(860px, calc(100dvh - 32px));
-  max-width: calc(100vw - 32px);
-  max-height: calc(100dvh - 32px);
+  width: min(1120px, 100%);
+  height: min(860px, 100%);
+  max-width: 100%;
+  max-height: 100%;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -63,7 +63,7 @@
 .openButton:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
 
 @media (max-width: 560px) {
-  .modal { width: calc(100vw - 16px); max-width: calc(100vw - 16px); height: calc(100dvh - 16px); max-height: calc(100dvh - 16px); padding: 12px; gap: 10px; }
+  .modal { width: 100%; height: 100%; padding: 12px; gap: 10px; }
   .toolbar { gap: 6px; }
   .toolbar > [role='radiogroup'] { width: 100%; }
   .fontControls { margin-inline-start: 0; }

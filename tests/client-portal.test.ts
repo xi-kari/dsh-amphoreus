@@ -60,7 +60,7 @@ test('footer and overlay keep hooks unconditional and implement every close and 
   assert.match(portalSource, /event\.target === event\.currentTarget/)
   assert.match(portalSource, /role="dialog"/)
   assert.match(portalSource, /aria-modal="true"/)
-  assert.match(portalSource, /src="\/amphoreus\/workbench\/\?mode=portal"/)
+  assert.match(portalSource, /src="\/amphoreus\/workbench\/\?mode=portal&close=host"/)
   assert.match(portalSource, /onLoad=\{onFrameLoad\}/)
   assert.doesNotMatch(portalSource, /\bctx\b|fetch\(|appendChild|localStorage/)
 })
@@ -221,7 +221,7 @@ test('portal CSS uses only DSW colors plus the one allowed panel shadow', () => 
   for (const selector of ['.scrim', '.panel', '.frame', '.close', '.footerButton', '.rail']) {
     assert.ok(portalCss.includes(`${selector} {`), `missing ${selector}`)
   }
-  assert.match(portalCss, /\.scrim \{[^}]*position: absolute;[^}]*inset: 0;[^}]*pointer-events: auto;/su)
+  assert.match(portalCss, /\.scrim \{[^}]*position: fixed;[^}]*inset: var\(--dsh-frame-chrome-top, 0px\) 0 0;[^}]*pointer-events: auto;/su)
 })
 
 test('brand exports the shared mark and portal never registers in root', () => {

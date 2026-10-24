@@ -1,9 +1,13 @@
 .scrim {
-  position: absolute;
-  inset: 0;
+  position: fixed;
+  inset: var(--dsh-frame-chrome-top, 0px) 0 0;
+  box-sizing: border-box;
   z-index: 1; /* above sibling overlays (portal scrim has none) despite the earlier order -10 */
-  display: grid;
-  place-items: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: max(16px, calc(var(--dsh-frame-overlay-top, 16px) - var(--dsh-frame-chrome-top, 0px))) 16px 16px;
+  -webkit-app-region: no-drag;
   background: var(--dsw-alias-bg-mask-2);
   backdrop-filter: blur(6px);
   pointer-events: auto;
@@ -11,10 +15,13 @@
 
 .panel {
   position: relative;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   width: min(680px, 94vw);
-  max-height: min(820px, 92vh);
+  max-width: 100%;
+  max-height: min(820px, 100%);
+  min-height: 0;
   overflow: hidden;
   border: 1px solid var(--dsw-alias-border-l2);
   border-radius: 14px;

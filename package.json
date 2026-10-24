@@ -1,6 +1,6 @@
 {
   "name": "dsh-amphoreus",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "翁法罗斯 × DSH：黄金裔席位、技能无损桥接、画布工作台与用量挂件（基于 DeepSeek Harness 构建，非官方）",
   "repository": {
     "type": "git",
@@ -42,7 +42,7 @@
     "LICENSE",
     "NOTICE",
     "README.md",
-    "compat/dsh-v0.2.1-rc.2-workspace-visibility.patch",
+    "resources/**",
     "icon.svg"
   ],
   "scripts": {
@@ -57,10 +57,13 @@
     "prepare": "npm run build:types && npm run build:js",
     "prepublishOnly": "node scripts/check-publish.mjs",
     "verify:dist": "node scripts/verify-dist.mjs",
+    "pack:with-assets": "node scripts/package-with-assets.mjs",
+    "verify:official": "node scripts/verify-official-install.mjs",
     "assets:check": "node scripts/check-assets.mjs",
     "release:check": "npm run test && npm run build && npm run verify:dist"
   },
   "engines": {
+    "dsh": "0.2.1-rc.2",
     "node": "^22.19.0 || >=24"
   },
   "license": "MIT",
@@ -146,6 +149,7 @@
     "@deepseek-ai/dsh-storage-domain": "0.2.1-rc.2",
     "@deepseek-ai/dsh-system-prompt": "0.2.1-rc.2",
     "@deepseek-ai/dsh-typert-protocol": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-util-workspace-path": "0.2.1-rc.2",
     "@deepseek-ai/dsh-workspace": "0.2.1-rc.2",
     "@deepseek-ai/schemastery": "^3.18.5",
     "@types/big.js": "6.2.2",

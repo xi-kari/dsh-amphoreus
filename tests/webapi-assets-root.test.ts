@@ -1,14 +1,17 @@
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
+import { existsSync } from 'node:fs'
 import { once } from 'node:events'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { test } from 'node:test'
 import type { Context } from '@deepseek-ai/cordis'
 import type { SuiteResolver } from '../src/host/bridge.ts'
 import type { DeriveOptions, DeriveResult } from '../src/host/derive.ts'
 import { createBootPayload } from '../src/host/firstframe.ts'
+import { prepareBundledResources } from '../src/host/bundled-resources.ts'
 import { GlobalSchema, INITIAL_GLOBAL, type AmphoreusGlobal, type AmphoreusStores } from '../src/host/store.ts'
 import { AmphoreusWebApi } from '../src/host/webapi.ts'
 import type { AmphoreusState } from '../src/shared/api.ts'
@@ -16,6 +19,110 @@ import { HERO_VISUALS } from '../src/shared/heroes.ts'
 import { fixtureConfig } from './fixture-suite.ts'
 
 const NONCE = 'assets-root-nonce'
+
+async function seedBundledPack(resources: string): Promise<void> {
+  const entries: Array<[string, string]> = [
+    [`assets/表情包/${HERO_VISUALS[0]!.assets.sticker}`, 'bundled original'],
+    ['ASSETS-NOTICE.txt', 'fixture artwork'],
+    ...HERO_VISUALS.map(hero => [`assets-cache/${hero.heroId}/cover-34.webp`, `bundled ${hero.heroId}`] as [string, string]),
+    ...Array.from({ length: 95 }, (_, index) => [`assets-cache/_global/wallpaper-${index}.webp`, `bundled wallpaper ${index}`] as [string, string]),
+  ]
+  const files = []
+  for (const [path, body] of entries) {
+    const file = join(resources, path)
+    await mkdir(dirname(file), { recursive: true })
+    await writeFile(file, body)
+    files.push({ path, bytes: Buffer.byteLength(body), sha256: createHash('sha256').update(body).digest('hex') })
+  }
+  await writeFile(join(resources, 'manifest.json'), JSON.stringify({ schemaVersion: 1, originals: 1, derived: 108,
+    bytes: files.reduce((sum, file) => sum + file.bytes, 0), files }))
+}
+
+test('clearing a saved artwork root restores bundled images without restart or replacing user preferences and cache', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'amphoreus-bundled-fallback-'))
+  try {
+    const resourcesRoot = join(root, 'resources')
+    const dataDir = join(root, 'data')
+    const customRoot = join(root, 'custom')
+    await seedBundledPack(resourcesRoot)
+    await seedPackSignal(customRoot)
+    const customCache = join(dataDir, 'assets-cache', HERO_VISUALS[0]!.heroId, 'cover-34.webp')
+    await mkdir(dirname(customCache), { recursive: true })
+    await writeFile(customCache, 'user image')
+    const fixture = stores()
+    const preservedPrefs = { ...fixture.global().prefs, backgroundMode: 'none' as const,
+      codeBackground: { enabled: false, intensity: 0.2, interactive: false } }
+    await fixture.stores.main.global.set({ ...fixture.global(), prefs: { ...preservedPrefs, assetsRoot: customRoot } })
+    const config = fixtureConfig()
+    let bundledRoot = ''
+    const prepare = async (savedRoot: string | null) => {
+      const prepared = await prepareBundledResources({ resourcesRoot, dataDir, configuredAssetsRoot: config.assetsRoot,
+        savedAssetsRoot: savedRoot ?? undefined, hasExistingStore: true })
+      if (prepared) bundledRoot = prepared.assetsRoot
+    }
+    await prepare(customRoot)
+    assert.equal(existsSync(join(dataDir, 'assets-cache', '_global')), false, 'custom selection must not seed bundled cache')
+    const api = new AmphoreusWebApi({} as Context, {
+      config, stores: fixture.stores, resolver: { current: () => undefined } as unknown as SuiteResolver,
+      nonce: NONCE, assetsCacheDir: join(dataDir, 'assets-cache'), probeMagick: async () => undefined,
+      assetsRoot: () => fixture.global().prefs.assetsRoot?.trim() || config.assetsRoot.trim() || bundledRoot,
+      prepareAssetsRoot: prepare,
+    })
+    await api.prepareAssets()
+    const server = await listen(api)
+    try {
+      const response = await send(server.origin, '/amphoreus/api/assets/root', 'PUT', { root: null })
+      assert.equal(response.status, 200)
+      const state = await fetch(`${server.origin}/amphoreus/api/state`).then(response => response.json()) as AmphoreusState
+      assert.equal(state.assets.root, join(resourcesRoot, 'assets'))
+      assert.equal(state.assets.derivedCount, 108)
+      assert.equal(state.effectiveConfig.setupNeeded, false)
+      assert.deepEqual(fixture.global().prefs, preservedPrefs)
+      assert.equal(await readFile(customCache, 'utf8'), 'user image')
+      const cover = await fetch(`${server.origin}/amphoreus/derived/${HERO_VISUALS[1]!.heroId}/cover-34.webp`)
+      assert.equal(cover.status, 200)
+      assert.equal(await cover.text(), `bundled ${HERO_VISUALS[1]!.heroId}`)
+    } finally { server.close() }
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
+
+test('a failed bundled fallback preserves the saved root and does not seed partial cache', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'amphoreus-fallback-integrity-'))
+  try {
+    const resourcesRoot = join(root, 'resources')
+    const dataDir = join(root, 'data')
+    const customRoot = join(root, 'custom')
+    await seedBundledPack(resourcesRoot)
+    await seedPackSignal(customRoot)
+    await writeFile(join(resourcesRoot, 'assets-cache', HERO_VISUALS[0]!.heroId, 'cover-34.webp'), 'corrupted')
+    const fixture = stores()
+    await fixture.stores.main.global.set({ ...fixture.global(), prefs: { ...fixture.global().prefs, assetsRoot: customRoot } })
+    const original = structuredClone(fixture.global())
+    const config = fixtureConfig()
+    let bundledRoot = ''
+    const prepare = async (savedRoot: string | null) => {
+      const prepared = await prepareBundledResources({ resourcesRoot, dataDir, configuredAssetsRoot: config.assetsRoot,
+        savedAssetsRoot: savedRoot ?? undefined, hasExistingStore: true })
+      if (prepared) bundledRoot = prepared.assetsRoot
+    }
+    await prepare(customRoot)
+    const api = new AmphoreusWebApi({} as Context, {
+      config, stores: fixture.stores, resolver: { current: () => undefined } as unknown as SuiteResolver,
+      nonce: NONCE, assetsCacheDir: join(dataDir, 'assets-cache'), probeMagick: async () => undefined,
+      assetsRoot: () => fixture.global().prefs.assetsRoot?.trim() || bundledRoot,
+      prepareAssetsRoot: prepare,
+    })
+    await api.prepareAssets()
+    const server = await listen(api)
+    try {
+      const response = await send(server.origin, '/amphoreus/api/assets/root', 'PUT', { root: null })
+      assert.equal(response.status, 500)
+      assert.deepEqual(fixture.global(), original)
+      assert.equal(api.state().assets.root, customRoot)
+      assert.equal(existsSync(join(dataDir, 'assets-cache')), false)
+    } finally { server.close() }
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
 
 /** One known required file (the first seat's sticker): the minimal pack signal PUT /api/assets/root demands. */
 async function seedPackSignal(assets: string): Promise<void> {

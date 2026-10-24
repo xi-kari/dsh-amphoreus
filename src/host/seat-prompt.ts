@@ -3,7 +3,7 @@ import type {} from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import { dirname, join } from 'node:path'
 import { installedSeatMemoryReader, type SeatMemoryContext, type SeatMemoryReader } from './memory.ts'
-import { loadStickerCatalog } from './stickers.ts'
+import { loadStickerSources, stickerMarkdownPath, type StickerSource } from './stickers.ts'
 import type { AmphoreusStores, BindingRecord } from './store.ts'
 import { SuiteReader } from './suite/reader.ts'
 import type { SuiteSnapshot } from './suite/types.ts'
@@ -16,25 +16,13 @@ export interface SeatStickerReferences {
   readonly index: string
   readonly script: string
   readonly manifest: string
-  readonly urlPrefix: string
-  /** Served file names (`<key>.<ext>`), exactly as the sticker route accepts them. */
-  readonly keys: readonly string[]
+  readonly sources: readonly StickerSource[]
 }
 
-export function stickerWebOrigin(server: { readonly host: string; getOrigin(): string }): string | undefined {
-  if (server.host !== '127.0.0.1') return undefined
+export async function loadSeatStickerReferences(root: string): Promise<SeatStickerReferences | undefined> {
   try {
-    return server.getOrigin()
-  } catch {
-    return undefined
-  }
-}
-
-export async function loadSeatStickerReferences(root: string, origin: string | undefined): Promise<SeatStickerReferences | undefined> {
-  if (origin === undefined) return undefined
-  try {
-    const catalog = await loadStickerCatalog(root)
-    if (catalog === undefined || catalog.items.length === 0) return undefined
+    const sources = await loadStickerSources(root)
+    if (sources.length === 0) return undefined
     const reader = await SuiteReader.create(root)
     const [index, script, manifest] = await Promise.all([
       reader.readTextFile('amphoreus/references/stickers.md'),
@@ -46,12 +34,25 @@ export async function loadSeatStickerReferences(root: string, origin: string | u
       index: index.path,
       script: script.path,
       manifest: manifest.path,
-      urlPrefix: `${origin}/amphoreus/stickers/`,
-      keys: catalog.items.map(item => `${item.key}.${item.ext}`),
+      sources,
     }
   } catch {
     return undefined
   }
+}
+
+function stickerPromptLines(sources: readonly StickerSource[]): string[] {
+  const first = sources[0]?.path
+  const directory = first?.slice(0, first.lastIndexOf('/'))
+  if (directory !== undefined && sources.every(source => source.path.slice(0, source.path.lastIndexOf('/')) === directory)) {
+    return [
+      `已核实图片目录：${stickerMarkdownPath(directory)}/`,
+      '清单文件 → 目录内文件名（只拼接此处登记的文件名，不改写扩展名）：',
+      ...sources.map(source => `${source.file} → ${stickerMarkdownPath(source.path.slice(directory.length + 1))}`),
+      `使用 ![角色·表情](<${stickerMarkdownPath(directory)}/文件名>) 单独一行输出，将「文件名」替换为清单中已核实的目录内文件名。`,
+    ]
+  }
+  return sources.map(source => `${source.file} → ![角色·表情](<${stickerMarkdownPath(source.path)}>)`)
 }
 
 export function seatPromptAssembly(
@@ -72,7 +73,7 @@ export function seatPromptAssembly(
       `common.md：${references.common}`,
       ...(references.relations === undefined ? [] : [`relations.md：${references.relations}（涉及角色互称、关系或圆桌互动时按共享合同读取）`]),
     ]),
-    '本宿主是 DeepSeek Harness Web；角色表情的开关、静音、实际发言者、数量与位置均遵循本轮读取的 common.md 和 stickers.md。浏览器不呈现本地绝对路径、file: 或相对路径的 Markdown 图片，不能直接输出选择脚本返回的本地图片 Markdown。',
+    '本宿主使用 DeepSeek Harness 的原生图片显示能力；角色表情的开关、静音、实际发言者、数量与位置均遵循本轮读取的 common.md 和 stickers.md。图片只使用本轮清单已确认的技能素材，不猜测其他本地文件、file: 地址或远程图址。',
     ...(stickers === undefined ? [
       '当前未确认可供浏览器呈现的技能表情资源入口；依共享合同省略不可访问的图片，照常完成正文，不输出破图或占位符。',
     ] : [
@@ -80,8 +81,8 @@ export function seatPromptAssembly(
       `选择脚本：${stickers.script}`,
       `表情 manifest：${stickers.manifest}`,
       '按需读取表情索引，并运行选择脚本时使用 --format json。只采用 status 为 ok 或 fallback、实际发言者相符且 key 在下列已确认可服务清单中的结果；选择失败时按共享合同省略图片，不猜测其他角色或不存在的键。',
-      `已确认可服务的表情文件（<key>.<扩展名>，扩展名以 manifest 登记为准，不得改写；GIF 仅当 manifest 列出时才可用）：${stickers.keys.join('、')}`,
-      `将确认后的文件名原样作为 URL 路径段，使用 ![角色·表情](<${stickers.urlPrefix}<文件名>>) 单独一行输出；此 HTTP 地址属于当前已注册的本地技能资源入口。不得使用脚本返回的本地 path 或 markdown 作为图片地址，也不上传素材或猜测远程图址。`,
+      '只使用下列已核实路径对应的 Markdown，保持路径和扩展名原样，替换角色·表情说明后单独一行输出。Web 与 Desktop 会通过宿主已认证的文件入口呈现图片；不要拼接本地 HTTP 端口，也不要用未列出的脚本 path 或 markdown 替换：',
+      ...stickerPromptLines(stickers.sources),
     ]),
     ...(binding.source === 'dispatch' ? [
       '这是工作台为本席建立的独立派发会话。若问题面向全体，本入口采用各席独立作答，工作台会分别收集各席的回复；你只回答自己的部分，不在本会话重新召集或代演其他角色，也不根据本会话只显示你一人而推断其他席位缺席。遵循用户要求的篇幅；简单会议自介直接发言，不展开另一场会议或重复登记在场名单。圆桌、陪聊与工作场的输出形式遵循本轮读取的共享合同。',
@@ -129,7 +130,6 @@ export function registerSeatPrompt(ctx: Context, options: {
   readonly current: () => SuiteSnapshot | undefined
   readonly commonPath?: string
   readonly relationsPath?: string
-  readonly stickerOrigin?: () => string | undefined
   /** Seat memory reader; defaults to the reader installed by registerSeatMemory (resolved lazily per assembly). */
   readonly memory?: SeatMemoryReader
 }): () => void {
@@ -149,7 +149,7 @@ export function registerSeatPrompt(ctx: Context, options: {
       relations: join(snapshot?.root?.canonical ?? dirname(dirname(card.path)), options.relationsPath ?? 'amphoreus/references/relations.md'),
     }
     const stickers = snapshot?.root === undefined ? undefined
-      : await loadSeatStickerReferences(snapshot.root.canonical, options.stickerOrigin?.())
+      : await loadSeatStickerReferences(snapshot.root.canonical)
     const memory = (options.memory ?? installedSeatMemoryReader(options.stores))?.(binding)
     return seatPromptAssembly(assembly, binding, card.displayName, references, stickers, memory)
   })

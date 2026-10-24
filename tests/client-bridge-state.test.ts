@@ -49,6 +49,13 @@ test('buildStateMessage emits a complete degraded-safe payload', () => {
   assert.equal(message.effectiveConfig, effectiveConfig)
 })
 
+test('the bridge forwards the host-confirmed sticker destinations without deriving extra paths', () => {
+  const stickerSources = { 'D:/skills/known.webp': '/amphoreus/stickers/known.webp' }
+  const message = buildStateMessage({ ...state(undefined), stickerSources })
+  assert.deepEqual(message.stickerSources, stickerSources)
+  assert.equal(buildStateMessage(state(undefined)).stickerSources, undefined)
+})
+
 test('buildStateMessage exposes only the bounded public card fields', () => {
   const features = {
     provider: true,

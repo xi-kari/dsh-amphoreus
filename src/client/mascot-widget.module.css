@@ -1,5 +1,6 @@
 .root {
   position: fixed;
+  -webkit-app-region: no-drag;
   z-index: 65;
   color: var(--dsw-alias-label-primary);
   font-family: inherit;
@@ -39,6 +40,7 @@
 
 .panel, .bubble {
   position: fixed;
+  -webkit-app-region: no-drag;
   box-sizing: border-box;
   overflow: auto;
   width: 296px;

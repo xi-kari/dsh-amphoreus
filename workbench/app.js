@@ -29,6 +29,7 @@ const restoredSeatId = (() => {
 const BOOT = (typeof globalThis.__AMPHOREUS_BOOT__ === 'object' && globalThis.__AMPHOREUS_BOOT__ !== null) ? globalThis.__AMPHOREUS_BOOT__ : {}
 const WORKBENCH_CONFIG = BOOT.workbench ?? { enabled: true, host: 'iframe', defaultView: 'chat', cardTextLimit: 8000, autoProjection: true }
 const BOOT_MODE = new URL(location.href).searchParams.get('mode') === 'portal' ? 'portal' : 'tab'
+const HOST_OWNS_CLOSE = new URL(location.href).searchParams.get('close') === 'host'
 const CARD_WIDTH = 310
 const CARD_HEIGHT = 276
 const CARD_GAP_Y = 42
@@ -344,6 +345,7 @@ async function hydrateBootState(bootState) {
     || bootState.prefs.quickPhrasesInitialized !== undefined && typeof bootState.prefs.quickPhrasesInitialized !== 'boolean') {
     throw new Error('持久化状态响应无效')
   }
+  state.stickerSources = bootState.stickerSources ?? {}
   state.cardPositions.clear()
   state.legacyPositionKeys.clear()
   state.collapsedCardIds.clear()
@@ -825,6 +827,11 @@ function dialogueSticker(line) {
   const image = /^\s*!\[([^\]\n]*)\]\((?:<([^<>\n]+)>|([^\s()]+))\)\s*$/.exec(line)
   if (image === null) return null
   let path = image[2] ?? image[3]
+  const sources = typeof state === 'object' && state !== null ? state.amph?.stickerSources ?? state.stickerSources : undefined
+  if (sources !== null && typeof sources === 'object' && Object.hasOwn(sources, path)) {
+    if (typeof sources[path] !== 'string') return escapeHtml(image[1])
+    path = sources[path]
+  }
   if (!path.startsWith('/')) {
     try {
       const url = new URL(path)
@@ -2204,6 +2211,7 @@ function renderPortal() {
       : `<div class="portal-art portal-art-fallback" style="--seat-accent:${escapeHtml(seat.accent ?? '#8a681c')};--seat-accent2:${escapeHtml(seat.accent2 ?? '#37305e')}"></div>`
     const sticker = seat.stickerUrl ? `<img class="portal-sticker" src="${escapeHtml(seat.stickerUrl)}" alt="" loading="lazy" decoding="async">` : ''
     const name = seat.displayName ?? seat.heroId
+    const duty = (seat.duties ?? []).slice(0, 3).join(' · ') || (seat.deployed ? '' : '角色未部署')
     const ordinal = seat.ordinal !== null ? String(seat.ordinal).padStart(2, '0') : String(index + 1).padStart(2, '0')
     const volume = String(seat.volume ?? '').padStart(2, '0')
     return `<button class="portal-card ${seat.deployed ? '' : 'undeployed'}" type="button" data-action="enter-seat" data-seat="${escapeHtml(seat.heroId)}" data-workspace="seat:${escapeHtml(seat.heroId)}" data-volume="${volume}"${coverUrl === null ? '' : ' data-cover="1"'} style="--seat-accent:${escapeHtml(seat.accent ?? '#8a681c')};--d:${index * 36}ms" title="${escapeHtml(name)}${seat.deployed ? '' : '（未部署）'}">
@@ -2213,7 +2221,7 @@ function renderPortal() {
       <span class="portal-meta">
         <i class="portal-no" data-volume="${volume}">${ordinal}</i>
         <strong class="portal-name">${escapeHtml(name)}</strong>
-        <span class="portal-duty">${escapeHtml((seat.duties ?? []).slice(0, 3).join(' · ') || (seat.deployed ? '' : '角色未部署'))}</span>
+        <span class="portal-duty" title="${escapeHtml(duty)}">${escapeHtml(duty)}</span>
         <span class="portal-count">${count > 0 ? `${count} 段会话` : '尚无会话'}</span>
         ${seat.grammar ? `<span class="portal-swatch" title="${escapeHtml(seat.grammar.signature)}" style="--swatch-radius:${Number(seat.grammar.radiusPx) || 0}px;--swatch-rim:${escapeHtml(seat.grammar.rimStyle === 'none' ? 'solid' : seat.grammar.rimStyle)};--swatch-rim-w:${seat.grammar.rimStyle === 'none' ? 0 : 1}px;--swatch-tint:${escapeHtml(document.documentElement.dataset.theme === 'dark' ? seat.grammar.tintDark : seat.grammar.tintLight)}"><i aria-hidden="true"></i>${escapeHtml(seat.grammar.styleName)}</span>` : ''}
       </span>
@@ -2241,7 +2249,7 @@ function renderPortal() {
 }
 
 function portalCloseControl() {
-  if (BOOT_MODE !== 'portal' || window.parent === window) return ''
+  if (BOOT_MODE !== 'portal' || window.parent === window || HOST_OWNS_CLOSE) return ''
   return '<button class="portal-close" type="button" data-action="close-portal" aria-label="关闭总览" title="关闭总览">×</button>'
 }
 
@@ -3290,6 +3298,7 @@ window.addEventListener('message', event => {
       memory: data.memory ?? [],
       effectiveConfig: data.effectiveConfig ?? {},
       firewallWords: data.firewallWords ?? [],
+      stickerSources: data.stickerSources ?? {},
     }
     updateDispatchSuggestions(state.dispatch.text)
     patchDispatchSuggestions()

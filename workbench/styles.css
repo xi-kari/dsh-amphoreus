@@ -354,6 +354,7 @@ button.primary:hover { border-color: var(--dsw-alias-button-primary-hover, #000)
 [data-theme="dark"] { color-scheme: dark; }
 
 /* ============ 黄金裔席位门户（英雄纪卡牌 · 昔涟浅色主题） ============ */
+body:has(.portal-shell) { min-width: 0; }
 .portal-shell { display: block !important; grid-template-columns: none !important; grid-template-rows: none !important; overflow: auto !important;
   background:
     radial-gradient(1100px 560px at 16% -6%, rgba(242,169,189,.18), transparent 62%),
@@ -401,6 +402,7 @@ button.primary:hover { border-color: var(--dsw-alias-button-primary-hover, #000)
 .portal-all .portal-count { color: var(--dsw-alias-label-tertiary, #8b86a6); }
 .portal-card .portal-count { color: rgba(253,251,255,.66); }
 @media (max-width: 620px) { .portal { padding: 26px 14px 48px; } .portal-grid { grid-template-columns: repeat(auto-fill, minmax(136px, 1fr)); gap: 12px; } }
+@media (max-width: 360px) { .portal { padding-top: 48px; } }
 @media (prefers-reduced-motion: reduce) { .portal-card, .portal-sticker { transition: none; } }
 
 /* 入场微动效 */
