@@ -78,10 +78,10 @@
 先运行一次官方 DSH Desktop 完成初始化。在桌面端的插件管理页安装插件包后，按页面提示重启。也可以完全退出 Desktop，再使用 **Desktop 自带的 dsh 命令**安装：
 
 ```bash
-dsh plugin --profile desktop add ./dsh-amphoreus-0.5.1-with-assets.tgz
+dsh plugin --profile desktop add dsh-amphoreus@0.5.1
 ```
 
-重新打开原来的 DSH Desktop 即可。desktop 是桌面端管理的专用 profile，普通 npm 安装的 dsh 命令不能代替桌面端命令管理它。插件不会安装第二套桌面程序。
+重新打开原来的 DSH Desktop 即可。也可以将安装目标替换为下载好的 `./dsh-amphoreus-0.5.1-with-assets.tgz`。desktop 是桌面端管理的专用 profile，普通 npm 安装的 dsh 命令不能代替桌面端命令管理它。插件不会安装第二套桌面程序。
 
 带图包的角色封面、卡牌、贴纸和壁纸随插件到位，首次启动自动配置预置壁纸、完整杂志模式、角色动态挂件与强度 0.7 的字符水波。已有用户偏好保持不变；原始素材自检与已就绪的显示缓存分开计数。图片权利说明位于 resources/ASSETS-NOTICE.txt，代码 MIT 许可不适用于这些图片。
 
@@ -99,6 +99,8 @@ npm run pack:with-assets -- --assets /path/to/bundled-art --out /path/to/new-pac
 ```
 
 输入素材集包含白名单原图、派生 WebP 和摘要清单；可用 scripts/bundled-assets.mjs 的 bundleArtwork 生成。打包结果保持普通 dsh-amphoreus 包的身份，安装不执行源码构建，不携带 Electron、官方宿主、技能正文、会话或用户存储。无图基础包继续支持用户自选 assetsRoot。
+
+npm 发行使用最终合并提交生成的带图 tarball。打包器将该提交写入包内 `gitHead` 并生成摘要；发布时显式使用 `npm publish <with-assets.tgz> --tag alpha --access public`，回读 registry 的来源与包内容后再创建对应版本 tag。Tag 工作流只校验已发布的完整包，不从源码目录发布无图包。
 
 ### 构建与 tarball
 

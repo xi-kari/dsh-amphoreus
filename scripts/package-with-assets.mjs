@@ -41,9 +41,11 @@ function npm(args, cwd) {
 function sha(path) { return createHash('sha256').update(readFileSync(path)).digest('hex') }
 function writeJson(path, value) { writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`) }
 
-export function makeInstallManifest(source) {
+export function makeInstallManifest(source, sourceCommit) {
   if (source.name !== 'dsh-amphoreus' || typeof source.version !== 'string') throw new Error('Expected a dsh-amphoreus package manifest.')
+  if (typeof sourceCommit !== 'string' || !/^[0-9a-f]{40}$/u.test(sourceCommit)) throw new Error('Packaging requires the full 40-character source commit from Git HEAD.')
   const result = structuredClone(source)
+  result.gitHead = sourceCommit
   result.files = [...new Set([...(result.files ?? []), 'resources/**'])]
   for (const hook of LIFECYCLE_HOOKS) if (result.scripts) delete result.scripts[hook]
   return result
@@ -91,6 +93,8 @@ export async function stageResourcePack(sourceRoot, destination) {
 
 export async function packageWithAssets({ assets, output, plugin = ROOT, baseTarball }) {
   plugin = resolve(plugin); output = resolve(output)
+  const sourceCommit = command('git', ['rev-parse', '--verify', 'HEAD'], plugin).trim()
+  if (!/^[0-9a-f]{40}$/u.test(sourceCommit)) throw new Error('Git HEAD did not return a full source commit.')
   if (existsSync(output) && readdirSync(output).length !== 0) throw new Error('Package output must be a new or empty directory.')
   mkdirSync(output, { recursive: true })
   const stage = join(output, 'stage')
@@ -117,7 +121,7 @@ export async function packageWithAssets({ assets, output, plugin = ROOT, baseTar
   for (const file of ['lib/index.js', 'lib/client.js', 'lib/derive.js', 'cordis.patch.yml']) {
     if (sha(join(packageRoot, file)) !== sha(join(plugin, file))) throw new Error(`Base package contains stale plugin output: ${file}`)
   }
-  const installed = makeInstallManifest(manifest)
+  const installed = makeInstallManifest(manifest, sourceCommit)
   writeJson(join(packageRoot, 'package.json'), installed)
   const resources = await stageResourcePack(assets, join(packageRoot, 'resources'))
   npm(['pack', '--ignore-scripts', '--json', '--pack-destination', output], packageRoot)
@@ -125,6 +129,7 @@ export async function packageWithAssets({ assets, output, plugin = ROOT, baseTar
   const tarball = join(output, filename)
   renameSync(join(output, `dsh-amphoreus-${manifest.version}.tgz`), tarball)
   const packed = JSON.parse(command('tar', ['-xOzf', tarball, 'package/package.json'], output))
+  if (packed.gitHead !== sourceCommit) throw new Error('Packed plugin gitHead does not match its source commit.')
   if (LIFECYCLE_HOOKS.some(hook => packed.scripts?.[hook] !== undefined)) throw new Error('Packed plugin contains an install or build lifecycle hook.')
   const packedPaths = command('tar', ['-tzf', tarball], output).trim().split(/\r?\n/u)
   const set = new Set(packedPaths)
@@ -135,10 +140,11 @@ export async function packageWithAssets({ assets, output, plugin = ROOT, baseTar
     throw new Error('Final plugin tarball contains private, skill, or user-state content.')
   }
   const digest = sha(tarball)
+  if (command('git', ['rev-parse', '--verify', 'HEAD'], plugin).trim() !== sourceCommit) throw new Error('Git HEAD changed during packaging; rebuild from one source commit.')
   writeFileSync(`${tarball}.sha256`, `${digest}  ${filename}\n`)
   const provenance = {
     schemaVersion: 1, package: manifest.name, version: manifest.version,
-    sourceCommit: command('git', ['rev-parse', 'HEAD'], plugin).trim(),
+    sourceCommit,
     sourceDiffSha256: createHash('sha256').update(command('git', ['diff', '--binary', 'HEAD', '--'], plugin)).digest('hex'),
     resources: { originals: resources.originals, derived: resources.derived, bytes: resources.bytes, manifestSha256: sha(join(packageRoot, 'resources', 'manifest.json')) },
     tarball: { file: filename, bytes: statSync(tarball).size, sha256: digest },

@@ -9,11 +9,10 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  publish:
+  verify-published:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write
     steps:
       - uses: actions/checkout@v4
       - name: checkout verified skill suite
@@ -37,52 +36,52 @@ jobs:
           AMPHOREUS_REAL_SUITE: ${{ github.workspace }}/.suite-fixture/skills
       - name: tag matches package.json
         run: node -e "const v=require('./package.json').version; if ('v'+v!==process.env.GITHUB_REF_NAME) { console.error('tag',process.env.GITHUB_REF_NAME,'!= v'+v); process.exit(1) }"
-      - name: choose publish mode
-        id: publish-mode
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: verify complete package published from this tag
         shell: bash
         run: |
-          name="$(node -p "require('./package.json').name")"
-          version="$(node -p "require('./package.json').version")"
-          error_file="$RUNNER_TEMP/npm-view.err"
-          set +e
-          existing="$(npm view "$name@$version" version --registry https://registry.npmjs.org 2>"$error_file")"
-          status=$?
-          set -e
-          if [ "$status" -eq 0 ]; then
-            test "$existing" = "$version"
-            published_git_head="$(npm view "$name@$version" gitHead --registry https://registry.npmjs.org)"
-            if [ "$published_git_head" != "$GITHUB_SHA" ]; then
-              echo "::error::$name@$version exists at gitHead $published_git_head, expected $GITHUB_SHA"
-              exit 1
-            fi
-            alpha="$(npm view "$name" dist-tags.alpha --registry https://registry.npmjs.org)"
-            if [ "$alpha" != "$version" ]; then
-              echo "::error::$name@$version exists but alpha points to $alpha"
-              exit 1
-            fi
-            echo "publish=false" >> "$GITHUB_OUTPUT"
-            echo "mode=local-prepublished" >> "$GITHUB_OUTPUT"
-          elif grep -q 'E404' "$error_file"; then
-            if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
-              echo "::error::$name@$version is unpublished and NPM_TOKEN is absent; publish locally with --tag alpha before pushing the tag"
-              exit 1
-            fi
-            echo "publish=true" >> "$GITHUB_OUTPUT"
-            echo "mode=ci-token" >> "$GITHUB_OUTPUT"
-          else
-            cat "$error_file" >&2
-            exit "$status"
-          fi
-      - name: publish alpha
-        if: steps.publish-mode.outputs.publish == 'true'
-        run: npm publish --provenance --tag alpha --access public --registry https://registry.npmjs.org
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-      - name: verify alpha
-        run: |
-          name="$(node -p "require('./package.json').name")"
-          version="$(node -p "require('./package.json').version")"
-          test "$(npm view "$name" dist-tags.alpha --registry https://registry.npmjs.org)" = "$version"
-          test "$(npm view "$name@$version" gitHead --registry https://registry.npmjs.org)" = "$GITHUB_SHA"
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict'
+          import { execFileSync } from 'node:child_process'
+          import { createHash } from 'node:crypto'
+          import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+          import { tmpdir } from 'node:os'
+          import { join } from 'node:path'
+          import { inspectBundledResources } from './src/host/bundled-resources.ts'
+
+          const { name, version } = JSON.parse(readFileSync('package.json', 'utf8'))
+          const response = await fetch(`https://registry.npmjs.org/${encodeURIComponent(name)}`)
+          if (!response.ok) throw new Error(`Unable to inspect the npm release: HTTP ${response.status}`)
+          const registry = await response.json()
+          const release = registry.versions?.[version]
+          if (release === undefined) throw new Error(`${name}@${version} is unpublished. Publish the verified with-assets tarball with --tag alpha before pushing its tag; this workflow never publishes the source directory.`)
+          assert.equal(release.gitHead, process.env.GITHUB_SHA, 'Registry gitHead does not match the tagged source commit.')
+          assert.equal(registry['dist-tags']?.alpha, version, 'Registry alpha does not point to this version.')
+          const url = new URL(release.dist.tarball)
+          assert.equal(url.hostname, 'registry.npmjs.org', 'Unexpected release tarball host.')
+          url.protocol = 'https:'
+          const download = await fetch(url)
+          assert.equal(download.status, 200, 'Cannot download the published tarball.')
+          const bytes = Buffer.from(await download.arrayBuffer())
+          const integrity = `sha512-${createHash('sha512').update(bytes).digest('base64')}`
+          assert.ok(release.dist.integrity.split(/\s+/u).includes(integrity), 'Registry tarball integrity does not match its metadata.')
+          const directory = mkdtempSync(join(tmpdir(), 'amphoreus-release-'))
+          const archive = join(directory, 'release.tgz')
+          writeFileSync(archive, bytes)
+          const entries = execFileSync('tar', ['-tzf', archive], { encoding: 'utf8' }).trim().split(/\r?\n/u)
+          assert.ok(entries.every(path => path.startsWith('package/') && !path.includes('\\') && !path.includes(':') && !path.split('/').includes('..')), 'Unsafe published archive paths.')
+          const types = execFileSync('tar', ['-tvzf', archive], { encoding: 'utf8' }).trim().split(/\r?\n/u)
+          assert.ok(types.every(line => line.startsWith('-') || line.startsWith('d')), 'Published archive contains links or special entries.')
+          execFileSync('tar', ['-xzf', archive, '-C', directory])
+          const packaged = JSON.parse(readFileSync(join(directory, 'package', 'package.json'), 'utf8'))
+          assert.equal(packaged.name, name)
+          assert.equal(packaged.version, version)
+          assert.equal(packaged.gitHead, process.env.GITHUB_SHA, 'Tarball gitHead does not match the tagged source commit.')
+          assert.equal(packaged.dsh?.bundle?.patch, './cordis.patch.yml')
+          assert.equal(packaged.dsh?.client?.platform, 'web')
+          const resources = await inspectBundledResources(join(directory, 'package', 'resources'))
+          assert.equal(resources.originals, 77, 'The published package omits the full original artwork set.')
+          assert.equal(resources.derived, 108, 'The published package omits the full derived artwork set.')
+          assert.equal(entries.filter(path => /^package\/resources\/(?:assets|assets-cache)\//u.test(path)).length, 185)
+          assert.ok(['preinstall', 'install', 'postinstall', 'prepare', 'prepack', 'postpack', 'prepublishOnly'].every(hook => packaged.scripts?.[hook] === undefined), 'The published package still has install/build lifecycle hooks.')
+          console.log(JSON.stringify({ package: name, version, gitHead: packaged.gitHead, originals: resources.originals, derived: resources.derived, sha256: createHash('sha256').update(bytes).digest('hex') }))
+          NODE

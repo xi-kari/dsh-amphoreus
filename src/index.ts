@@ -60,16 +60,20 @@ export async function apply(ctx: Context, config: AmphoreusConfig): Promise<void
         .catch(error => ctx.logger.warn(`amphoreus synapse migration failed: ${String(error)}`))
     }
     let bundledAssetsRoot = ''
-    try {
+    const prepareResources = async (savedAssetsRoot: string | undefined, existingStore = true) => {
       const resources = await prepareBundledResources({
         dataDir,
         configuredAssetsRoot: config.assetsRoot,
-        savedAssetsRoot: stores?.main.global.get().prefs.assetsRoot,
-        hasExistingStore,
+        savedAssetsRoot,
+        hasExistingStore: existingStore,
         moduleUrl: import.meta.url,
       })
+      if (resources !== undefined) bundledAssetsRoot = resources.assetsRoot
+      return resources
+    }
+    try {
+      const resources = await prepareResources(stores?.main.global.get().prefs.assetsRoot, hasExistingStore)
       if (resources !== undefined) {
-        bundledAssetsRoot = resources.assetsRoot
         if (stores !== undefined && resources.defaultPrefs !== undefined) {
           await updateAmphoreusGlobal(stores.main, current =>
             JSON.stringify(current) === JSON.stringify(INITIAL_GLOBAL)
@@ -234,6 +238,7 @@ export async function apply(ctx: Context, config: AmphoreusConfig): Promise<void
           dataDir,
           // @anchor webapi-construct
           assetsRoot: () => effectiveAssetsRoot(config, stores, bundledAssetsRoot),
+          prepareAssetsRoot: async savedRoot => { await prepareResources(savedRoot ?? undefined) },
           workbenchStatus: () => workbenchStatus,
           ...(workbench === undefined ? {} : { workbench }),
           ...(seatDirs === undefined ? {} : { seatDirs: seatDirs.dirs }),

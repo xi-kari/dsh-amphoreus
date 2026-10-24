@@ -188,6 +188,8 @@ export interface WebApiOptions {
   readonly seatSoundMaxBytes?: number
   /** Effective assets root (trimmed; '' when none). Default: prefs.assetsRoot over config.assetsRoot. */
   readonly assetsRoot?: () => string
+  /** Prepare fallback assets before committing a new saved root; a failure preserves the current preference. */
+  readonly prepareAssetsRoot?: (savedRoot: string | null) => Promise<void>
   readonly checkAssets?: (root: string, options?: AssetsCheckOptions) => Promise<AssetsCheckReport>
 }
 
@@ -264,6 +266,7 @@ export class AmphoreusWebApi {
   // @anchor webapi-fields
   readonly #seatSounds: SeatSoundStore | undefined
   readonly #assetsRoot: () => string
+  readonly #prepareAssetsRoot: WebApiOptions['prepareAssetsRoot']
   readonly #checkAssets: (root: string, options?: AssetsCheckOptions) => Promise<AssetsCheckReport>
   #assetsCheck: AssetsCheckReport | undefined
   /** Set when the effective root changed since the last derive: the cache holds another root's files, so the next derive must rewrite. */
@@ -307,6 +310,7 @@ export class AmphoreusWebApi {
       const saved = this.#stores.main.global.get().prefs.assetsRoot ?? ''
       return saved.trim() !== '' ? saved.trim() : this.#config.assetsRoot.trim()
     })
+    this.#prepareAssetsRoot = options.prepareAssetsRoot
     this.#checkAssets = options.checkAssets ?? checkAssets
   }
 
@@ -1591,6 +1595,7 @@ export class AmphoreusWebApi {
       }
     }
     const previous = this.#assetsRoot()
+    await this.#prepareAssetsRoot?.(next)
     await updateAmphoreusGlobal(this.#stores.main, current => {
       const prefs = { ...current.prefs }
       if (next === null) delete prefs.assetsRoot
@@ -1603,6 +1608,7 @@ export class AmphoreusWebApi {
       this.#deriveForceNext = true
     }
     try {
+      await this.#scanDerived()
       await this.#refreshAssetsCheck()
     } catch (error) {
       this.#assetsCheck = undefined
