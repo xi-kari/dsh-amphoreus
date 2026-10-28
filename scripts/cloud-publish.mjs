@@ -7,20 +7,24 @@ import { fileURLToPath } from 'node:url'
 import { inspectBundledResources } from '../src/host/bundled-resources.ts'
 import { assembleArchive, validateManifest } from './release-chunks.mjs'
 
-export const RELEASE = Object.freeze({
-  repository: 'xi-kari/dsh-amphoreus', package: 'dsh-amphoreus', version: '0.5.1', tag: 'v0.5.1', draftId: 422573177,
-  originGitHead: '22efbadbf39ff4555f2112f89a0d911e5e11e84b',
-  originSha256: '98ed2859645b49093c4b93c24f044865985ff424a6480244d396af8a72643df7',
-  resourceManifestSha256: '041e02bcc093059d40572f8512d1f6e0c9596e1de556219c472a012fb8e10147',
-  filename: 'dsh-amphoreus-0.5.1-with-assets.tgz',
-})
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const REGISTRY = 'https://registry.npmjs.org'
 const HOOKS = ['preinstall', 'install', 'postinstall', 'prepare', 'preprepare', 'postprepare', 'prepack', 'postpack', 'prepublish', 'prepublishOnly', 'publish', 'postpublish']
-const ALLOWED_CHANGES = new Set(['.github/workflows/cloud-publish.yml', 'scripts/cloud-publish.mjs', 'scripts/release-chunks.mjs', 'tests/cloud-publish.test.ts', 'tests/release-chunks.test.ts'])
 const json = file => JSON.parse(readFileSync(file, 'utf8'))
 const hash = (file, algorithm = 'sha256', encoding = 'hex') => createHash(algorithm).update(readFileSync(file)).digest(encoding)
 const writeJson = (file, value) => writeFileSync(file, JSON.stringify(value, null, 2) + '\n')
+
+export function releaseFromManifest(manifest) {
+  assert.equal(manifest.name, 'dsh-amphoreus')
+  assert.match(manifest.version ?? '', /^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$/u, 'Cloud publishing requires a stable package version')
+  return Object.freeze({
+    repository: 'xi-kari/dsh-amphoreus', package: manifest.name, version: manifest.version, tag: `v${manifest.version}`,
+    resourceManifestSha256: '041e02bcc093059d40572f8512d1f6e0c9596e1de556219c472a012fb8e10147',
+    filename: `${manifest.name}-${manifest.version}-with-assets.tgz`,
+  })
+}
+
+export const RELEASE = releaseFromManifest(json(join(ROOT, 'package.json')))
 
 function redact(value) {
   for (const [name, secret] of Object.entries(process.env)) {
@@ -51,19 +55,12 @@ export function assertWorkflowContext(environment) {
   assert.ok(!environment.NPM_TOKEN && !environment.NODE_AUTH_TOKEN, 'Traditional npm tokens must not be supplied')
 }
 
-export function assertAllowedChanges(paths) {
-  assert.ok(paths.length > 0, 'The cloud publisher must be a new source commit')
-  for (const path of paths) assert.ok(ALLOWED_CHANGES.has(path), `Source change is outside the publishing bridge: ${path}`)
-}
-
 function assertSource(environment) {
   assertWorkflowContext(environment)
   assert.equal(process.versions.node.split('.')[0], '24')
   assert.equal(command('npm', ['--version']).trim(), '11.21.0')
   assert.equal(command('git', ['rev-parse', 'HEAD']).trim(), environment.GITHUB_SHA)
   assert.equal(command('git', ['status', '--porcelain']).trim(), '', 'Checkout must be clean')
-  command('git', ['merge-base', '--is-ancestor', RELEASE.originGitHead, environment.GITHUB_SHA])
-  assertAllowedChanges(command('git', ['diff', '--name-only', '-z', RELEASE.originGitHead, environment.GITHUB_SHA]).split('\0').filter(Boolean))
   const tag = spawnSync('git', ['rev-parse', '--verify', `refs/tags/${RELEASE.tag}^{commit}`], { cwd: ROOT, encoding: 'utf8' })
   if (tag.status === 0) assert.equal(tag.stdout.trim(), environment.GITHUB_SHA, 'Existing release tag points to another commit')
 }
@@ -97,19 +94,14 @@ export function treeInventory(root) {
   return entries.sort((left, right) => left.path.localeCompare(right.path, 'en'))
 }
 
-export function restampedManifest(manifest, from, to) {
-  assert.equal(manifest.name, RELEASE.package)
+export function validateUploadManifest(value, expectedHead) {
+  assert.match(expectedHead, /^[0-9a-f]{40}$/u)
+  const manifest = validateManifest(value)
+  assert.equal(manifest.package, RELEASE.package)
   assert.equal(manifest.version, RELEASE.version)
-  assert.equal(manifest.gitHead, from)
-  assert.match(to, /^[0-9a-f]{40}$/u)
-  const result = structuredClone(manifest)
-  result.gitHead = to
-  return result
-}
-
-export function assertPayloadEquivalent(before, after, originalManifest, finalManifest, target) {
-  assert.deepEqual(finalManifest, restampedManifest(originalManifest, originalManifest.gitHead, target), 'Package metadata changed beyond gitHead')
-  assert.deepEqual(after.filter(entry => entry.path !== 'package.json'), before.filter(entry => entry.path !== 'package.json'), 'Runtime or artwork bytes changed')
+  assert.equal(manifest.originGitHead, expectedHead, 'Uploaded package must already be built from this workflow commit')
+  assert.equal(manifest.archive, RELEASE.filename)
+  return manifest
 }
 
 export async function inspectPackageArchive(archive, destination, expectedHead) {
@@ -136,12 +128,22 @@ export async function inspectPackageArchive(archive, destination, expectedHead) 
   return { root, manifest, resources, inventory, resourceManifestSha256: hash(join(root, 'resources', 'manifest.json')) }
 }
 
-function draftRelease() {
-  const release = JSON.parse(command('gh', ['api', `repos/${RELEASE.repository}/releases/${RELEASE.draftId}`]))
-  assert.equal(release.id, RELEASE.draftId)
-  assert.equal(release.tag_name, RELEASE.tag)
+export function selectDraftRelease(releases, expectedHead) {
+  assert.match(expectedHead, /^[0-9a-f]{40}$/u)
+  assert.ok(Array.isArray(releases), 'Expected a release listing')
+  const matches = releases.filter(release => release.tag_name === RELEASE.tag)
+  assert.equal(matches.length, 1, 'Expected exactly one release matching the current package tag')
+  const release = matches[0]
+  assert.ok(Number.isSafeInteger(release.id) && release.id > 0, 'Draft release has no valid identity')
   assert.equal(release.draft, true, 'The target release must remain a draft')
+  assert.equal(release.prerelease, false, 'Stable package publishing requires a stable release')
+  assert.equal(release.target_commitish, expectedHead, 'Draft release must target the exact workflow commit')
   return release
+}
+
+function draftRelease(expectedHead) {
+  const pages = JSON.parse(command('gh', ['api', '--paginate', '--slurp', `repos/${RELEASE.repository}/releases?per_page=100`]))
+  return selectDraftRelease(pages.flat(), expectedHead)
 }
 
 function downloadAsset(name, directory, release, expectedBytes) {
@@ -154,11 +156,18 @@ function downloadAsset(name, directory, release, expectedBytes) {
 
 function loadState(directory, environment) {
   const state = json(join(directory, 'state.json'))
+  assert.equal(state.schemaVersion, 1)
   assert.equal(state.sourceCommit, environment.GITHUB_SHA)
-  assert.equal(state.originGitHead, RELEASE.originGitHead)
+  assert.equal(state.originGitHead, environment.GITHUB_SHA)
+  assert.equal(state.manifestSha256, environment.MANIFEST_SHA256)
+  assert.equal(state.releaseTag, RELEASE.tag)
+  assert.equal(state.draftId, draftRelease(environment.GITHUB_SHA).id, 'The draft release changed after archive preparation')
   assert.equal(state.filename, RELEASE.filename)
   const archive = join(directory, state.filename)
+  assert.equal(lstatSync(archive).size, state.bytes)
   assert.equal(hash(archive), state.sha256)
+  assert.equal(state.originSha256, state.sha256, 'Approved archive bytes must not change')
+  assert.equal(state.resourceManifestSha256, RELEASE.resourceManifestSha256)
   assert.equal(`sha512-${hash(archive, 'sha512', 'base64')}`, state.integrity)
   return { state, archive }
 }
@@ -168,38 +177,24 @@ async function prepare(directory, environment) {
   mkdirSync(directory, { recursive: true })
   const input = join(directory, 'input')
   mkdirSync(input)
-  const release = draftRelease()
+  const release = draftRelease(environment.GITHUB_SHA)
   const manifestName = `upload-${RELEASE.tag}.manifest.json`
   downloadAsset(manifestName, input, release)
   const manifestFile = join(input, manifestName)
   assert.equal(hash(manifestFile), environment.MANIFEST_SHA256, 'Uploaded manifest digest differs from the approved input')
-  const manifest = validateManifest(json(manifestFile))
-  assert.equal(manifest.package, RELEASE.package)
-  assert.equal(manifest.version, RELEASE.version)
-  assert.equal(manifest.originGitHead, RELEASE.originGitHead)
-  assert.equal(manifest.archive, RELEASE.filename)
-  assert.equal(manifest.sha256, RELEASE.originSha256)
+  const manifest = validateUploadManifest(json(manifestFile), environment.GITHUB_SHA)
   for (const part of manifest.parts) downloadAsset(part.file, input, release, part.bytes)
-  const original = join(input, RELEASE.filename)
-  await assembleArchive({ manifest: manifestFile, parts: input, out: original })
-  assert.equal(hash(original), RELEASE.originSha256)
-  const before = await inspectPackageArchive(original, join(directory, 'original'), RELEASE.originGitHead)
-  assert.equal(before.resourceManifestSha256, RELEASE.resourceManifestSha256)
-  writeJson(join(before.root, 'package.json'), restampedManifest(before.manifest, RELEASE.originGitHead, environment.GITHUB_SHA))
-  const packed = JSON.parse(command('npm', ['pack', '--ignore-scripts', '--json', '--pack-destination', directory], { cwd: before.root }))
-  assert.equal(packed.length, 1)
-  const generated = join(directory, `${RELEASE.package}-${RELEASE.version}.tgz`)
   const archive = join(directory, RELEASE.filename)
-  const { renameSync } = await import('node:fs')
-  renameSync(generated, archive)
-  const after = await inspectPackageArchive(archive, join(directory, 'verified'), environment.GITHUB_SHA)
-  assert.equal(after.resourceManifestSha256, RELEASE.resourceManifestSha256)
-  assertPayloadEquivalent(before.inventory, after.inventory, before.manifest, after.manifest, environment.GITHUB_SHA)
-  const state = { schemaVersion: 1, sourceCommit: environment.GITHUB_SHA, originGitHead: RELEASE.originGitHead,
-    originSha256: RELEASE.originSha256, manifestSha256: environment.MANIFEST_SHA256, filename: RELEASE.filename,
+  await assembleArchive({ manifest: manifestFile, parts: input, out: archive })
+  assert.equal(hash(archive), manifest.sha256)
+  const inspected = await inspectPackageArchive(archive, join(directory, 'verified'), environment.GITHUB_SHA)
+  assert.equal(inspected.resourceManifestSha256, RELEASE.resourceManifestSha256)
+  const state = { schemaVersion: 1, sourceCommit: environment.GITHUB_SHA, originGitHead: manifest.originGitHead,
+    originSha256: manifest.sha256, manifestSha256: environment.MANIFEST_SHA256, filename: RELEASE.filename,
+    releaseTag: RELEASE.tag, draftId: release.id,
     bytes: lstatSync(archive).size, sha256: hash(archive), integrity: `sha512-${hash(archive, 'sha512', 'base64')}`,
-    resourceManifestSha256: after.resourceManifestSha256, originals: after.resources.originals, derived: after.resources.derived,
-    unchangedPayloadFiles: after.inventory.length - 1 }
+    resourceManifestSha256: inspected.resourceManifestSha256, originals: inspected.resources.originals, derived: inspected.resources.derived,
+    payloadFiles: inspected.inventory.length }
   writeJson(join(directory, 'state.json'), state)
   writeFileSync(join(directory, 'npmrc'), `registry=${REGISTRY}/\n`)
   console.log(JSON.stringify({ prepared: true, ...state }))
@@ -253,7 +248,6 @@ async function waitForPublished(state, tags = false) {
 }
 
 async function publish(directory, environment) {
-  draftRelease()
   const { state, archive } = loadState(directory, environment)
   const registry = await registryDocument()
   assertNoTagDowngrade(registry['dist-tags'])
@@ -284,8 +278,8 @@ async function verify(directory, environment) {
   const inspected = await inspectPackageArchive(registryArchive, join(directory, 'registry-package'), environment.GITHUB_SHA)
   assert.equal(inspected.resourceManifestSha256, RELEASE.resourceManifestSha256)
   const provenance = { schemaVersion: 1, package: RELEASE.package, version: RELEASE.version, sourceCommit: state.sourceCommit,
-    originGitHead: state.originGitHead, originSha256: state.originSha256, sourceChanges: [...ALLOWED_CHANGES],
-    payloadChanges: ['package.json.gitHead'], unchangedPayloadFiles: state.unchangedPayloadFiles,
+    originGitHead: state.originGitHead, originSha256: state.originSha256,
+    uploadManifestSha256: state.manifestSha256, payloadChanges: [], payloadFiles: state.payloadFiles,
     resources: { originals: 77, derived: 108, manifestSha256: state.resourceManifestSha256 },
     tarball: { file: state.filename, bytes: state.bytes, sha256: state.sha256, integrity: state.integrity },
     registry: { gitHead: published.gitHead, alpha: registry['dist-tags'].alpha, latest: registry['dist-tags'].latest },
@@ -296,10 +290,10 @@ async function verify(directory, environment) {
   writeFileSync(checksum, `${state.sha256}  ${state.filename}\n`)
   writeJson(provenanceFile, provenance)
   writeFileSync(releaseProvenanceFile, readFileSync(provenanceFile))
-  draftRelease()
+  draftRelease(environment.GITHUB_SHA)
   command('gh', ['release', 'upload', RELEASE.tag, archive, checksum, releaseProvenanceFile, '--repo', RELEASE.repository, '--clobber'])
-  draftRelease()
-  console.log(JSON.stringify({ verified: true, sourceCommit: state.sourceCommit, sha256: state.sha256, draftRelease: RELEASE.draftId }))
+  draftRelease(environment.GITHUB_SHA)
+  console.log(JSON.stringify({ verified: true, sourceCommit: state.sourceCommit, sha256: state.sha256, draftRelease: state.draftId }))
 }
 
 async function main() {

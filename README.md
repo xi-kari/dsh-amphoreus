@@ -18,7 +18,7 @@
 
 ## 兼容性
 
-本源码版本为 **0.5.1**，适配官方 **DSH 0.2.1-rc.2** 的 Desktop 与 Web。插件通过标准 bundle 加载宿主端和客户端，安装后重启当前 DSH 即可生效。Node.js 要求为 **22.19+ 或 24+**，Desktop 使用其自带运行时。
+**dsh-amphoreus 0.5.2** 支持官方 **DSH 0.2.1-rc.2 与 0.2.1-rc.3** 的 Desktop 与 Web，开发依赖基线为 **0.2.1-rc.3**。插件通过标准 bundle 加载宿主端和客户端，安装后重启当前 DSH 即可生效。Node.js 要求为 **22.19+ 或 24+**，Desktop 使用其自带运行时。
 
 停用插件会卸载界面、主题、监听和动画。已创建的角色目录、工作区与会话保留在 DSH 中；官方宿主没有按插件隐藏工作区的接口，因此这些工作区仍可从原生界面访问。宿主若提供可选的工作区可见性能力，插件会使用该能力处理自己的工作区。
 
@@ -73,15 +73,17 @@
 
 安装到当前使用的 DSH profile 后重启。插件包已包含编译好的宿主端和浏览器端，不需要重建 DSH。
 
+GitHub 的 Source code ZIP 是源码快照，不包含编译产物。源码安装及 `link:` 指向的本地目录必须先完成构建；普通安装请使用 npm 包或 Release 中的 `with-assets.tgz` 完整插件包。
+
 ### Desktop
 
 先运行一次官方 DSH Desktop 完成初始化。在桌面端的插件管理页安装插件包后，按页面提示重启。也可以完全退出 Desktop，再使用 **Desktop 自带的 dsh 命令**安装：
 
 ```bash
-dsh plugin --profile desktop add dsh-amphoreus@0.5.1
+dsh plugin --profile desktop add dsh-amphoreus@0.5.2
 ```
 
-重新打开原来的 DSH Desktop 即可。也可以将安装目标替换为下载好的 `./dsh-amphoreus-0.5.1-with-assets.tgz`。desktop 是桌面端管理的专用 profile，普通 npm 安装的 dsh 命令不能代替桌面端命令管理它。插件不会安装第二套桌面程序。
+重新打开原来的 DSH Desktop 即可。也可以将安装目标替换为下载好的 `./dsh-amphoreus-0.5.2-with-assets.tgz`。desktop 是桌面端管理的专用 profile，普通 npm 安装的 dsh 命令不能代替桌面端命令管理它。插件不会安装第二套桌面程序。
 
 带图包的角色封面、卡牌、贴纸和壁纸随插件到位，首次启动自动配置预置壁纸、完整杂志模式、角色动态挂件与强度 0.7 的字符水波。已有用户偏好保持不变；原始素材自检与已就绪的显示缓存分开计数。图片权利说明位于 resources/ASSETS-NOTICE.txt，代码 MIT 许可不适用于这些图片。
 
@@ -109,7 +111,7 @@ npm ci
 npm run build
 npm run verify:dist
 npm pack --ignore-scripts
-dsh plugin --profile web add ./dsh-amphoreus-0.5.1.tgz
+dsh plugin --profile web add ./dsh-amphoreus-0.5.2.tgz
 ```
 
 ### GitHub
@@ -427,7 +429,7 @@ npm run assets:check -- "<assetsRoot>"
 
 ## 已知限制
 
-1. 当前兼容基线为 `dsh-v0.2.1-rc.2`，技能套件验证基线为 δ-me13 skill `v1.8.0`。
+1. 兼容版本为 `dsh-v0.2.1-rc.2` 与 `dsh-v0.2.1-rc.3`，技能套件验证基线为 δ-me13 skill `v1.8.0`。
 2. 首帧 nonce 每个进程随机生成；宿主重启后需刷新工作台。
 3. 页面加载时的首个会话通常不受 `workbench.defaultView` 影响。
 4. “记住 Tab”在插件热重载或会话回到空白态时可能被误记为“对话”；下次进入工作台 Tab 后会自愈。

@@ -18,7 +18,7 @@ export function isolatedEnvironment(directory, identity) {
     ...environment,
     ELECTRON_RUN_AS_NODE: '1',
     DSH_HOME: join(directory, 'home'),
-    DSH_CLIENT_VERSION: identity,
+    ...(identity ? { DSH_CLIENT_VERSION: identity } : {}),
     HOME: directory,
     USERPROFILE: directory,
     APPDATA: join(directory, 'appdata'),
@@ -260,10 +260,12 @@ async function main() {
   const support = join(desktop, 'resources', 'runtime')
   mkdirSync(directory, { recursive: true })
   writeFileSync(join(directory, 'npmrc'), '')
-  const environment = isolatedEnvironment(directory, '0.2.1-rc.2')
+  const environment = isolatedEnvironment(directory)
   const worker = await execute(executable, ['--expose-internals', fileURLToPath(import.meta.url), '--worker', '--desktop', desktop, '--out', directory], { cwd: directory, env: environment })
   if (worker.code !== 0) throw new Error(`Official profile initialization failed: ${worker.stderr}`)
   const identity = JSON.parse(worker.stdout)
+  if (typeof identity.version !== 'string' || !identity.version.trim()) throw new Error('Official Desktop version is unavailable')
+  environment.DSH_CLIENT_VERSION = identity.version
   const baseline = { executable: sha256(executable), archive: sha256(join(desktop, 'resources', 'app.asar')) }
   const profile = join(directory, 'home', 'profiles', 'desktop')
   const diagnostic = join(directory, 'diagnostics.mjs')

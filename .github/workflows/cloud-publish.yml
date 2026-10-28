@@ -4,9 +4,8 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: Existing draft release tag
+        description: Existing draft release tag matching package.json
         required: true
-        default: v0.5.1
         type: string
       manifest_sha256:
         description: SHA-256 of the approved upload manifest
@@ -46,7 +45,7 @@ jobs:
         run: npm install --global npm@11.21.0 --ignore-scripts --registry https://registry.npmjs.org
       - name: Test publishing boundaries
         run: node --test tests/cloud-publish.test.ts tests/release-chunks.test.ts
-      - name: Verify chunks and prepare unchanged runtime payload
+      - name: Verify approved archive from this source commit
         run: node scripts/cloud-publish.mjs prepare
       - name: Publish verified package using OIDC
         run: node scripts/cloud-publish.mjs publish
